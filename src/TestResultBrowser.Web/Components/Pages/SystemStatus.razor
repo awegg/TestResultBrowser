@@ -1,0 +1,170 @@
+@page "/system-status"
+@using TestResultBrowser.Web.Services
+@using MudBlazor
+@inject ITestDataService TestDataService
+@inject IFileWatcherService FileWatcher
+
+<PageTitle>System Status</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">System Status & Monitoring</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="6">
+        <MudCard>
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">File Scanner Status</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudStack Spacing="2">
+                    <MudText>
+                        <strong>Last Scan:</strong> @(FileWatcher.LastScanTime?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "Never")
+                    </MudText>
+                    <MudText>
+                        <strong>Files Processed:</strong> @FileWatcher.LastScanFileCount
+                    </MudText>
+                    <MudText>
+                        <strong>Scanning:</strong> @(FileWatcher.IsScanningInProgress ? "In Progress" : "Idle")
+                    </MudText>
+                </MudStack>
+            </MudCardContent>
+            <MudCardActions>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" 
+                          OnClick="RefreshData" 
+                          Disabled="@FileWatcher.IsScanningInProgress">
+                    @(FileWatcher.IsScanningInProgress ? "Scanning..." : "Scan Now")
+                </MudButton>
+            </MudCardActions>
+        </MudCard>
+    </MudItem>
+    
+    <MudItem xs="12" md="6">
+        <MudCard>
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Cache Statistics</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudStack Spacing="2">
+                    <MudText>
+                        <strong>Total Test Results:</strong> @totalResults.ToString("N0")
+                    </MudText>
+                    <MudText>
+                        <strong>Memory Usage:</strong> @memoryUsageMB.ToString("N2") MB
+                    </MudText>
+                    <MudText>
+                        <strong>Memory %:</strong> @memoryPercentage.ToString("N1")% of @maxMemoryGB GB limit
+                    </MudText>
+                    <MudProgressLinear Color="@GetMemoryColor()" Value="@memoryPercentage" Class="my-2" />
+                </MudStack>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+    
+    <MudItem xs="12">
+        <MudCard>
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Memory Management</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                @if (memoryPercentage > 90)
+                {
+                    <MudAlert Severity="Severity.Error">
+                        CRITICAL: Memory usage above 90%. Consider clearing cache or increasing MaxMemoryGB limit.
+                    </MudAlert>
+                }
+                else if (memoryPercentage > 75)
+                {
+                    <MudAlert Severity="Severity.Warning">
+                        WARNING: Memory usage above 75%. Monitor closely.
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Success">
+                        Memory usage is within normal limits.
+                    </MudAlert>
+                }
+                
+                <MudText Class="mt-4">
+                    <strong>Recommendations:</strong>
+                </MudText>
+                <MudList T="string" Dense="true">
+                    @if (memoryPercentage > 50)
+                    {
+                        <MudListItem T="string" Icon="@Icons.Material.Filled.Warning">
+                            Consider archiving older test results
+                        </MudListItem>
+                        <MudListItem T="string" Icon="@Icons.Material.Filled.Info">
+                            Current rate: @totalResults.ToString("N0") results = @memoryUsageMB.ToString("N2") MB
+                        </MudListItem>
+                    }
+                    else
+                    {
+                        <MudListItem T="string" Icon="@Icons.Material.Filled.CheckCircle">
+                            System is operating efficiently
+                        </MudListItem>
+                    }
+                </MudList>
+            </MudCardContent>
+            <MudCardActions>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="ClearCache">
+                    Clear All Cache
+                </MudButton>
+            </MudCardActions>
+        </MudCard>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private int totalResults;
+    private double memoryUsageMB;
+    private double memoryPercentage;
+    private int maxMemoryGB = 15; // From appsettings.json
+
+    protected override void OnInitialized()
+    {
+        UpdateStatistics();
+        
+        // Refresh every 5 seconds
+        var timer = new System.Threading.Timer(_ =>
+        {
+            UpdateStatistics();
+            InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+    }
+
+    private void UpdateStatistics()
+    {
+        totalResults = TestDataService.GetTotalCount();
+        var memoryUsageBytes = TestDataService.GetApproximateMemoryUsage();
+        memoryUsageMB = memoryUsageBytes / (1024.0 * 1024.0);
+        
+        var maxMemoryBytes = maxMemoryGB * 1024L * 1024L * 1024L;
+        memoryPercentage = (memoryUsageBytes / (double)maxMemoryBytes) * 100;
+    }
+
+    private Color GetMemoryColor()
+    {
+        if (memoryPercentage > 90) return Color.Error;
+        if (memoryPercentage > 75) return Color.Warning;
+        if (memoryPercentage > 50) return Color.Info;
+        return Color.Success;
+    }
+
+    private async Task RefreshData()
+    {
+        await FileWatcher.ScanNowAsync();
+        UpdateStatistics();
+    }
+
+    private void ClearCache()
+    {
+        TestDataService.Clear();
+        UpdateStatistics();
+    }
+}
