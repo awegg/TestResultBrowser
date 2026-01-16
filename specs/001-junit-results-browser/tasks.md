@@ -1,0 +1,698 @@
+# Tasks: JUnit Test Results Browser
+
+**Input**: Design documents from `/specs/001-junit-results-browser/`
+**Prerequisites**: plan.md, spec.md, research.md, data-model.md, contracts/service-interfaces.md, quickstart.md
+
+**Tests**: Tests are NOT explicitly requested in the feature specification, so NO test tasks are included. Implementation tasks only.
+
+**Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story. P0 (Morning/Release Triage) stories are highest priority for MVP.
+
+## Format: `[ID] [P?] [Story] Description`
+
+- **[P]**: Can run in parallel (different files, no dependencies)
+- **[Story]**: Which user story this task belongs to (e.g., US1, US2, US3)
+- Include exact file paths in descriptions
+
+## Path Conventions
+
+Based on plan.md project structure:
+- **Web App**: `src/TestResultBrowser.Web/`
+- **Pages**: `src/TestResultBrowser.Web/Pages/`
+- **Components**: `src/TestResultBrowser.Web/Components/`
+- **Services**: `src/TestResultBrowser.Web/Services/`
+- **Models**: `src/TestResultBrowser.Web/Models/`
+- **Parsers**: `src/TestResultBrowser.Web/Parsers/`
+
+---
+
+## Phase 1: Setup (Shared Infrastructure)
+
+**Purpose**: Project initialization and basic structure
+
+- [ ] T001 Create solution structure: src/TestResultBrowser.Web/ (Blazor Server project, .NET 8.0)
+- [ ] T002 Initialize Blazor Server project with Program.cs and required NuGet packages (MudBlazor, LiteDB, System.Xml.Linq)
+- [ ] T003 [P] Configure appsettings.json with FileSharePath, PollingIntervalMinutes, FlakyTestThresholds, PolarionBaseUrl
+- [ ] T004 [P] Create directory structure: Pages/, Components/, Services/, Models/, Parsers/ under src/TestResultBrowser.Web/
+- [ ] T005 [P] Setup MudBlazor in Program.cs (AddMudServices) and _Imports.razor
+- [ ] T006 [P] Create sample_data validation script to test file path parsing logic
+
+---
+
+## Phase 2: Foundational (Blocking Prerequisites)
+
+**Purpose**: Core infrastructure that MUST be complete before ANY user story can be implemented
+
+**⚠️ CRITICAL**: No user story work can begin until this phase is complete
+
+- [ ] T007 [P] Create TestStatus enum in src/TestResultBrowser.Web/Models/TestStatus.cs
+- [ ] T008 [P] Create TestResult record in src/TestResultBrowser.Web/Models/TestResult.cs (data-model.md entity #1)
+- [ ] T009 [P] Create Domain record in src/TestResultBrowser.Web/Models/Domain.cs (data-model.md entity #2)
+- [ ] T010 [P] Create Feature record in src/TestResultBrowser.Web/Models/Feature.cs (data-model.md entity #3)
+- [ ] T011 [P] Create TestSuite record in src/TestResultBrowser.Web/Models/TestSuite.cs (data-model.md entity #4)
+- [ ] T012 [P] Create Configuration record in src/TestResultBrowser.Web/Models/Configuration.cs (data-model.md entity #5)
+- [ ] T013 [P] Create Build record in src/TestResultBrowser.Web/Models/Build.cs (data-model.md entity #6)
+- [ ] T014 Create IVersionMapperService interface in src/TestResultBrowser.Web/Services/IVersionMapperService.cs
+- [ ] T015 Implement VersionMapperService in src/TestResultBrowser.Web/Services/VersionMapperService.cs (PXrel114→1.14.0, dev→Development mapping logic)
+- [ ] T016 Create IFilePathParserService interface in src/TestResultBrowser.Web/Services/IFilePathParserService.cs
+- [ ] T017 Implement FilePathParserService in src/TestResultBrowser.Web/Services/FilePathParserService.cs (parse {Version}_{TestType}_{NamedConfig}_{Domain} paths)
+- [ ] T018 Create IJUnitParserService interface in src/TestResultBrowser.Web/Services/IJUnitParserService.cs
+- [ ] T019 Implement JUnitParserService in src/TestResultBrowser.Web/Services/JUnitParserService.cs (parse XML to TestResult objects)
+- [ ] T020 Create ITestDataService interface in src/TestResultBrowser.Web/Services/ITestDataService.cs (in-memory cache interface from contracts/)
+- [ ] T021 Implement TestDataService in src/TestResultBrowser.Web/Services/TestDataService.cs (ConcurrentDictionary cache, secondary indices)
+- [ ] T022 Create IFileWatcherService interface in src/TestResultBrowser.Web/Services/IFileWatcherService.cs (background polling)
+- [ ] T023 Implement FileWatcherService as BackgroundService in src/TestResultBrowser.Web/Services/FileWatcherService.cs (15-min timer polling)
+- [ ] T024 Register all services in Program.cs (AddSingleton for TestDataService, AddHostedService for FileWatcherService, etc.)
+- [ ] T025 Create MainLayout.razor in src/TestResultBrowser.Web/Shared/ with MudBlazor sidebar navigation structure
+- [ ] T026 Create shared FilterPanel component in src/TestResultBrowser.Web/Components/FilterPanel.razor (Domain/Feature/Version/Config multi-select)
+- [ ] T027 Implement initial file system scan on application startup (load all historical data into memory cache)
+
+**Checkpoint**: Foundation ready - user story implementation can now begin in parallel
+
+---
+
+## Phase 3: User Story 1 - Morning Triage of New Failures (Priority: P0) 🎯 MVP
+
+**Goal**: Enable daily triage of newly failing tests grouped by domain/feature with configuration indicators
+
+**Independent Test**: Load results from two consecutive nightly runs (yesterday/today) and verify Morning Triage view highlights newly failing tests, groups by domain/feature, shows affected configurations graphically
+
+### Implementation for User Story 1
+
+- [ ] T028 [P] [US1] Create TriageNewFailure record in src/TestResultBrowser.Web/Models/TriageNewFailure.cs (computed entity from data-model.md)
+- [ ] T029 [P] [US1] Create TriageFixedTest record in src/TestResultBrowser.Web/Models/TriageFixedTest.cs
+- [ ] T030 [P] [US1] Create MorningTriageResult record in src/TestResultBrowser.Web/Models/MorningTriageResult.cs
+- [ ] T031 [US1] Create ITriageService interface in src/TestResultBrowser.Web/Services/ITriageService.cs (GetMorningTriageAsync method)
+- [ ] T032 [US1] Implement TriageService.GetMorningTriageAsync in src/TestResultBrowser.Web/Services/TriageService.cs (compare today vs yesterday builds, detect new failures)
+- [ ] T033 [US1] Create MorningTriage.razor page in src/TestResultBrowser.Web/Pages/MorningTriage.razor
+- [ ] T034 [US1] Implement stats cards in MorningTriage.razor (Total New Failures, Fixed Tests, Still Failing, Pass Rate)
+- [ ] T035 [US1] Create TestHierarchy component in src/TestResultBrowser.Web/Components/TestHierarchy.razor (collapsible Domain→Feature→Suite→Test tree)
+- [ ] T036 [US1] Integrate TestHierarchy component into MorningTriage.razor showing new failures grouped by domain/feature
+- [ ] T037 [US1] Create ConfigVisualIndicator component in src/TestResultBrowser.Web/Components/ConfigVisualIndicator.razor (graphical mini-matrix showing affected configs)
+- [ ] T038 [US1] Add ConfigVisualIndicator to each failure in TestHierarchy to show which Version/NamedConfig combinations are affected
+- [ ] T039 [US1] Implement filtering by specific domain in MorningTriage.razor using FilterPanel component
+- [ ] T040 [US1] Add navigation link to MorningTriage page in MainLayout.razor sidebar
+
+**Checkpoint**: At this point, User Story 1 (Morning Triage) should be fully functional - users can identify new failures, see affected domains/features, and view configuration-specific failures graphically
+
+---
+
+## Phase 4: User Story 2 - Release Triage During Release Cycles (Priority: P0) 🎯 MVP
+
+**Goal**: Enable release readiness assessment across all configurations with configuration matrix view
+
+**Independent Test**: Load release candidate results across all OS/DB/Version configurations and verify Release Triage dashboard shows configuration matrix with pass rates and highlights failing configurations
+
+### Implementation for User Story 2
+
+- [ ] T041 [P] [US2] Create ReleaseTriageResult record in src/TestResultBrowser.Web/Models/ReleaseTriageResult.cs
+- [ ] T042 [P] [US2] Create ComparisonMetrics record in src/TestResultBrowser.Web/Models/ComparisonMetrics.cs
+- [ ] T043 [P] [US2] Create ConfigurationMatrix record in src/TestResultBrowser.Web/Models/ConfigurationMatrix.cs (data-model.md entity #14)
+- [ ] T044 [P] [US2] Create ConfigCell record in src/TestResultBrowser.Web/Models/ConfigCell.cs
+- [ ] T045 [US2] Implement TriageService.GetReleaseTriageAsync in src/TestResultBrowser.Web/Services/TriageService.cs (generate config matrix, compute domain/feature pass rates)
+- [ ] T046 [US2] Create ReleaseTriage.razor page in src/TestResultBrowser.Web/Pages/ReleaseTriage.razor
+- [ ] T047 [US2] Implement stats cards in ReleaseTriage.razor (Overall Pass Rate, Passing Configs, Failing Configs, Release Status)
+- [ ] T048 [US2] Create ConfigMatrix component in src/TestResultBrowser.Web/Components/ConfigMatrix.razor (Version×NamedConfig grid with color-coded cells)
+- [ ] T049 [US2] Integrate ConfigMatrix into ReleaseTriage.razor showing only valid tested combinations
+- [ ] T050 [US2] Add click handlers to ConfigMatrix cells to drill into specific configuration failures
+- [ ] T051 [US2] Implement domain-level pass rate summary in ReleaseTriage.razor with trend indicators (↑↓→)
+- [ ] T052 [US2] Add comparison to previous release candidate in ReleaseTriage.razor (highlight regressed/improved tests)
+- [ ] T053 [US2] Add navigation link to ReleaseTriage page in MainLayout.razor sidebar
+
+**Checkpoint**: At this point, User Stories 1 AND 2 should both work independently - Morning Triage for daily workflow, Release Triage for release readiness
+
+---
+
+## Phase 5: User Story 11 - Automatic Test Result Import (Priority: P1)
+
+**Goal**: Enable automatic polling of shared file system for new test results every 15 minutes
+
+**Independent Test**: Place new JUnit XML files on shared file system and verify they are detected and imported within 15 minutes
+
+### Implementation for User Story 11
+
+- [ ] T054 [US11] Implement file system scanning logic in FileWatcherService.ExecuteAsync (detect new Release-{BuildNumber} folders)
+- [ ] T055 [US11] Implement incremental import in FileWatcherService (track known builds, import only new XML files)
+- [ ] T056 [US11] Add error handling in FileWatcherService for malformed XML files (log errors, continue processing valid files)
+- [ ] T057 [US11] Implement duplicate detection in FileWatcherService (avoid re-importing same build)
+- [ ] T058 [US11] Add manual "Refresh Now" button to toolbar in MainLayout.razor (calls IFileWatcherService.ScanFileSystemNowAsync)
+- [ ] T059 [US11] Create Import status page in src/TestResultBrowser.Web/Pages/ImportStatus.razor showing last scan time, files imported, errors
+- [ ] T060 [US11] Add navigation link to ImportStatus page in MainLayout.razor sidebar
+- [ ] T061 [US11] Implement real-time notification in UI when new files are imported (SignalR or polling)
+
+**Checkpoint**: At this point, system automatically imports new test results without manual intervention - critical for continuous integration workflow
+
+---
+
+## Phase 6: User Story 12 - Flaky Test Detection & Management (Priority: P1)
+
+**Goal**: Identify and filter tests that fail inconsistently to reduce triage noise
+
+**Independent Test**: Load test results where specific tests have mixed pass/fail outcomes across consecutive runs and verify system flags them as flaky
+
+### Implementation for User Story 12
+
+- [ ] T062 [P] [US12] Create FlakyTest record in src/TestResultBrowser.Web/Models/FlakyTest.cs (data-model.md entity #11)
+- [ ] T063 [P] [US12] Create TestResultSummary record in src/TestResultBrowser.Web/Models/TestResultSummary.cs
+- [ ] T064 [US12] Create IFlakyDetectionService interface in src/TestResultBrowser.Web/Services/IFlakyDetectionService.cs
+- [ ] T065 [US12] Implement FlakyDetectionService in src/TestResultBrowser.Web/Services/FlakyDetectionService.cs (rolling window calculation, 20 runs, 30% threshold)
+- [ ] T066 [US12] Implement FlakyDetectionService.DetectFlakyTestsAsync (analyze all tests in cache, compute flakiness scores)
+- [ ] T067 [US12] Implement FlakyDetectionService.CheckTestFlakinessAsync (check single test for flakiness)
+- [ ] T068 [US12] Implement auto-clear logic in FlakyDetectionService (clear flag after 10 consecutive passes)
+- [ ] T069 [US12] Create FlakyTestBadge component in src/TestResultBrowser.Web/Components/FlakyTestBadge.razor (🔀 icon with percentage)
+- [ ] T070 [US12] Integrate FlakyTestBadge into TestHierarchy component for flaky tests
+- [ ] T071 [US12] Create FlakyTests.razor page in src/TestResultBrowser.Web/Pages/FlakyTests.razor listing all identified flaky tests
+- [ ] T072 [US12] Add "Hide Flaky Tests" toggle button to toolbar in MainLayout.razor (filters tests with flakiness score >30%)
+- [ ] T073 [US12] Implement flaky test filtering in MorningTriage.razor (respect "Hide Flaky Tests" toggle)
+- [ ] T074 [US12] Add pass/fail history timeline visualization in FlakyTests.razor showing recent 20 runs
+- [ ] T075 [US12] Add navigation link to FlakyTests page in MainLayout.razor sidebar
+
+**Checkpoint**: Flaky test detection reduces triage noise by 20-30% by filtering out intermittent failures
+
+---
+
+## Phase 7: User Story 13 - Polarion Integration (Priority: P1)
+
+**Goal**: Auto-link Polarion ticket IDs in test names for immediate context during triage
+
+**Independent Test**: Load test results with Polarion ticket references (PEXC-28044) and verify ticket IDs are clickable links to Polarion work items
+
+### Implementation for User Story 13
+
+- [ ] T076 [P] [US13] Create PolarionTicketReference record in src/TestResultBrowser.Web/Models/PolarionTicketReference.cs (data-model.md entity #19)
+- [ ] T077 [US13] Create IPolarionLinkService interface in src/TestResultBrowser.Web/Services/IPolarionLinkService.cs
+- [ ] T078 [US13] Implement PolarionLinkService in src/TestResultBrowser.Web/Services/PolarionLinkService.cs (regex extraction of PEXC-\d+ pattern)
+- [ ] T079 [US13] Implement PolarionLinkService.ExtractTicketIds (extract all ticket IDs from test name)
+- [ ] T080 [US13] Implement PolarionLinkService.GenerateTicketUrl (construct URL using configured Polarion base URL)
+- [ ] T081 [US13] Create PolarionLink component in src/TestResultBrowser.Web/Components/PolarionLink.razor (clickable badge)
+- [ ] T082 [US13] Integrate PolarionLink component into TestHierarchy component for all tests with ticket references
+- [ ] T083 [US13] Add Polarion base URL configuration to appsettings.json (PolarionBaseUrl setting)
+- [ ] T084 [US13] Display multiple Polarion links when test name contains multiple ticket IDs
+
+**Checkpoint**: Polarion integration eliminates manual lookup, saves minutes per failure during triage
+
+---
+
+## Phase 8: User Story 14 - Failure Grouping by Root Cause (Priority: P1)
+
+**Goal**: Group failures by similar error patterns to identify root causes instead of individual test noise
+
+**Independent Test**: Load test results where multiple tests fail with similar error messages and verify system clusters them into groups
+
+### Implementation for User Story 14
+
+- [ ] T085 [P] [US14] Create FailureGroup record in src/TestResultBrowser.Web/Models/FailureGroup.cs (data-model.md entity #12)
+- [ ] T086 [US14] Create IFailureGroupingService interface in src/TestResultBrowser.Web/Services/IFailureGroupingService.cs
+- [ ] T087 [US14] Implement FailureGroupingService in src/TestResultBrowser.Web/Services/FailureGroupingService.cs (Levenshtein distance algorithm, 80% similarity threshold)
+- [ ] T088 [US14] Implement FailureGroupingService.GroupFailuresAsync (cluster failed tests by error message similarity)
+- [ ] T089 [US14] Implement exact match grouping first (same error message → same group)
+- [ ] T090 [US14] Implement fuzzy matching for near-duplicates (Levenshtein distance >80%)
+- [ ] T091 [US14] Create FailureGroups.razor page in src/TestResultBrowser.Web/Pages/FailureGroups.razor
+- [ ] T092 [US14] Implement failure group summary cards in FailureGroups.razor (error pattern, test count, affected domains/features)
+- [ ] T093 [US14] Add drill-down capability in FailureGroups.razor to show all tests in a group
+- [ ] T094 [US14] Integrate failure grouping into MorningTriage.razor (group new failures by error pattern)
+- [ ] T095 [US14] Add navigation link to FailureGroups page in MainLayout.razor sidebar
+
+**Checkpoint**: Failure grouping helps focus on root causes - fixing one issue resolves many failures
+
+---
+
+## Phase 9: User Story 3 - View Test Results by Domain (Priority: P1)
+
+**Goal**: Enable domain-specific filtering to isolate relevant test results
+
+**Independent Test**: Upload JUnit results with domain metadata and verify filtering by domain displays only that domain's results
+
+### Implementation for User Story 3
+
+- [ ] T096 [P] [US3] Create DomainSummary record in src/TestResultBrowser.Web/Models/DomainSummary.cs (data-model.md entity #13)
+- [ ] T097 [P] [US3] Create FeatureSummary record in src/TestResultBrowser.Web/Models/FeatureSummary.cs
+- [ ] T098 [US3] Implement ITestDataService.GetDomainSummary in TestDataService (aggregate pass/fail counts for domain)
+- [ ] T099 [US3] Implement ITestDataService.GetFeatureSummary in TestDataService (aggregate pass/fail counts for feature)
+- [ ] T100 [US3] Create DomainExplorer.razor page in src/TestResultBrowser.Web/Pages/DomainExplorer.razor
+- [ ] T101 [US3] Implement domain filter dropdown in DomainExplorer.razor using FilterPanel component
+- [ ] T102 [US3] Display Domain→Feature→Suite→Test hierarchy in DomainExplorer.razor using TestHierarchy component
+- [ ] T103 [US3] Show pass/fail counts at each hierarchy level in DomainExplorer.razor
+- [ ] T104 [US3] Implement expand/collapse all functionality in DomainExplorer.razor
+- [ ] T105 [US3] Add navigation link to DomainExplorer page in MainLayout.razor sidebar
+
+**Checkpoint**: Domain filtering provides isolated views for domain-specific quality assessment
+
+---
+
+## Phase 10: User Story 6 - Feature Impact Analysis (Priority: P1)
+
+**Goal**: Assess which features are impacted by failures across all configurations
+
+**Independent Test**: Load test results where a feature has failures across multiple configurations and verify Feature Impact view shows all affected tests and configuration matrix
+
+### Implementation for User Story 6
+
+- [ ] T106 [P] [US6] Create FeatureImpactResult record in src/TestResultBrowser.Web/Models/FeatureImpactResult.cs
+- [ ] T107 [US6] Implement TriageService.GetFeatureImpactAsync in TriageService (aggregate feature-specific results across all configs)
+- [ ] T108 [US6] Create FeatureImpact.razor page in src/TestResultBrowser.Web/Pages/FeatureImpact.razor
+- [ ] T109 [US6] Implement feature selector dropdown in FeatureImpact.razor
+- [ ] T110 [US6] Display feature-level stats cards in FeatureImpact.razor (Overall Pass Rate, Total Tests, Failing Tests, Flaky Tests)
+- [ ] T111 [US6] Integrate ConfigMatrix component in FeatureImpact.razor filtered to show feature-specific results
+- [ ] T112 [US6] Highlight configuration dimensions contributing to failures in FeatureImpact.razor
+- [ ] T113 [US6] Add "Mark as Release Ready" button in FeatureImpact.razor (if pass rate >95%)
+- [ ] T114 [US6] Add navigation link to FeatureImpact page in MainLayout.razor sidebar
+
+**Checkpoint**: Feature Impact analysis enables release decisions at feature granularity
+
+---
+
+## Phase 11: User Story 5 - Browse Results by Configuration Matrix (Priority: P1)
+
+**Goal**: Filter by configuration dimensions to identify environment-specific patterns
+
+**Independent Test**: Upload JUnit results with Version/OS/DB/NamedConfig metadata and verify filtering by configuration dimensions
+
+### Implementation for User Story 5
+
+- [ ] T115 [US5] Implement multi-dimensional filter in FilterPanel component (Version + NamedConfig + OS/DB)
+- [ ] T116 [US5] Add configuration filter dropdowns to toolbar in MainLayout.razor
+- [ ] T117 [US5] Implement ITestDataService.FilterTestResults with multi-dimensional criteria support
+- [ ] T118 [US5] Display active filter chips in toolbar showing applied configuration filters
+- [ ] T119 [US5] Implement configuration-specific failure highlighting in ConfigMatrix component
+- [ ] T120 [US5] Add tooltip to ConfigMatrix cells showing detailed test results for that configuration
+
+**Checkpoint**: Configuration matrix filtering enables identification of environment-specific issues
+
+---
+
+## Phase 12: User Story 4 - Compare Test Results Over Time (Priority: P1)
+
+**Goal**: Track quality trends across multiple test runs
+
+**Independent Test**: Upload multiple JUnit result sets from different dates and verify trend graphs show changes in pass rates
+
+### Implementation for User Story 4
+
+- [ ] T121 [P] [US4] Create QualityTrend record in src/TestResultBrowser.Web/Models/QualityTrend.cs (data-model.md entity #15)
+- [ ] T122 [P] [US4] Create TrendDataPoint record in src/TestResultBrowser.Web/Models/TrendDataPoint.cs
+- [ ] T123 [P] [US4] Create TrendDirection enum in src/TestResultBrowser.Web/Models/TrendDirection.cs
+- [ ] T124 [US4] Create IQualityTrendService interface in src/TestResultBrowser.Web/Services/IQualityTrendService.cs
+- [ ] T125 [US4] Implement QualityTrendService in src/TestResultBrowser.Web/Services/QualityTrendService.cs
+- [ ] T126 [US4] Implement QualityTrendService.GetDomainTrendAsync (compute pass rate trends over last 30 builds)
+- [ ] T127 [US4] Implement trend direction calculation in QualityTrendService (Improving/Stable/Degrading)
+- [ ] T128 [US4] Create Trends.razor page in src/TestResultBrowser.Web/Pages/Trends.razor
+- [ ] T129 [US4] Integrate MudBlazor chart component in Trends.razor to visualize pass rate trends
+- [ ] T130 [US4] Add domain selector in Trends.razor to filter trends by domain
+- [ ] T131 [US4] Display trend direction indicators (↑↓→) in Trends.razor
+- [ ] T132 [US4] Implement comparison between two specific runs in Trends.razor (highlight new failures, new passes, consistently failing)
+- [ ] T133 [US4] Add navigation link to Trends page in MainLayout.razor sidebar
+
+**Checkpoint**: Quality trend tracking enables proactive quality management
+
+---
+
+## Phase 13: User Story 8 - Search and Filter Test Cases (Priority: P3)
+
+**Goal**: Enable quick search by test name, error message, or failure pattern
+
+**Independent Test**: Create database of test results and verify search queries return accurate matches
+
+### Implementation for User Story 8
+
+- [ ] T134 [US8] Add search input box to toolbar in MainLayout.razor
+- [ ] T135 [US8] Implement ITestDataService.SearchTests method (search by test name, error message)
+- [ ] T136 [US8] Create SearchResults.razor page in src/TestResultBrowser.Web/Pages/SearchResults.razor
+- [ ] T137 [US8] Display search results grouped by domain/feature in SearchResults.razor
+- [ ] T138 [US8] Implement combined filtering (search + domain + date range) in SearchResults.razor
+
+**Checkpoint**: Search capability improves efficiency for specific test investigations
+
+---
+
+## Phase 14: User Story 10 - Save and Reuse Filter Configurations (Priority: P3)
+
+**Goal**: Enable users to save filter presets for repeated use
+
+**Independent Test**: Create and save filter configuration, then verify it can be recalled and applied correctly
+
+### Implementation for User Story 10
+
+- [ ] T139 [P] [US10] Create SavedFilterConfiguration class in src/TestResultBrowser.Web/Models/SavedFilterConfiguration.cs (data-model.md entity #8)
+- [ ] T140 [US10] Create IUserDataService interface in src/TestResultBrowser.Web/Services/IUserDataService.cs (LiteDB persistence)
+- [ ] T141 [US10] Implement UserDataService in src/TestResultBrowser.Web/Services/UserDataService.cs using LiteDB
+- [ ] T142 [US10] Implement IUserDataService.CreateFilterAsync in UserDataService
+- [ ] T143 [US10] Implement IUserDataService.GetFiltersByUserAsync in UserDataService
+- [ ] T144 [US10] Add "Save Filter" button to toolbar in MainLayout.razor
+- [ ] T145 [US10] Create SaveFilterDialog component in src/TestResultBrowser.Web/Components/SaveFilterDialog.razor (MudDialog)
+- [ ] T146 [US10] Add "Load Filter" dropdown to toolbar in MainLayout.razor showing saved filters
+- [ ] T147 [US10] Implement filter application when user selects saved filter from dropdown
+
+**Checkpoint**: Saved filters improve convenience for regular monitoring workflows
+
+---
+
+## Phase 15: User Story 16 - Smart Baseline Comparison (Priority: P2)
+
+**Goal**: Compare current build against known stable baseline instead of just previous run
+
+**Independent Test**: Mark specific build as baseline and verify comparison views use baseline correctly
+
+### Implementation for User Story 16
+
+- [ ] T148 [P] [US16] Create UserBaseline class in src/TestResultBrowser.Web/Models/UserBaseline.cs (data-model.md entity #7)
+- [ ] T149 [US16] Implement IUserDataService.CreateBaselineAsync in UserDataService
+- [ ] T150 [US16] Implement IUserDataService.GetBaselinesByConfigurationAsync in UserDataService
+- [ ] T151 [US16] Add "Mark as Baseline" button to ReleaseTriage.razor
+- [ ] T152 [US16] Create SetBaselineDialog component in src/TestResultBrowser.Web/Components/SetBaselineDialog.razor (MudDialog for label input)
+- [ ] T153 [US16] Add baseline selector dropdown to MorningTriage.razor toolbar (toggle between "Previous Run" and "Baseline")
+- [ ] T154 [US16] Modify TriageService.GetMorningTriageAsync to support baseline comparison mode
+- [ ] T155 [US16] Display "Compare to Baseline" metrics in MorningTriage.razor (new failures since baseline, fixed since baseline)
+- [ ] T156 [US16] Add baseline indicator (⭐) in ReleaseTriage.razor for builds marked as baselines
+
+**Checkpoint**: Baseline comparison enables "distance from stable" assessment during release cycles
+
+---
+
+## Phase 16: User Story 15 - Configuration Diff View (Priority: P2)
+
+**Goal**: Compare same build across different configurations side-by-side
+
+**Independent Test**: Load same Release build from two configurations and verify side-by-side comparison highlights differences
+
+### Implementation for User Story 15
+
+- [ ] T157 [US15] Create ConfigDiff.razor page in src/TestResultBrowser.Web/Pages/ConfigDiff.razor
+- [ ] T158 [US15] Add configuration selector dropdowns in ConfigDiff.razor (select two configurations to compare)
+- [ ] T159 [US15] Implement side-by-side test result comparison in ConfigDiff.razor
+- [ ] T160 [US15] Highlight tests that pass in one config but fail in the other
+- [ ] T161 [US15] Display summary showing "X tests ONLY fail on Config A" in ConfigDiff.razor
+- [ ] T162 [US15] Add navigation link to ConfigDiff page in MainLayout.razor sidebar
+
+**Checkpoint**: Configuration diff view pinpoints environment-specific failures
+
+---
+
+## Phase 17: User Story 17 - Build Quality Trend Analytics (Priority: P2)
+
+**Goal**: Visualize quality trends over time per domain with alerts
+
+**Independent Test**: Load 30 builds of historical data and verify trend graphs show pass rate changes with alerts
+
+### Implementation for User Story 17
+
+- [ ] T163 [US17] Enhance Trends.razor to include quality threshold alerts (<95% pass rate)
+- [ ] T164 [US17] Implement domain quality alert highlighting in Trends.razor (red alert for domains below threshold)
+- [ ] T165 [US17] Add hover tooltips in Trends.razor showing build number, date, pass rate, failure count
+- [ ] T166 [US17] Display trend metric text in Trends.razor (e.g., "Core domain: Degrading ↓ (97% → 92% over last 10 builds)")
+
+**Checkpoint**: Quality trend analytics with alerts enable proactive quality management
+
+---
+
+## Phase 18: User Story 19 - Failure History Heatmap (Priority: P2)
+
+**Goal**: Visual overview of chronically unstable features across recent builds
+
+**Independent Test**: Load results for multiple features across 10 builds and verify heatmap grid displays color-coded stability patterns
+
+### Implementation for User Story 19
+
+- [ ] T167 [P] [US19] Create HeatmapCell record in src/TestResultBrowser.Web/Models/HeatmapCell.cs (data-model.md entity #17)
+- [ ] T168 [P] [US19] Create HeatmapStatus enum in src/TestResultBrowser.Web/Models/HeatmapStatus.cs
+- [ ] T169 [US19] Create IHeatmapService interface in src/TestResultBrowser.Web/Services/IHeatmapService.cs
+- [ ] T170 [US19] Implement HeatmapService in src/TestResultBrowser.Web/Services/HeatmapService.cs
+- [ ] T171 [US19] Implement HeatmapService.GenerateHeatmapAsync (generate Feature×Build grid)
+- [ ] T172 [US19] Create Heatmap.razor page in src/TestResultBrowser.Web/Pages/Heatmap.razor
+- [ ] T173 [US19] Implement heatmap grid visualization in Heatmap.razor (color-coded cells: Green/Yellow/Red/Gray)
+- [ ] T174 [US19] Add click handler to heatmap cells in Heatmap.razor to drill into specific feature/build failures
+- [ ] T175 [US19] Implement domain filter in Heatmap.razor to show only features within selected domains
+- [ ] T176 [US19] Add navigation link to Heatmap page in MainLayout.razor sidebar
+
+**Checkpoint**: Failure heatmap enables visual pattern recognition for chronically unstable features
+
+---
+
+## Phase 19: User Story 18 - Test Execution Time Regression Detection (Priority: P3)
+
+**Goal**: Identify tests slowing down over time to catch performance regressions
+
+**Independent Test**: Load test results where tests show increasing execution times and verify alerts for significant slowdowns
+
+### Implementation for User Story 18
+
+- [ ] T177 [P] [US18] Create ExecutionTimeMetric record in src/TestResultBrowser.Web/Models/ExecutionTimeMetric.cs (data-model.md entity #16)
+- [ ] T178 [P] [US18] Create ExecutionTimeSample record in src/TestResultBrowser.Web/Models/ExecutionTimeSample.cs
+- [ ] T179 [US18] Implement IQualityTrendService.GetTestExecutionTrendAsync in QualityTrendService
+- [ ] T180 [US18] Create SlowTests.razor page in src/TestResultBrowser.Web/Pages/SlowTests.razor
+- [ ] T181 [US18] Implement slow test detection in SlowTests.razor (tests with 50%+ execution time increase)
+- [ ] T182 [US18] Add sparkline chart component in SlowTests.razor showing execution time trend for each test
+- [ ] T183 [US18] Display execution time regression alerts (⚠️ Execution time increased X%) in SlowTests.razor
+- [ ] T184 [US18] Add navigation link to SlowTests page in MainLayout.razor sidebar
+
+**Checkpoint**: Execution time regression detection prevents test suite slowdown
+
+---
+
+## Phase 20: User Story 9 - Configure Custom Dashboard (Priority: P2)
+
+**Goal**: Enable personalized dashboards for regular monitoring
+
+**Independent Test**: Allow users to select dashboard components and verify dashboard displays only selected data
+
+### Implementation for User Story 9
+
+- [ ] T185 [P] [US9] Create DashboardConfiguration class in src/TestResultBrowser.Web/Models/DashboardConfiguration.cs (data-model.md entity #10)
+- [ ] T186 [P] [US9] Create DashboardWidget class in src/TestResultBrowser.Web/Models/DashboardWidget.cs
+- [ ] T187 [US9] Implement IUserDataService.CreateDashboardAsync in UserDataService
+- [ ] T188 [US9] Implement IUserDataService.GetDashboardsByUserAsync in UserDataService
+- [ ] T189 [US9] Create CustomDashboard.razor page in src/TestResultBrowser.Web/Pages/CustomDashboard.razor
+- [ ] T190 [US9] Implement dashboard configuration UI in CustomDashboard.razor (select widgets, filters)
+- [ ] T191 [US9] Create reusable dashboard widgets (MorningTriageWidget, TrendChartWidget, FlakyTestsWidget, etc.)
+- [ ] T192 [US9] Implement drag-and-drop widget arrangement in CustomDashboard.razor
+- [ ] T193 [US9] Add "Save Dashboard" button in CustomDashboard.razor
+- [ ] T194 [US9] Add dashboard selector dropdown to load saved dashboards
+- [ ] T195 [US9] Add navigation link to CustomDashboard page in MainLayout.razor sidebar
+
+**Checkpoint**: Custom dashboards improve efficiency for regular monitoring across 50+ machines
+
+---
+
+## Phase 21: User Story 20 - Permalinks & Collaboration (Priority: P3)
+
+**Goal**: Enable sharing of specific views via URL and user annotations
+
+**Independent Test**: Apply filters, generate permalink, open in new session, verify all filters preserved
+
+### Implementation for User Story 20
+
+- [ ] T196 [P] [US20] Create UserComment class in src/TestResultBrowser.Web/Models/UserComment.cs (data-model.md entity #9)
+- [ ] T197 [US20] Implement IUserDataService.CreateCommentAsync in UserDataService
+- [ ] T198 [US20] Implement IUserDataService.GetCommentsByTargetAsync in UserDataService
+- [ ] T199 [US20] Implement permalink generation in all views (encode filters in URL query string)
+- [ ] T200 [US20] Implement permalink restoration in all views (decode filters from URL on page load)
+- [ ] T201 [US20] Add "Share Link" button to toolbar in MainLayout.razor (generates permalink URL)
+- [ ] T202 [US20] Add "Copy Results" button to toolbar in MainLayout.razor (copy selected tests to clipboard in markdown format)
+- [ ] T203 [US20] Create CommentDialog component in src/TestResultBrowser.Web/Components/CommentDialog.razor for adding notes
+- [ ] T204 [US20] Add comment button (💬) to each test in TestHierarchy component
+- [ ] T205 [US20] Display comment indicators (💬 icon) on tests with annotations
+- [ ] T206 [US20] Show comment preview on hover in TestHierarchy component
+
+**Checkpoint**: Permalinks and collaboration features improve distributed triage workflows
+
+---
+
+## Phase 22: User Story 7 - Browse Results by Feature Area (Priority: P2)
+
+**Goal**: View test results organized by feature area
+
+**Independent Test**: Upload JUnit results with feature tags and verify feature-based grouping
+
+### Implementation for User Story 7
+
+- [ ] T207 [US7] Create FeatureView.razor page in src/TestResultBrowser.Web/Pages/FeatureView.razor
+- [ ] T208 [US7] Implement feature selector dropdown in FeatureView.razor
+- [ ] T209 [US7] Display all tests for selected feature grouped by test suite in FeatureView.razor
+- [ ] T210 [US7] Show overall pass rate and critical failure count for selected feature
+- [ ] T211 [US7] Add navigation link to FeatureView page in MainLayout.razor sidebar
+
+**Checkpoint**: Feature-based organization helps stakeholders assess product capability quality
+
+---
+
+## Phase 23: Polish & Cross-Cutting Concerns
+
+**Purpose**: Improvements that affect multiple user stories
+
+- [ ] T212 [P] Add loading spinners to all pages during data fetch operations
+- [ ] T213 [P] Implement error boundaries and user-friendly error messages for all components
+- [ ] T214 [P] Add keyboard shortcuts for common actions (F5 for refresh, Ctrl+K for search)
+- [ ] T215 [P] Optimize performance: implement caching for aggregated summaries (5-minute cache)
+- [ ] T216 [P] Add responsive design adjustments for smaller screens (tablet support)
+- [ ] T217 [P] Implement logging for all service operations (Serilog integration)
+- [ ] T218 [P] Add telemetry for user actions and performance metrics
+- [ ] T219 [P] Create user documentation in docs/user-guide.md based on quickstart.md
+- [ ] T220 [P] Create deployment guide in docs/deployment.md (IIS configuration, appsettings)
+- [ ] T221 Code cleanup: remove unused imports, apply consistent naming conventions
+- [ ] T222 Refactor common patterns into shared utilities
+- [ ] T223 Security hardening: input validation, XSS prevention, secure SignalR configuration
+- [ ] T224 Run quickstart.md validation (verify setup steps work for new developers)
+
+---
+
+## Dependencies & Execution Order
+
+### Phase Dependencies
+
+- **Setup (Phase 1)**: No dependencies - can start immediately
+- **Foundational (Phase 2)**: Depends on Setup completion - BLOCKS all user stories
+- **User Stories (Phase 3+)**: All depend on Foundational phase completion
+  - US1 (Morning Triage) - Can start after Phase 2
+  - US2 (Release Triage) - Can start after Phase 2
+  - US11 (Automatic Import) - Can start after Phase 2
+  - US12 (Flaky Detection) - Can start after Phase 2
+  - US13 (Polarion Integration) - Can start after Phase 2
+  - US14 (Failure Grouping) - Can start after Phase 2
+  - US3 (Domain View) - Can start after Phase 2
+  - US6 (Feature Impact) - Can start after Phase 2
+  - US5 (Config Matrix) - Can start after Phase 2
+  - US4 (Trends) - Can start after Phase 2
+  - US8 (Search) - Can start after Phase 2
+  - US10 (Saved Filters) - Can start after Phase 2 (requires LiteDB setup)
+  - US16 (Baselines) - Depends on US10 (LiteDB/UserDataService)
+  - US15 (Config Diff) - Can start after Phase 2
+  - US17 (Trend Analytics) - Depends on US4 (QualityTrendService)
+  - US19 (Heatmap) - Can start after Phase 2
+  - US18 (Execution Time) - Depends on US4 (QualityTrendService)
+  - US9 (Custom Dashboard) - Depends on US10 (LiteDB/UserDataService)
+  - US20 (Permalinks) - Depends on US10 (LiteDB/UserDataService)
+  - US7 (Feature View) - Can start after Phase 2
+- **Polish (Phase 23)**: Depends on all desired user stories being complete
+
+### User Story Dependencies
+
+**Independent User Stories** (can be implemented in parallel after Phase 2):
+- US1 (Morning Triage) - No dependencies on other stories
+- US2 (Release Triage) - No dependencies on other stories
+- US11 (Automatic Import) - No dependencies on other stories
+- US12 (Flaky Detection) - No dependencies on other stories
+- US13 (Polarion Integration) - No dependencies on other stories
+- US14 (Failure Grouping) - No dependencies on other stories
+- US3 (Domain View) - No dependencies on other stories
+- US6 (Feature Impact) - No dependencies on other stories
+- US5 (Config Matrix) - No dependencies on other stories
+- US8 (Search) - No dependencies on other stories
+- US15 (Config Diff) - No dependencies on other stories
+- US7 (Feature View) - No dependencies on other stories
+
+**Dependent User Stories**:
+- US4 (Trends) → US17 (Trend Analytics) - US17 requires QualityTrendService from US4
+- US4 (Trends) → US18 (Execution Time) - US18 requires QualityTrendService from US4
+- US10 (Saved Filters) → US16 (Baselines) - US16 requires UserDataService from US10
+- US10 (Saved Filters) → US9 (Custom Dashboard) - US9 requires UserDataService from US10
+- US10 (Saved Filters) → US20 (Permalinks) - US20 requires UserDataService from US10
+- US2 (Release Triage) → US19 (Heatmap) - US19 uses ConfigurationMatrix concept from US2
+
+### Recommended Implementation Order (MVP First)
+
+**MVP (Minimum Viable Product) - 4-6 weeks**:
+1. Phase 1: Setup
+2. Phase 2: Foundational
+3. Phase 3: US1 (Morning Triage) - HIGHEST PRIORITY
+4. Phase 4: US2 (Release Triage) - HIGHEST PRIORITY
+5. Phase 5: US11 (Automatic Import) - CRITICAL for automation
+
+**Release 1 (MVP + Essential Features) - 8-10 weeks**:
+6. Phase 6: US12 (Flaky Detection) - High value for triage efficiency
+7. Phase 7: US13 (Polarion Integration) - Quick win, high value
+8. Phase 8: US14 (Failure Grouping) - High value for root cause analysis
+9. Phase 9: US3 (Domain View) - Core navigation
+10. Phase 10: US6 (Feature Impact) - Critical for release decisions
+
+**Release 2 (Full Feature Set) - 12-16 weeks**:
+11. Phase 11: US5 (Config Matrix) - Enhances US2
+12. Phase 12: US4 (Trends) - Historical analysis
+13. Phase 14: US10 (Saved Filters) - LiteDB setup
+14. Phase 15: US16 (Baselines) - Depends on US10
+15. Phase 16: US15 (Config Diff) - Advanced analysis
+16. Phase 17: US17 (Trend Analytics) - Depends on US4
+17. Phase 18: US19 (Heatmap) - Visual insights
+18. Phase 13: US8 (Search) - Nice-to-have
+19. Phase 19: US18 (Execution Time) - Performance insights
+20. Phase 20: US9 (Custom Dashboard) - Personalization
+21. Phase 21: US20 (Permalinks) - Collaboration
+22. Phase 22: US7 (Feature View) - Additional navigation
+23. Phase 23: Polish & Cross-Cutting
+
+### Parallel Opportunities
+
+**Within Setup Phase (Phase 1)**:
+- T003, T004, T005, T006 can run in parallel (different files, no dependencies)
+
+**Within Foundational Phase (Phase 2)**:
+- T007-T013 (Models) can run in parallel
+- T014-T015 (VersionMapper) can run in parallel with T016-T017 (FilePathParser)
+- T018-T019 (JUnitParser) can run in parallel with T020-T021 (TestDataService)
+- T022-T023 (FileWatcher) can run after parsers are done
+
+**Across User Stories (after Phase 2 complete)**:
+- US1, US2, US11, US12, US13, US14, US3, US6, US5, US8, US15, US7 can all be worked on in parallel by different developers
+- Each story is independently testable and deliverable
+
+**Within Each User Story**:
+- Model creation tasks marked [P] can run in parallel
+- Interface definitions can run in parallel with model creation
+- Service implementations must come after interfaces
+- UI components can be developed in parallel after services are ready
+
+---
+
+## Parallel Example: Morning Triage (User Story 1)
+
+If you have 4 developers available for US1:
+
+**Developer 1**: T028, T029, T030 (models) → T033 (page) → T034 (stats cards)
+**Developer 2**: T031, T032 (service) → T039 (filtering logic)
+**Developer 3**: T035 (TestHierarchy component) → T036 (integration)
+**Developer 4**: T037 (ConfigVisualIndicator) → T038 (integration) → T040 (navigation)
+
+All start simultaneously, integrate at the end.
+
+---
+
+## Summary Statistics
+
+**Total Tasks**: 224 tasks
+**Setup**: 6 tasks (Phase 1)
+**Foundational**: 21 tasks (Phase 2)
+**User Story Implementation**: 184 tasks (Phases 3-22)
+**Polish**: 13 tasks (Phase 23)
+
+**User Story Task Breakdown**:
+- US1 (Morning Triage): 13 tasks
+- US2 (Release Triage): 13 tasks
+- US11 (Automatic Import): 8 tasks
+- US12 (Flaky Detection): 14 tasks
+- US13 (Polarion Integration): 9 tasks
+- US14 (Failure Grouping): 11 tasks
+- US3 (Domain View): 10 tasks
+- US6 (Feature Impact): 9 tasks
+- US5 (Config Matrix): 6 tasks
+- US4 (Trends): 13 tasks
+- US8 (Search): 5 tasks
+- US10 (Saved Filters): 9 tasks
+- US16 (Baselines): 9 tasks
+- US15 (Config Diff): 6 tasks
+- US17 (Trend Analytics): 4 tasks
+- US19 (Heatmap): 10 tasks
+- US18 (Execution Time): 8 tasks
+- US9 (Custom Dashboard): 11 tasks
+- US20 (Permalinks): 11 tasks
+- US7 (Feature View): 5 tasks
+
+**Parallel Opportunities**: 
+- Setup: 4 of 6 tasks can run in parallel
+- Foundational: 13 of 21 tasks can run in parallel
+- User Stories: 15 user stories are independently parallelizable after Phase 2
+
+**MVP Scope** (Recommended):
+- Phases 1-5 (US1, US2, US11) = 61 tasks = ~4-6 weeks with 2-3 developers
+
+**Estimated Total Duration**:
+- Sequential: ~20-24 weeks (6 months)
+- With 4-5 developers: ~12-16 weeks (3-4 months)
+- MVP Only: ~4-6 weeks (1.5 months)
