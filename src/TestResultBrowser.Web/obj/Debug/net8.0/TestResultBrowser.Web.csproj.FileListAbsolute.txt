@@ -1,9 +1,3 @@
-C:\workspace\TestResultBrowser2.0\src\TestResultBrowser.Web\obj\Debug\net8.0\TestResultBrowser.Web.csproj.AssemblyReference.cache
-C:\workspace\TestResultBrowser2.0\src\TestResultBrowser.Web\obj\Debug\net8.0\TestResultBrowser.Web.GeneratedMSBuildEditorConfig.editorconfig
-C:\workspace\TestResultBrowser2.0\src\TestResultBrowser.Web\obj\Debug\net8.0\TestResultBrowser.Web.AssemblyInfoInputs.cache
-C:\workspace\TestResultBrowser2.0\src\TestResultBrowser.Web\obj\Debug\net8.0\TestResultBrowser.Web.AssemblyInfo.cs
-C:\workspace\TestResultBrowser2.0\src\TestResultBrowser.Web\obj\Debug\net8.0\TestResultBrowser.Web.csproj.CoreCompileInputs.cache
-C:\workspace\TestResultBrowser2.0\src\TestResultBrowser.Web\obj\Debug\net8.0\TestResultBrowser.Web.MvcApplicationPartsAssemblyInfo.cache
 C:\workspace\TestResultBrowser2.0\src\TestResultBrowser.Web\bin\Debug\net8.0\appsettings.Development.json
 C:\workspace\TestResultBrowser2.0\src\TestResultBrowser.Web\bin\Debug\net8.0\appsettings.json
 C:\workspace\TestResultBrowser2.0\src\TestResultBrowser.Web\bin\Debug\net8.0\TestResultBrowser.Web.staticwebassets.runtime.json
@@ -26,6 +20,12 @@ C:\workspace\TestResultBrowser2.0\src\TestResultBrowser.Web\bin\Debug\net8.0\Mic
 C:\workspace\TestResultBrowser2.0\src\TestResultBrowser.Web\bin\Debug\net8.0\Microsoft.Extensions.Options.dll
 C:\workspace\TestResultBrowser2.0\src\TestResultBrowser.Web\bin\Debug\net8.0\Microsoft.JSInterop.dll
 C:\workspace\TestResultBrowser2.0\src\TestResultBrowser.Web\bin\Debug\net8.0\MudBlazor.dll
+C:\workspace\TestResultBrowser2.0\src\TestResultBrowser.Web\obj\Debug\net8.0\TestResultBrowser.Web.csproj.AssemblyReference.cache
+C:\workspace\TestResultBrowser2.0\src\TestResultBrowser.Web\obj\Debug\net8.0\TestResultBrowser.Web.GeneratedMSBuildEditorConfig.editorconfig
+C:\workspace\TestResultBrowser2.0\src\TestResultBrowser.Web\obj\Debug\net8.0\TestResultBrowser.Web.AssemblyInfoInputs.cache
+C:\workspace\TestResultBrowser2.0\src\TestResultBrowser.Web\obj\Debug\net8.0\TestResultBrowser.Web.AssemblyInfo.cs
+C:\workspace\TestResultBrowser2.0\src\TestResultBrowser.Web\obj\Debug\net8.0\TestResultBrowser.Web.csproj.CoreCompileInputs.cache
+C:\workspace\TestResultBrowser2.0\src\TestResultBrowser.Web\obj\Debug\net8.0\TestResultBrowser.Web.MvcApplicationPartsAssemblyInfo.cache
 C:\workspace\TestResultBrowser2.0\src\TestResultBrowser.Web\obj\Debug\net8.0\staticwebassets.build.json
 C:\workspace\TestResultBrowser2.0\src\TestResultBrowser.Web\obj\Debug\net8.0\staticwebassets.development.json
 C:\workspace\TestResultBrowser2.0\src\TestResultBrowser.Web\obj\Debug\net8.0\staticwebassets\msbuild.TestResultBrowser.Web.Microsoft.AspNetCore.StaticWebAssets.props

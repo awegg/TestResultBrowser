@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TestResultBrowser.Web")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+8db01dc44ff8109f72dd339a0d18a01a40058a18")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+6ba2c2ee0994b4c75daf90e2be4a48c05ab60ccf")]
 [assembly: System.Reflection.AssemblyProductAttribute("TestResultBrowser.Web")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TestResultBrowser.Web")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

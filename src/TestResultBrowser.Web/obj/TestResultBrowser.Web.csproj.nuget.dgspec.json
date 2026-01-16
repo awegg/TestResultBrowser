@@ -29,6 +29,7 @@
           }
         },
         "warningProperties": {
+          "allWarningsAsErrors": true,
           "warnAsError": [
             "NU1605"
           ]
@@ -50,10 +51,6 @@
             "MudBlazor": {
               "target": "Package",
               "version": "[8.15.0, )"
-            },
-            "System.Xml.Linq": {
-              "target": "Package",
-              "version": "[3.5.21022.801, )"
             }
           },
           "imports": [

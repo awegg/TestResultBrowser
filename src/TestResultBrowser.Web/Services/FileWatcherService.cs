@@ -169,10 +169,11 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
                     {
                         // Parse file path
                         var parsedPath = filePathParser.ParseFilePath(xmlFile);
-                        if (parsedPath == null)
+                        
+                        // Log warning if using default values (both patterns failed)
+                        if (parsedPath.DomainId == "Uncategorized")
                         {
-                            _logger.LogWarning("Could not parse file path: {Path}", xmlFile);
-                            continue;
+                            _logger.LogWarning("Using default categorization for unrecognized path format: {Path}", xmlFile);
                         }
 
                         // Parse JUnit XML

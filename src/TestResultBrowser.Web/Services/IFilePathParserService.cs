@@ -41,10 +41,10 @@ public interface IFilePathParserService
     /// Parses a file path to extract test metadata
     /// </summary>
     /// <param name="filePath">Full path to test result XML file</param>
-    /// <returns>Parsed file path metadata, or null if path doesn't match expected pattern</returns>
+    /// <returns>Parsed file path metadata with default values if path doesn't match expected pattern</returns>
     /// <example>
     /// ParseFilePath("\\\\server\\share\\Release-12345\\PXrel114_Regular_Win2019SQLServer2022_CORE\\TEST-UserService.xml")
     /// Returns: BuildNumber=12345, VersionRaw="PXrel114", TestType="Regular", NamedConfig="Win2019SQLServer2022", Domain="CORE"
     /// </example>
-    ParsedFilePath? ParseFilePath(string filePath);
+    ParsedFilePath ParseFilePath(string filePath);
 }

@@ -24,16 +24,27 @@ public class JUnitParserService : IJUnitParserService
         // Load XML document
         var xml = await Task.Run(() => XDocument.Load(xmlFilePath));
         
-        // Get testsuite element
-        var testSuite = xml.Root?.Name.LocalName == "testsuite" 
-            ? xml.Root 
-            : xml.Descendants("testsuite").FirstOrDefault();
+        // Get all testsuite elements (handle both <testsuite> root and <testsuites><testsuite> nested)
+        var testSuites = xml.Root?.Name.LocalName == "testsuite" 
+            ? new[] { xml.Root }
+            : xml.Descendants("testsuite");
             
-        if (testSuite == null)
+        if (testSuites == null || !testSuites.Any())
         {
             return results;
         }
 
+        // Process each testsuite
+        foreach (var testSuite in testSuites)
+        {
+            await ProcessTestSuite(testSuite, parsedPath, results, xmlFilePath);
+        }
+
+        return results;
+    }
+
+    private async Task ProcessTestSuite(XElement testSuite, ParsedFilePath parsedPath, List<TestResult> results, string xmlFilePath)
+    {
         var testSuiteName = testSuite.Attribute("name")?.Value ?? Path.GetFileNameWithoutExtension(xmlFilePath);
         var timestamp = testSuite.Attribute("timestamp")?.Value;
         DateTime testTimestamp = DateTime.UtcNow;
@@ -161,6 +172,6 @@ public class JUnitParserService : IJUnitParserService
             results.Add(testResult);
         }
 
-        return results;
+        await Task.CompletedTask;
     }
 }

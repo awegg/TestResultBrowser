@@ -84,27 +84,27 @@ Based on plan.md project structure:
 
 **Goal**: Enable daily triage of newly failing tests grouped by domain/feature with configuration indicators
 
-**Effort**: 1.5-2 days (12-16 hours) | **Status**: Not Started
+**Effort**: 1.5-2 days (12-16 hours) | **Status**: ✅ COMPLETE
 
 **Independent Test**: Load results from two consecutive nightly runs (yesterday/today) and verify Morning Triage view highlights newly failing tests, groups by domain/feature, shows affected configurations graphically
 
 ### Implementation for User Story 1
 
-- [ ] T028 [P] [US1] Create TriageNewFailure record in src/TestResultBrowser.Web/Models/TriageNewFailure.cs (computed entity from data-model.md)
-- [ ] T029 [P] [US1] Create TriageFixedTest record in src/TestResultBrowser.Web/Models/TriageFixedTest.cs
-- [ ] T030 [P] [US1] Create MorningTriageResult record in src/TestResultBrowser.Web/Models/MorningTriageResult.cs
-- [ ] T031 [US1] Create ITriageService interface in src/TestResultBrowser.Web/Services/ITriageService.cs (GetMorningTriageAsync method)
-- [ ] T032 [US1] Implement TriageService.GetMorningTriageAsync in src/TestResultBrowser.Web/Services/TriageService.cs (compare today vs yesterday builds, detect new failures)
-- [ ] T033 [US1] Create MorningTriage.razor page in src/TestResultBrowser.Web/Pages/MorningTriage.razor
-- [ ] T034 [US1] Implement stats cards in MorningTriage.razor (Total New Failures, Fixed Tests, Still Failing, Pass Rate)
-- [ ] T035 [US1] Create TestHierarchy component in src/TestResultBrowser.Web/Components/TestHierarchy.razor (collapsible Domain→Feature→Suite→Test tree)
-- [ ] T036 [US1] Integrate TestHierarchy component into MorningTriage.razor showing new failures grouped by domain/feature
-- [ ] T037 [US1] Create ConfigVisualIndicator component in src/TestResultBrowser.Web/Components/ConfigVisualIndicator.razor (graphical mini-matrix showing affected configs)
-- [ ] T038 [US1] Add ConfigVisualIndicator to each failure in TestHierarchy to show which Version/NamedConfig combinations are affected
-- [ ] T039 [US1] Implement filtering by specific domain in MorningTriage.razor using FilterPanel component
-- [ ] T040 [US1] Add navigation link to MorningTriage page in MainLayout.razor sidebar
+- [x] T028 [P] [US1] Create TriageNewFailure record in src/TestResultBrowser.Web/Models/TriageNewFailure.cs (computed entity from data-model.md)
+- [x] T029 [P] [US1] Create TriageFixedTest record in src/TestResultBrowser.Web/Models/TriageFixedTest.cs
+- [x] T030 [P] [US1] Create MorningTriageResult record in src/TestResultBrowser.Web/Models/MorningTriageResult.cs
+- [x] T031 [US1] Create ITriageService interface in src/TestResultBrowser.Web/Services/ITriageService.cs (GetMorningTriageAsync method)
+- [x] T032 [US1] Implement TriageService.GetMorningTriageAsync in src/TestResultBrowser.Web/Services/TriageService.cs (compare today vs yesterday builds, detect new failures)
+- [x] T033 [US1] Create MorningTriage.razor page in src/TestResultBrowser.Web/Pages/MorningTriage.razor
+- [x] T034 [US1] Implement stats cards in MorningTriage.razor (Total New Failures, Fixed Tests, Still Failing, Pass Rate)
+- [x] T035 [US1] Create TestHierarchy component in src/TestResultBrowser.Web/Components/TestHierarchy.razor (collapsible Domain→Feature→Suite→Test tree)
+- [x] T036 [US1] Integrate TestHierarchy component into MorningTriage.razor showing new failures grouped by domain/feature
+- [x] T037 [US1] Create ConfigVisualIndicator component in src/TestResultBrowser.Web/Components/ConfigVisualIndicator.razor (graphical mini-matrix showing affected configs)
+- [x] T038 [US1] Add ConfigVisualIndicator to each failure in TestHierarchy to show which Version/NamedConfig combinations are affected
+- [x] T039 [US1] Implement filtering by specific domain in MorningTriage.razor using FilterPanel component
+- [x] T040 [US1] Add navigation link to MorningTriage page in MainLayout.razor sidebar
 
-**Checkpoint**: At this point, User Story 1 (Morning Triage) should be fully functional - users can identify new failures, see affected domains/features, and view configuration-specific failures graphically
+**Checkpoint**: ✅ User Story 1 (Morning Triage) is fully functional - users can identify new failures, see affected domains/features, and view configuration-specific failures
 
 ---
 

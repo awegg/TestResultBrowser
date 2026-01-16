@@ -20,6 +20,7 @@ builder.Services.AddSingleton<IVersionMapperService, VersionMapperService>();
 builder.Services.AddSingleton<IFilePathParserService, FilePathParserService>();
 builder.Services.AddSingleton<IJUnitParserService, JUnitParserService>();
 builder.Services.AddSingleton<ITestDataService, TestDataService>();
+builder.Services.AddSingleton<ITriageService, TriageService>();
 builder.Services.AddSingleton<ConfigurationValidator>();
 
 // Register background services
