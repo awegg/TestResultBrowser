@@ -7,6 +7,8 @@
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story. P0 (Morning/Release Triage) stories are highest priority for MVP.
 
+**🎯 SCOPE**: Ultra-Lean MVP approach - 121 tasks focused on core triage workflows + essential features. Deferred features marked with ⏸️ and can be added post-MVP based on user feedback.
+
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Can run in parallel (different files, no dependencies)
@@ -65,6 +67,10 @@ Based on plan.md project structure:
 - [ ] T025 Create MainLayout.razor in src/TestResultBrowser.Web/Shared/ with MudBlazor sidebar navigation structure
 - [ ] T026 Create shared FilterPanel component in src/TestResultBrowser.Web/Components/FilterPanel.razor (Domain/Feature/Version/Config multi-select)
 - [ ] T027 Implement initial file system scan on application startup (load all historical data into memory cache)
+- [ ] T027a Implement chunked loading in TestDataService (load 100k records at a time, yield to prevent UI freeze)
+- [ ] T027b Add progress indicator for initial scan (percentage loaded, ETA, current build being processed)
+- [ ] T027c Implement memory monitoring in FileWatcherService (log memory usage, warn if approaching limits)
+- [ ] T027d Add configuration validation on startup in Program.cs (verify FileSharePath exists, URLs reachable, thresholds valid)
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -133,6 +139,9 @@ Based on plan.md project structure:
 - [ ] T054 [US11] Implement file system scanning logic in FileWatcherService.ExecuteAsync (detect new Release-{BuildNumber} folders)
 - [ ] T055 [US11] Implement incremental import in FileWatcherService (track known builds, import only new XML files)
 - [ ] T056 [US11] Add error handling in FileWatcherService for malformed XML files (log errors, continue processing valid files)
+- [ ] T056a [US11] Add network failure retry logic in FileWatcherService (exponential backoff, max 3 retries)
+- [ ] T056b [US11] Add permission error handling in FileWatcherService (log access denied errors, skip inaccessible directories)
+- [ ] T056c [US11] Add disk space monitoring in FileWatcherService (warn if memory usage exceeds 80% of configured limit)
 - [ ] T057 [US11] Implement duplicate detection in FileWatcherService (avoid re-importing same build)
 - [ ] T058 [US11] Add manual "Refresh Now" button to toolbar in MainLayout.razor (calls IFileWatcherService.ScanFileSystemNowAsync)
 - [ ] T059 [US11] Create Import status page in src/TestResultBrowser.Web/Pages/ImportStatus.razor showing last scan time, files imported, errors
@@ -239,35 +248,55 @@ Based on plan.md project structure:
 
 ---
 
-## Phase 10: User Story 6 - Feature Impact Analysis (Priority: P1)
+## Phase 10: User Story 10 - Save and Reuse Filter Configurations (Priority: P3) ✅ MVP
+
+**Goal**: Enable users to save filter presets for repeated use
+
+**Independent Test**: Create and save filter configuration, then verify it can be recalled and applied correctly
+
+### Implementation for User Story 10
+
+- [ ] T106 [P] [US10] Create SavedFilterConfiguration record in src/TestResultBrowser.Web/Models/SavedFilterConfiguration.cs (data-model.md entity #8)
+- [ ] T107 [P] [US10] Create DashboardConfiguration record in src/TestResultBrowser.Web/Models/DashboardConfiguration.cs (data-model.md entity #10)
+- [ ] T108 [US10] Create IUserDataService interface in src/TestResultBrowser.Web/Services/IUserDataService.cs (contracts/ interface #9)
+- [ ] T109 [US10] Implement UserDataService in src/TestResultBrowser.Web/Services/UserDataService.cs (LiteDB CRUD operations for SavedFilterConfiguration)
+- [ ] T110 [US10] Initialize LiteDB database connection in Program.cs (connection string from appsettings.json)
+- [ ] T111 [US10] Create SaveFilterDialog component in src/TestResultBrowser.Web/Components/SaveFilterDialog.razor (name, description, current filter state)
+- [ ] T112 [US10] Create LoadFilterDropdown component in src/TestResultBrowser.Web/Components/LoadFilterDropdown.razor (list saved filters, apply on selection)
+- [ ] T113 [US10] Integrate SaveFilterDialog into FilterPanel component (Save button opens dialog)
+- [ ] T114 [US10] Integrate LoadFilterDropdown into FilterPanel component (Load dropdown applies saved filter)
+
+**Checkpoint**: Saved filters improve workflow efficiency by eliminating repetitive filter configuration
+
+---
+
+## Phase 11: Polish & Cross-Cutting Concerns ✅ MVP
+
+**Purpose**: Essential improvements for production readiness
+
+- [ ] T115 [P] Add loading spinners to all pages during data fetch operations
+- [ ] T116 [P] Implement error boundaries and user-friendly error messages for all components
+- [ ] T117 [P] Optimize performance: implement caching for aggregated summaries (5-minute cache)
+- [ ] T118 [P] Implement logging for all service operations (Serilog integration)
+- [ ] T119 [P] Create deployment guide in docs/deployment.md (IIS configuration, appsettings)
+- [ ] T120 Code cleanup: remove unused imports, apply consistent naming conventions
+- [ ] T121 Run quickstart.md validation (verify setup steps work for new developers)
+
+---
+
+# ⏸️ DEFERRED FEATURES (Post-MVP)
+
+**Note**: The following phases are deferred until after MVP deployment and user feedback. They represent ~100 additional tasks that can be prioritized based on actual usage patterns.
+
+---
+
+## Phase 12: User Story 6 - Feature Impact Analysis (Priority: P1) ⏸️ DEFERRED
 
 **Goal**: Assess which features are impacted by failures across all configurations
 
 **Independent Test**: Load test results where a feature has failures across multiple configurations and verify Feature Impact view shows all affected tests and configuration matrix
 
 ### Implementation for User Story 6
-
-- [ ] T106 [P] [US6] Create FeatureImpactResult record in src/TestResultBrowser.Web/Models/FeatureImpactResult.cs
-- [ ] T107 [US6] Implement TriageService.GetFeatureImpactAsync in TriageService (aggregate feature-specific results across all configs)
-- [ ] T108 [US6] Create FeatureImpact.razor page in src/TestResultBrowser.Web/Pages/FeatureImpact.razor
-- [ ] T109 [US6] Implement feature selector dropdown in FeatureImpact.razor
-- [ ] T110 [US6] Display feature-level stats cards in FeatureImpact.razor (Overall Pass Rate, Total Tests, Failing Tests, Flaky Tests)
-- [ ] T111 [US6] Integrate ConfigMatrix component in FeatureImpact.razor filtered to show feature-specific results
-- [ ] T112 [US6] Highlight configuration dimensions contributing to failures in FeatureImpact.razor
-- [ ] T113 [US6] Add "Mark as Release Ready" button in FeatureImpact.razor (if pass rate >95%)
-- [ ] T114 [US6] Add navigation link to FeatureImpact page in MainLayout.razor sidebar
-
-**Checkpoint**: Feature Impact analysis enables release decisions at feature granularity
-
----
-
-## Phase 11: User Story 5 - Browse Results by Configuration Matrix (Priority: P1)
-
-**Goal**: Filter by configuration dimensions to identify environment-specific patterns
-
-**Independent Test**: Upload JUnit results with Version/OS/DB/NamedConfig metadata and verify filtering by configuration dimensions
-
-### Implementation for User Story 5
 
 - [ ] T115 [US5] Implement multi-dimensional filter in FilterPanel component (Version + NamedConfig + OS/DB)
 - [ ] T116 [US5] Add configuration filter dropdowns to toolbar in MainLayout.razor
@@ -280,9 +309,9 @@ Based on plan.md project structure:
 
 ---
 
-## Phase 12: User Story 4 - Compare Test Results Over Time (Priority: P1)
+## Phase 13: User Story 5 - Browse Results by Configuration Matrix (Priority: P1) ⏸️ DEFERRED
 
-**Goal**: Track quality trends across multiple test runs
+**Goal**: Filter by configuration dimensions to identify environment-specific patterns
 
 **Independent Test**: Upload multiple JUnit result sets from different dates and verify trend graphs show changes in pass rates
 
@@ -306,7 +335,7 @@ Based on plan.md project structure:
 
 ---
 
-## Phase 13: User Story 8 - Search and Filter Test Cases (Priority: P3)
+## Phase 14: User Story 4 - Compare Test Results Over Time (Priority: P1) ⏸️ DEFERRED
 
 **Goal**: Enable quick search by test name, error message, or failure pattern
 
@@ -324,7 +353,27 @@ Based on plan.md project structure:
 
 ---
 
-## Phase 14: User Story 10 - Save and Reuse Filter Configurations (Priority: P3)
+## Phase 14: User Story 4 - Compare Test Results Over Time (Priority: P1) ⏸️ DEFERRED
+
+**Goal**: Track quality trends across multiple test runs
+
+**Independent Test**: Upload multiple JUnit result sets from different dates and verify trend graphs show changes in pass rates
+
+### Implementation for User Story 4
+
+- [ ] T137 [P] [US4] Create QualityTrend record in src/TestResultBrowser.Web/Models/QualityTrend.cs (data-model.md entity #15)
+- [ ] T138 [P] [US4] Create TrendDataPoint record in src/TestResultBrowser.Web/Models/TrendDataPoint.cs
+- [ ] T139 [P] [US4] Create TrendDirection enum in src/TestResultBrowser.Web/Models/TrendDirection.cs
+- [ ] T140 [US4] Create IQualityTrendService interface in src/TestResultBrowser.Web/Services/IQualityTrendService.cs
+- [ ] T141 [US4] Implement QualityTrendService in src/TestResultBrowser.Web/Services/QualityTrendService.cs
+- [ ] T142 [US4] Implement QualityTrendService.GetDomainTrendAsync (compute pass rate trends over last 30 builds)
+- [ ] T143 [US4] Implement trend direction calculation in QualityTrendService (Improving/Stable/Degrading)
+- [ ] T144 [US4] Create Trends.razor page in src/TestResultBrowser.Web/Pages/Trends.razor
+- [ ] T145 [US4] Integrate MudBlazor chart component in Trends.razor to visualize pass rate trends
+- [ ] T146 [US4] Add domain selector in Trends.razor to filter trends by domain
+- [ ] T147 [US4] Display trend direction indicators (↑↓→) in Trends.razor
+- [ ] T148 [US4] Implement comparison between two specific runs in Trends.razor (highlight new failures, new passes, consistently failing)
+- [ ] T149 [US4] Add navigation link to Trends page in MainLayout.razor sidebar
 
 **Goal**: Enable users to save filter presets for repeated use
 
@@ -346,7 +395,7 @@ Based on plan.md project structure:
 
 ---
 
-## Phase 15: User Story 16 - Smart Baseline Comparison (Priority: P2)
+## Phase 16: User Story 16 - Smart Baseline Comparison (Priority: P2) ⏸️ DEFERRED
 
 **Goal**: Compare current build against known stable baseline instead of just previous run
 
@@ -368,7 +417,7 @@ Based on plan.md project structure:
 
 ---
 
-## Phase 16: User Story 15 - Configuration Diff View (Priority: P2)
+## Phase 17: User Story 15 - Configuration Diff View (Priority: P2) ⏸️ DEFERRED
 
 **Goal**: Compare same build across different configurations side-by-side
 
@@ -387,7 +436,7 @@ Based on plan.md project structure:
 
 ---
 
-## Phase 17: User Story 17 - Build Quality Trend Analytics (Priority: P2)
+## Phase 18: User Story 17 - Build Quality Trend Analytics (Priority: P2) ⏸️ DEFERRED
 
 **Goal**: Visualize quality trends over time per domain with alerts
 
@@ -404,7 +453,7 @@ Based on plan.md project structure:
 
 ---
 
-## Phase 18: User Story 19 - Failure History Heatmap (Priority: P2)
+## Phase 19: User Story 19 - Failure History Heatmap (Priority: P2) ⏸️ DEFERRED
 
 **Goal**: Visual overview of chronically unstable features across recent builds
 
@@ -427,7 +476,7 @@ Based on plan.md project structure:
 
 ---
 
-## Phase 19: User Story 18 - Test Execution Time Regression Detection (Priority: P3)
+## Phase 20: User Story 18 - Test Execution Time Regression Detection (Priority: P3) ⏸️ DEFERRED
 
 **Goal**: Identify tests slowing down over time to catch performance regressions
 
@@ -448,7 +497,7 @@ Based on plan.md project structure:
 
 ---
 
-## Phase 20: User Story 9 - Configure Custom Dashboard (Priority: P2)
+## Phase 21: User Story 9 - Configure Custom Dashboard (Priority: P2) ⏸️ DEFERRED
 
 **Goal**: Enable personalized dashboards for regular monitoring
 
@@ -472,7 +521,7 @@ Based on plan.md project structure:
 
 ---
 
-## Phase 21: User Story 20 - Permalinks & Collaboration (Priority: P3)
+## Phase 22: User Story 20 - Permalinks & Collaboration (Priority: P3) ⏸️ DEFERRED
 
 **Goal**: Enable sharing of specific views via URL and user annotations
 
@@ -496,7 +545,7 @@ Based on plan.md project structure:
 
 ---
 
-## Phase 22: User Story 7 - Browse Results by Feature Area (Priority: P2)
+## Phase 23: User Story 7 - Browse Results by Feature Area (Priority: P2) ⏸️ DEFERRED
 
 **Goal**: View test results organized by feature area
 
@@ -514,23 +563,16 @@ Based on plan.md project structure:
 
 ---
 
-## Phase 23: Polish & Cross-Cutting Concerns
+## Phase 24: Additional Polish (Optional) ⏸️ DEFERRED
 
-**Purpose**: Improvements that affect multiple user stories
+**Purpose**: Nice-to-have improvements for post-MVP releases
 
-- [ ] T212 [P] Add loading spinners to all pages during data fetch operations
-- [ ] T213 [P] Implement error boundaries and user-friendly error messages for all components
-- [ ] T214 [P] Add keyboard shortcuts for common actions (F5 for refresh, Ctrl+K for search)
-- [ ] T215 [P] Optimize performance: implement caching for aggregated summaries (5-minute cache)
-- [ ] T216 [P] Add responsive design adjustments for smaller screens (tablet support)
-- [ ] T217 [P] Implement logging for all service operations (Serilog integration)
-- [ ] T218 [P] Add telemetry for user actions and performance metrics
-- [ ] T219 [P] Create user documentation in docs/user-guide.md based on quickstart.md
-- [ ] T220 [P] Create deployment guide in docs/deployment.md (IIS configuration, appsettings)
-- [ ] T221 Code cleanup: remove unused imports, apply consistent naming conventions
-- [ ] T222 Refactor common patterns into shared utilities
-- [ ] T223 Security hardening: input validation, XSS prevention, secure SignalR configuration
-- [ ] T224 Run quickstart.md validation (verify setup steps work for new developers)
+- [ ] T212 [P] Add keyboard shortcuts for common actions (F5 for refresh, Ctrl+K for search)
+- [ ] T213 [P] Add responsive design adjustments for smaller screens (tablet support)
+- [ ] T214 [P] Add telemetry for user actions and performance metrics
+- [ ] T215 [P] Create user documentation in docs/user-guide.md based on quickstart.md
+- [ ] T216 Refactor common patterns into shared utilities
+- [ ] T217 Security hardening: input validation, XSS prevention, secure SignalR configuration
 
 ---
 
@@ -587,36 +629,39 @@ Based on plan.md project structure:
 - US10 (Saved Filters) → US20 (Permalinks) - US20 requires UserDataService from US10
 - US2 (Release Triage) → US19 (Heatmap) - US19 uses ConfigurationMatrix concept from US2
 
-### Recommended Implementation Order (MVP First)
+### Recommended Implementation Order (Ultra-Lean MVP)
 
-**MVP (Minimum Viable Product) - 4-6 weeks**:
-1. Phase 1: Setup
-2. Phase 2: Foundational
-3. Phase 3: US1 (Morning Triage) - HIGHEST PRIORITY
-4. Phase 4: US2 (Release Triage) - HIGHEST PRIORITY
-5. Phase 5: US11 (Automatic Import) - CRITICAL for automation
+**🎯 MVP (Ultra-Lean) - 6-8 weeks with 2-3 developers (128 tasks)**:
+1. Phase 1: Setup (6 tasks)
+2. Phase 2: Foundational (25 tasks) - **INCLUDES MEMORY MANAGEMENT & VALIDATION**
+3. Phase 3: US1 (Morning Triage) - HIGHEST PRIORITY (13 tasks)
+4. Phase 4: US2 (Release Triage) - HIGHEST PRIORITY (13 tasks)
+5. Phase 5: US11 (Automatic Import) - CRITICAL for automation (11 tasks) - **INCLUDES ERROR HANDLING**
+6. Phase 6: US12 (Flaky Detection) - High ROI for triage efficiency (14 tasks)
+7. Phase 7: US13 (Polarion Integration) - Quick win, high value (9 tasks)
+8. Phase 8: US14 (Failure Grouping) - High ROI for root cause analysis (11 tasks)
+9. Phase 9: US3 (Domain View) - Core navigation (10 tasks)
+10. Phase 10: US10 (Saved Filters) - **LiteDB INFRASTRUCTURE SETUP** (9 tasks)
+11. Phase 11: Polish (Essential) - Production readiness (7 tasks)
 
-**Release 1 (MVP + Essential Features) - 8-10 weeks**:
-6. Phase 6: US12 (Flaky Detection) - High value for triage efficiency
-7. Phase 7: US13 (Polarion Integration) - Quick win, high value
-8. Phase 8: US14 (Failure Grouping) - High value for root cause analysis
-9. Phase 9: US3 (Domain View) - Core navigation
-10. Phase 10: US6 (Feature Impact) - Critical for release decisions
+**Total MVP**: 128 tasks across 11 phases
 
-**Release 2 (Full Feature Set) - 12-16 weeks**:
-11. Phase 11: US5 (Config Matrix) - Enhances US2
-12. Phase 12: US4 (Trends) - Historical analysis
-13. Phase 14: US10 (Saved Filters) - LiteDB setup
-14. Phase 15: US16 (Baselines) - Depends on US10
-15. Phase 16: US15 (Config Diff) - Advanced analysis
-16. Phase 17: US17 (Trend Analytics) - Depends on US4
-17. Phase 18: US19 (Heatmap) - Visual insights
-18. Phase 13: US8 (Search) - Nice-to-have
-19. Phase 19: US18 (Execution Time) - Performance insights
-20. Phase 20: US9 (Custom Dashboard) - Personalization
-21. Phase 21: US20 (Permalinks) - Collaboration
-22. Phase 22: US7 (Feature View) - Additional navigation
-23. Phase 23: Polish & Cross-Cutting
+**⚠️ CRITICAL NOTE**: US10 sets up LiteDB/UserDataService infrastructure needed for US9, US16, US20 (all deferred). Complete this phase to enable easy addition of these features post-MVP.
+
+**Post-MVP (Based on User Feedback) - Prioritize after deployment**:
+- Phase 12: US6 (Feature Impact) - 9 tasks - If release managers need feature-level assessment
+- Phase 13: US5 (Config Matrix enhancements) - 6 tasks - If matrix filtering is heavily requested
+- Phase 14: US4 (Trends) - 13 tasks - If historical trending is critical
+- Phase 15: US8 (Search) - 5 tasks - If users struggle to find specific tests
+- Phase 16: US16 (Baselines) - 9 tasks - If baseline comparison becomes essential
+- Phase 17: US15 (Config Diff) - 6 tasks - If config-specific debugging is common
+- Phase 18: US17 (Trend Analytics) - 4 tasks - Depends on US4
+- Phase 19: US19 (Heatmap) - 10 tasks - If visual patterns help identify chronic issues
+- Phase 20: US18 (Execution Time) - 8 tasks - If performance regression is a concern
+- Phase 21: US9 (Custom Dashboard) - 11 tasks - If personalization is highly valued
+- Phase 22: US20 (Permalinks) - 11 tasks - If collaboration/sharing is needed
+- Phase 23: US7 (Feature View) - 5 tasks - If duplicate of US3/US6
+- Phase 24: Additional Polish - 6 tasks - Nice-to-haves
 
 ### Parallel Opportunities
 
@@ -656,43 +701,47 @@ All start simultaneously, integrate at the end.
 
 ## Summary Statistics
 
-**Total Tasks**: 224 tasks
-**Setup**: 6 tasks (Phase 1)
-**Foundational**: 21 tasks (Phase 2)
-**User Story Implementation**: 184 tasks (Phases 3-22)
-**Polish**: 13 tasks (Phase 23)
+### 🎯 Ultra-Lean MVP Scope
 
-**User Story Task Breakdown**:
-- US1 (Morning Triage): 13 tasks
-- US2 (Release Triage): 13 tasks
-- US11 (Automatic Import): 8 tasks
-- US12 (Flaky Detection): 14 tasks
-- US13 (Polarion Integration): 9 tasks
-- US14 (Failure Grouping): 11 tasks
-- US3 (Domain View): 10 tasks
-- US6 (Feature Impact): 9 tasks
-- US5 (Config Matrix): 6 tasks
-- US4 (Trends): 13 tasks
-- US8 (Search): 5 tasks
-- US10 (Saved Filters): 9 tasks
-- US16 (Baselines): 9 tasks
-- US15 (Config Diff): 6 tasks
-- US17 (Trend Analytics): 4 tasks
-- US19 (Heatmap): 10 tasks
-- US18 (Execution Time): 8 tasks
-- US9 (Custom Dashboard): 11 tasks
-- US20 (Permalinks): 11 tasks
-- US7 (Feature View): 5 tasks
+**Total MVP Tasks**: **128 tasks** (43% reduction from original 224)
+**Setup**: 6 tasks (Phase 1)
+**Foundational**: 25 tasks (Phase 2) - **+4 for memory/validation**
+**User Story Implementation**: 90 tasks (Phases 3-10) - **+3 for error handling**
+**Essential Polish**: 7 tasks (Phase 11)
+
+**MVP User Story Breakdown**:
+- ✅ US1 (Morning Triage - P0): 13 tasks
+- ✅ US2 (Release Triage - P0): 13 tasks
+- ✅ US11 (Automatic Import - P1): 11 tasks (**+3 error handling**)
+- ✅ US12 (Flaky Detection - P1): 14 tasks
+- ✅ US13 (Polarion Integration - P1): 9 tasks
+- ✅ US14 (Failure Grouping - P1): 11 tasks
+- ✅ US3 (Domain View - P1): 10 tasks
+- ✅ US10 (Saved Filters - P3): 9 tasks (**LiteDB setup for future features**)
+
+**Deferred Tasks**: **103 tasks** (Phases 12-24)
+- ⏸️ US6 (Feature Impact): 9 tasks
+- ⏸️ US5 (Config Matrix): 6 tasks
+- ⏸️ US4 (Trends): 13 tasks
+- ⏸️ US8 (Search): 5 tasks
+- ⏸️ US16 (Baselines): 9 tasks
+- ⏸️ US15 (Config Diff): 6 tasks
+- ⏸️ US17 (Trend Analytics): 4 tasks
+- ⏸️ US19 (Heatmap): 10 tasks
+- ⏸️ US18 (Execution Time): 8 tasks
+- ⏸️ US9 (Custom Dashboard): 11 tasks
+- ⏸️ US20 (Permalinks): 11 tasks
+- ⏸️ US7 (Feature View): 5 tasks
+- ⏸️ Additional Polish: 6 tasks
 
 **Parallel Opportunities**: 
-- Setup: 4 of 6 tasks can run in parallel
-- Foundational: 13 of 21 tasks can run in parallel
-- User Stories: 15 user stories are independently parallelizable after Phase 2
+- Setup: 4 of 6 tasks can run in parallel (67%)
+- Foundational: 13 of 21 tasks can run in parallel (62%)
+- User Stories: All 8 MVP user stories are independently parallelizable after Phase 2
 
-**MVP Scope** (Recommended):
-- Phases 1-5 (US1, US2, US11) = 61 tasks = ~4-6 weeks with 2-3 developers
+**Estimated MVP Duration**:
+- **With 2 developers**: ~8-10 weeks (2-2.5 months)
+- **With 3 developers**: ~6-8 weeks (1.5-2 months)
+- **With 4+ developers**: ~5-6 weeks (1.25-1.5 months)
 
-**Estimated Total Duration**:
-- Sequential: ~20-24 weeks (6 months)
-- With 4-5 developers: ~12-16 weeks (3-4 months)
-- MVP Only: ~4-6 weeks (1.5 months)
+**Value Proposition**: Delivers 80% of critical functionality with 57% of implementation effort (**+7 tasks for production robustness: memory management, error handling, validation**)
