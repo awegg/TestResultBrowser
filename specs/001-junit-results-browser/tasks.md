@@ -31,18 +31,22 @@ Based on plan.md project structure:
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Create solution structure: src/TestResultBrowser.Web/ (Blazor Server project, .NET 8.0)
-- [ ] T002 Initialize Blazor Server project with Program.cs and required NuGet packages (MudBlazor, LiteDB, System.Xml.Linq)
-- [ ] T003 [P] Configure appsettings.json with FileSharePath, PollingIntervalMinutes, FlakyTestThresholds, PolarionBaseUrl
-- [ ] T004 [P] Create directory structure: Pages/, Components/, Services/, Models/, Parsers/ under src/TestResultBrowser.Web/
-- [ ] T005 [P] Setup MudBlazor in Program.cs (AddMudServices) and _Imports.razor
-- [ ] T006 [P] Create sample_data validation script to test file path parsing logic
+**Effort**: 2-3 hours | **Status**: ✅ COMPLETE
+
+- [x] T001 Create solution structure: src/TestResultBrowser.Web/ (Blazor Server project, .NET 8.0)
+- [x] T002 Initialize Blazor Server project with Program.cs and required NuGet packages (MudBlazor, LiteDB, System.Xml.Linq)
+- [x] T003 [P] Configure appsettings.json with FileSharePath, PollingIntervalMinutes, FlakyTestThresholds, PolarionBaseUrl
+- [x] T004 [P] Create directory structure: Pages/, Components/, Services/, Models/, Parsers/ under src/TestResultBrowser.Web/
+- [x] T005 [P] Setup MudBlazor in Program.cs (AddMudServices) and _Imports.razor
+- [x] T006 [P] Create sample_data validation script to test file path parsing logic
 
 ---
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
 **Purpose**: Core infrastructure that MUST be complete before ANY user story can be implemented
+
+**Effort**: 2-3 days (16-24 hours) | **Status**: Not Started
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
@@ -80,6 +84,8 @@ Based on plan.md project structure:
 
 **Goal**: Enable daily triage of newly failing tests grouped by domain/feature with configuration indicators
 
+**Effort**: 1.5-2 days (12-16 hours) | **Status**: Not Started
+
 **Independent Test**: Load results from two consecutive nightly runs (yesterday/today) and verify Morning Triage view highlights newly failing tests, groups by domain/feature, shows affected configurations graphically
 
 ### Implementation for User Story 1
@@ -105,6 +111,8 @@ Based on plan.md project structure:
 ## Phase 4: User Story 2 - Release Triage During Release Cycles (Priority: P0) 🎯 MVP
 
 **Goal**: Enable release readiness assessment across all configurations with configuration matrix view
+
+**Effort**: 1.5-2 days (12-16 hours) | **Status**: Not Started
 
 **Independent Test**: Load release candidate results across all OS/DB/Version configurations and verify Release Triage dashboard shows configuration matrix with pass rates and highlights failing configurations
 
@@ -132,6 +140,8 @@ Based on plan.md project structure:
 
 **Goal**: Enable automatic polling of shared file system for new test results every 15 minutes
 
+**Effort**: 1-1.5 days (8-12 hours) | **Status**: Not Started
+
 **Independent Test**: Place new JUnit XML files on shared file system and verify they are detected and imported within 15 minutes
 
 ### Implementation for User Story 11
@@ -155,6 +165,8 @@ Based on plan.md project structure:
 ## Phase 6: User Story 12 - Flaky Test Detection & Management (Priority: P1)
 
 **Goal**: Identify and filter tests that fail inconsistently to reduce triage noise
+
+**Effort**: 1.5-2 days (12-16 hours) | **Status**: Not Started
 
 **Independent Test**: Load test results where specific tests have mixed pass/fail outcomes across consecutive runs and verify system flags them as flaky
 
@@ -183,6 +195,8 @@ Based on plan.md project structure:
 
 **Goal**: Auto-link Polarion ticket IDs in test names for immediate context during triage
 
+**Effort**: 0.5-1 day (4-8 hours) | **Status**: Not Started
+
 **Independent Test**: Load test results with Polarion ticket references (PEXC-28044) and verify ticket IDs are clickable links to Polarion work items
 
 ### Implementation for User Story 13
@@ -204,6 +218,8 @@ Based on plan.md project structure:
 ## Phase 8: User Story 14 - Failure Grouping by Root Cause (Priority: P1)
 
 **Goal**: Group failures by similar error patterns to identify root causes instead of individual test noise
+
+**Effort**: 1-1.5 days (8-12 hours) | **Status**: Not Started
 
 **Independent Test**: Load test results where multiple tests fail with similar error messages and verify system clusters them into groups
 
@@ -229,6 +245,8 @@ Based on plan.md project structure:
 
 **Goal**: Enable domain-specific filtering to isolate relevant test results
 
+**Effort**: 1 day (8 hours) | **Status**: Not Started
+
 **Independent Test**: Upload JUnit results with domain metadata and verify filtering by domain displays only that domain's results
 
 ### Implementation for User Story 3
@@ -252,6 +270,8 @@ Based on plan.md project structure:
 
 **Goal**: Enable users to save filter presets for repeated use
 
+**Effort**: 1 day (8 hours) | **Status**: Not Started
+
 **Independent Test**: Create and save filter configuration, then verify it can be recalled and applied correctly
 
 ### Implementation for User Story 10
@@ -274,6 +294,8 @@ Based on plan.md project structure:
 
 **Purpose**: Essential improvements for production readiness
 
+**Effort**: 1 day (8 hours) | **Status**: Not Started
+
 - [ ] T115 [P] Add loading spinners to all pages during data fetch operations
 - [ ] T116 [P] Implement error boundaries and user-friendly error messages for all components
 - [ ] T117 [P] Optimize performance: implement caching for aggregated summaries (5-minute cache)
@@ -294,6 +316,8 @@ Based on plan.md project structure:
 
 **Goal**: Assess which features are impacted by failures across all configurations
 
+**Effort**: 1 day (8 hours) | **Status**: Deferred
+
 **Independent Test**: Load test results where a feature has failures across multiple configurations and verify Feature Impact view shows all affected tests and configuration matrix
 
 ### Implementation for User Story 6
@@ -312,6 +336,8 @@ Based on plan.md project structure:
 ## Phase 13: User Story 5 - Browse Results by Configuration Matrix (Priority: P1) ⏸️ DEFERRED
 
 **Goal**: Filter by configuration dimensions to identify environment-specific patterns
+
+**Effort**: 0.5-1 day (4-8 hours) | **Status**: Deferred
 
 **Independent Test**: Upload multiple JUnit result sets from different dates and verify trend graphs show changes in pass rates
 
@@ -335,9 +361,11 @@ Based on plan.md project structure:
 
 ---
 
-## Phase 14: User Story 4 - Compare Test Results Over Time (Priority: P1) ⏸️ DEFERRED
+## Phase 14: User Story 8 - Search Test Results (Priority: P2) ⏸️ DEFERRED
 
 **Goal**: Enable quick search by test name, error message, or failure pattern
+
+**Effort**: 0.5 day (4 hours) | **Status**: Deferred
 
 **Independent Test**: Create database of test results and verify search queries return accurate matches
 
@@ -353,9 +381,11 @@ Based on plan.md project structure:
 
 ---
 
-## Phase 14: User Story 4 - Compare Test Results Over Time (Priority: P1) ⏸️ DEFERRED
+## Phase 15: User Story 4 - Compare Test Results Over Time (Priority: P1) ⏸️ DEFERRED
 
 **Goal**: Track quality trends across multiple test runs
+
+**Effort**: 1.5 days (12 hours) | **Status**: Deferred
 
 **Independent Test**: Upload multiple JUnit result sets from different dates and verify trend graphs show changes in pass rates
 
@@ -399,6 +429,8 @@ Based on plan.md project structure:
 
 **Goal**: Compare current build against known stable baseline instead of just previous run
 
+**Effort**: 1 day (8 hours) | **Status**: Deferred
+
 **Independent Test**: Mark specific build as baseline and verify comparison views use baseline correctly
 
 ### Implementation for User Story 16
@@ -421,6 +453,8 @@ Based on plan.md project structure:
 
 **Goal**: Compare same build across different configurations side-by-side
 
+**Effort**: 0.5-1 day (4-8 hours) | **Status**: Deferred
+
 **Independent Test**: Load same Release build from two configurations and verify side-by-side comparison highlights differences
 
 ### Implementation for User Story 15
@@ -440,6 +474,8 @@ Based on plan.md project structure:
 
 **Goal**: Visualize quality trends over time per domain with alerts
 
+**Effort**: 0.5 day (4 hours) | **Status**: Deferred
+
 **Independent Test**: Load 30 builds of historical data and verify trend graphs show pass rate changes with alerts
 
 ### Implementation for User Story 17
@@ -456,6 +492,8 @@ Based on plan.md project structure:
 ## Phase 19: User Story 19 - Failure History Heatmap (Priority: P2) ⏸️ DEFERRED
 
 **Goal**: Visual overview of chronically unstable features across recent builds
+
+**Effort**: 1 day (8 hours) | **Status**: Deferred
 
 **Independent Test**: Load results for multiple features across 10 builds and verify heatmap grid displays color-coded stability patterns
 
@@ -480,6 +518,8 @@ Based on plan.md project structure:
 
 **Goal**: Identify tests slowing down over time to catch performance regressions
 
+**Effort**: 1 day (8 hours) | **Status**: Deferred
+
 **Independent Test**: Load test results where tests show increasing execution times and verify alerts for significant slowdowns
 
 ### Implementation for User Story 18
@@ -500,6 +540,8 @@ Based on plan.md project structure:
 ## Phase 21: User Story 9 - Configure Custom Dashboard (Priority: P2) ⏸️ DEFERRED
 
 **Goal**: Enable personalized dashboards for regular monitoring
+
+**Effort**: 1.5 days (12 hours) | **Status**: Deferred
 
 **Independent Test**: Allow users to select dashboard components and verify dashboard displays only selected data
 
@@ -525,6 +567,8 @@ Based on plan.md project structure:
 
 **Goal**: Enable sharing of specific views via URL and user annotations
 
+**Effort**: 1.5 days (12 hours) | **Status**: Deferred
+
 **Independent Test**: Apply filters, generate permalink, open in new session, verify all filters preserved
 
 ### Implementation for User Story 20
@@ -549,6 +593,8 @@ Based on plan.md project structure:
 
 **Goal**: View test results organized by feature area
 
+**Effort**: 0.5 day (4 hours) | **Status**: Deferred
+
 **Independent Test**: Upload JUnit results with feature tags and verify feature-based grouping
 
 ### Implementation for User Story 7
@@ -566,6 +612,8 @@ Based on plan.md project structure:
 ## Phase 24: Additional Polish (Optional) ⏸️ DEFERRED
 
 **Purpose**: Nice-to-have improvements for post-MVP releases
+
+**Effort**: 1 day (8 hours) | **Status**: Deferred
 
 - [ ] T212 [P] Add keyboard shortcuts for common actions (F5 for refresh, Ctrl+K for search)
 - [ ] T213 [P] Add responsive design adjustments for smaller screens (tablet support)
@@ -631,37 +679,39 @@ Based on plan.md project structure:
 
 ### Recommended Implementation Order (Ultra-Lean MVP)
 
-**🎯 MVP (Ultra-Lean) - 6-8 weeks with 2-3 developers (128 tasks)**:
-1. Phase 1: Setup (6 tasks)
-2. Phase 2: Foundational (25 tasks) - **INCLUDES MEMORY MANAGEMENT & VALIDATION**
-3. Phase 3: US1 (Morning Triage) - HIGHEST PRIORITY (13 tasks)
-4. Phase 4: US2 (Release Triage) - HIGHEST PRIORITY (13 tasks)
-5. Phase 5: US11 (Automatic Import) - CRITICAL for automation (11 tasks) - **INCLUDES ERROR HANDLING**
-6. Phase 6: US12 (Flaky Detection) - High ROI for triage efficiency (14 tasks)
-7. Phase 7: US13 (Polarion Integration) - Quick win, high value (9 tasks)
-8. Phase 8: US14 (Failure Grouping) - High ROI for root cause analysis (11 tasks)
-9. Phase 9: US3 (Domain View) - Core navigation (10 tasks)
-10. Phase 10: US10 (Saved Filters) - **LiteDB INFRASTRUCTURE SETUP** (9 tasks)
-11. Phase 11: Polish (Essential) - Production readiness (7 tasks)
+**🎯 MVP (Ultra-Lean) - 6-8 weeks with 2-3 developers (128 tasks, ~13-17 days effort)**:
+1. Phase 1: Setup - **2-3 hours** (6 tasks) ✅ COMPLETE
+2. Phase 2: Foundational - **2-3 days** (25 tasks) - **INCLUDES MEMORY MANAGEMENT & VALIDATION**
+3. Phase 3: US1 (Morning Triage) - **1.5-2 days** (13 tasks) - HIGHEST PRIORITY
+4. Phase 4: US2 (Release Triage) - **1.5-2 days** (13 tasks) - HIGHEST PRIORITY
+5. Phase 5: US11 (Automatic Import) - **1-1.5 days** (11 tasks) - CRITICAL for automation + **ERROR HANDLING**
+6. Phase 6: US12 (Flaky Detection) - **1.5-2 days** (14 tasks) - High ROI for triage efficiency
+7. Phase 7: US13 (Polarion Integration) - **0.5-1 day** (9 tasks) - Quick win, high value
+8. Phase 8: US14 (Failure Grouping) - **1-1.5 days** (11 tasks) - High ROI for root cause analysis
+9. Phase 9: US3 (Domain View) - **1 day** (10 tasks) - Core navigation
+10. Phase 10: US10 (Saved Filters) - **1 day** (9 tasks) - **LiteDB INFRASTRUCTURE SETUP**
+11. Phase 11: Polish (Essential) - **1 day** (7 tasks) - Production readiness
 
-**Total MVP**: 128 tasks across 11 phases
+**Total MVP**: 128 tasks across 11 phases | **Effort**: ~13-17 days (104-136 hours)
 
 **⚠️ CRITICAL NOTE**: US10 sets up LiteDB/UserDataService infrastructure needed for US9, US16, US20 (all deferred). Complete this phase to enable easy addition of these features post-MVP.
 
-**Post-MVP (Based on User Feedback) - Prioritize after deployment**:
-- Phase 12: US6 (Feature Impact) - 9 tasks - If release managers need feature-level assessment
-- Phase 13: US5 (Config Matrix enhancements) - 6 tasks - If matrix filtering is heavily requested
-- Phase 14: US4 (Trends) - 13 tasks - If historical trending is critical
-- Phase 15: US8 (Search) - 5 tasks - If users struggle to find specific tests
-- Phase 16: US16 (Baselines) - 9 tasks - If baseline comparison becomes essential
-- Phase 17: US15 (Config Diff) - 6 tasks - If config-specific debugging is common
-- Phase 18: US17 (Trend Analytics) - 4 tasks - Depends on US4
-- Phase 19: US19 (Heatmap) - 10 tasks - If visual patterns help identify chronic issues
-- Phase 20: US18 (Execution Time) - 8 tasks - If performance regression is a concern
-- Phase 21: US9 (Custom Dashboard) - 11 tasks - If personalization is highly valued
-- Phase 22: US20 (Permalinks) - 11 tasks - If collaboration/sharing is needed
-- Phase 23: US7 (Feature View) - 5 tasks - If duplicate of US3/US6
-- Phase 24: Additional Polish - 6 tasks - Nice-to-haves
+**Post-MVP (Based on User Feedback) - Prioritize after deployment (~14-18 days additional effort)**:
+- Phase 12: US6 (Feature Impact) - **1 day** (9 tasks) - If release managers need feature-level assessment
+- Phase 13: US5 (Config Matrix enhancements) - **0.5-1 day** (6 tasks) - If matrix filtering is heavily requested
+- Phase 14: US8 (Search) - **0.5 day** (5 tasks) - If users struggle to find specific tests
+- Phase 15: US4 (Trends) - **1.5 days** (13 tasks) - If historical trending is critical
+- Phase 16: US16 (Baselines) - **1 day** (9 tasks) - If baseline comparison becomes essential
+- Phase 17: US15 (Config Diff) - **0.5-1 day** (6 tasks) - If config-specific debugging is common
+- Phase 18: US17 (Trend Analytics) - **0.5 day** (4 tasks) - Depends on US4
+- Phase 19: US19 (Heatmap) - **1 day** (10 tasks) - If visual patterns help identify chronic issues
+- Phase 20: US18 (Execution Time) - **1 day** (8 tasks) - If performance regression is a concern
+- Phase 21: US9 (Custom Dashboard) - **1.5 days** (11 tasks) - If personalization is highly valued
+- Phase 22: US20 (Permalinks) - **1.5 days** (11 tasks) - If collaboration/sharing is needed
+- Phase 23: US7 (Feature View) - **0.5 day** (5 tasks) - If duplicate of US3/US6
+- Phase 24: Additional Polish - **1 day** (6 tasks) - Nice-to-haves
+
+**Total Deferred**: 103 tasks | **Effort**: ~12-18 days (96-144 hours)
 
 ### Parallel Opportunities
 
