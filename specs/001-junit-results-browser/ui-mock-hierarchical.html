@@ -1,0 +1,1667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JUnit Test Results Browser - Interactive UI Mock</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            overflow: hidden;
+        }
+
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .header .subtitle {
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+
+        .container {
+            display: flex;
+            height: calc(100vh - 80px);
+        }
+
+        .sidebar {
+            width: 250px;
+            background: #34495e;
+            color: white;
+            overflow-y: auto;
+        }
+
+        .sidebar-item {
+            padding: 0.75rem 1.5rem;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.95rem;
+        }
+
+        .sidebar-item:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .sidebar-item.active {
+            background: rgba(255,255,255,0.2);
+            border-left: 3px solid #3498db;
+        }
+
+        .sidebar-icon {
+            font-size: 1.2rem;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: white;
+        }
+
+        .toolbar {
+            background: white;
+            padding: 1rem 2rem;
+            border-bottom: 2px solid #e0e0e0;
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .toolbar-section {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .toolbar-section label {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #555;
+        }
+
+        select, input[type="text"], button {
+            padding: 0.5rem 1rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        select {
+            min-width: 150px;
+        }
+
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #2980b9;
+        }
+
+        button.secondary {
+            background: #95a5a6;
+        }
+
+        button.secondary:hover {
+            background: #7f8c8d;
+        }
+
+        .test-results-table {
+            flex: 1;
+            overflow: auto;
+            background: white;
+        }
+
+        .table-wrapper {
+            min-width: max-content;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        thead {
+            position: sticky;
+            top: 0;
+            background: #f8f9fa;
+            z-index: 10;
+        }
+
+        th {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #dee2e6;
+            white-space: nowrap;
+        }
+
+        th.name-column {
+            min-width: 350px;
+            position: sticky;
+            left: 0;
+            background: #f8f9fa;
+            z-index: 11;
+        }
+
+        th.run-column {
+            min-width: 150px;
+            text-align: center;
+            border-left: 1px solid #dee2e6;
+        }
+
+        .run-header {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .run-name {
+            font-size: 0.95rem;
+            color: #2c3e50;
+            margin-bottom: 0.25rem;
+        }
+
+        .run-time {
+            font-size: 0.8rem;
+            color: #666;
+            font-weight: normal;
+        }
+
+        .run-stats {
+            font-size: 0.85rem;
+            color: #e74c3c;
+            font-weight: 600;
+            margin-top: 0.25rem;
+        }
+
+        .run-stats.good {
+            color: #27ae60;
+        }
+
+        td {
+            padding: 0.5rem 1rem;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        td.name-column {
+            position: sticky;
+            left: 0;
+            background: white;
+            z-index: 5;
+            border-right: 1px solid #e0e0e0;
+        }
+
+        td.run-column {
+            text-align: center;
+            border-left: 1px solid #f0f0f0;
+        }
+
+        .test-row {
+            transition: background 0.2s;
+        }
+
+        .test-row:hover {
+            background: #f8f9fa;
+        }
+
+        .test-row:hover td.name-column {
+            background: #f8f9fa;
+        }
+
+        .test-name {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .expand-icon {
+            cursor: pointer;
+            user-select: none;
+            font-size: 0.85rem;
+            color: #666;
+            width: 20px;
+            text-align: center;
+        }
+
+        .expand-icon:hover {
+            color: #333;
+        }
+
+        .indent-1 { padding-left: 2rem; }
+        .indent-2 { padding-left: 3rem; }
+        .indent-3 { padding-left: 4rem; }
+
+        .feature-row {
+            font-weight: 600;
+            background: #fafafa;
+        }
+
+        .feature-row:hover {
+            background: #f0f0f0;
+        }
+
+        .feature-row td.name-column {
+            background: #fafafa;
+        }
+
+        .feature-row:hover td.name-column {
+            background: #f0f0f0;
+        }
+
+        .suite-row {
+            background: white;
+        }
+
+        .test-result {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 60px;
+            padding: 0.35rem 0.6rem;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            background: #e8f5e9;
+            color: #27ae60;
+        }
+
+        .test-result.partial {
+            background: #fff3cd;
+            color: #f39c12;
+        }
+
+        .test-result.fail {
+            background: #ffe5e5;
+            color: #e74c3c;
+        }
+
+        .change-indicator {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+            margin-left: 0.5rem;
+            vertical-align: middle;
+        }
+
+        .change-indicator.improved {
+            background: #27ae60;
+        }
+
+        .change-indicator.degraded {
+            background: #e74c3c;
+        }
+
+        .change-indicator.unchanged {
+            background: transparent;
+        }
+
+        .collapsed {
+            display: none;
+        }
+
+        .filter-chips {
+            display: flex;
+            gap: 0.5rem;
+            padding: 0.75rem 2rem;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e0e0e0;
+            flex-wrap: wrap;
+        }
+
+        .filter-chip {
+            display: inline-flex;
+            align-items: center;
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 0.4rem 0.8rem;
+            border-radius: 16px;
+            font-size: 0.85rem;
+        }
+
+        .filter-chip-close {
+            margin-left: 0.5rem;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .summary-bar {
+            display: flex;
+            gap: 2rem;
+            padding: 1rem 2rem;
+            background: white;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 0.9rem;
+        }
+
+        .summary-item {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .summary-label {
+            color: #666;
+        }
+
+        .summary-value {
+            font-weight: 700;
+        }
+
+        .summary-value.success {
+            color: #27ae60;
+        }
+
+        .summary-value.error {
+            color: #e74c3c;
+        }
+
+        .summary-value.warning {
+            color: #f39c12;
+        }
+
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        .filter-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .filter-modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 8px;
+            width: 800px;
+            max-width: 90%;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        .modal-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 1.2rem;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #666;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+        }
+
+        .modal-close:hover {
+            color: #333;
+        }
+
+        .modal-body {
+            padding: 1.5rem;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .modal-footer {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.5rem;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+
+        .tree-selector {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .tree-group {
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .tree-group:last-child {
+            border-bottom: none;
+        }
+
+        .tree-parent {
+            padding: 0.75rem 1rem;
+            background: #f8f9fa;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .tree-parent:hover {
+            background: #e9ecef;
+        }
+
+        .tree-toggle {
+            font-size: 0.85rem;
+            color: #666;
+            width: 20px;
+        }
+
+        .tree-checkbox {
+            margin-right: 0.5rem;
+        }
+
+        .tree-children {
+            background: white;
+        }
+
+        .tree-children.collapsed {
+            display: none;
+        }
+
+        .tree-child {
+            padding: 0.65rem 1rem 0.65rem 3rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            border-left: 3px solid transparent;
+        }
+
+        .tree-child:hover {
+            background: #f8f9fa;
+            border-left-color: #3498db;
+        }
+
+        .tree-child label {
+            cursor: pointer;
+            user-select: none;
+            flex: 1;
+        }
+
+        .multi-select-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 0.5rem;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 1rem;
+            border-radius: 4px;
+        }
+
+        .multi-select-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .multi-select-item:hover {
+            background: #f8f9fa;
+        }
+
+        .multi-select-item label {
+            cursor: pointer;
+            user-select: none;
+            font-size: 0.9rem;
+        }
+
+        .filter-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+            font-size: 0.9rem;
+            min-width: 180px;
+        }
+
+        .filter-button:hover {
+            background: #f8f9fa;
+            border-color: #3498db;
+        }
+
+        .filter-button.has-selection {
+            border-color: #3498db;
+            background: #e3f2fd;
+        }
+
+        .filter-badge {
+            background: #3498db;
+            color: white;
+            padding: 0.15rem 0.5rem;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-left: auto;
+        }
+
+        .selected-items {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 4px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .selected-items-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .selected-item-chip {
+            display: inline-flex;
+            align-items: center;
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 0.35rem 0.7rem;
+            border-radius: 16px;
+            font-size: 0.85rem;
+            margin-right: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .selected-item-remove {
+            margin-left: 0.5rem;
+            cursor: pointer;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🧪 TestResultBrowser V2.0</h1>
+        <div class="subtitle">Comprehensive test monitoring across teams, features, and configurations</div>
+    </div>
+
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-item active" onclick="showView('home')">
+                <span class="sidebar-icon">🏠</span>
+                <span>Home</span>
+            </div>
+            <div class="sidebar-item" onclick="showView('import')">
+                <span class="sidebar-icon">📥</span>
+                <span>Import</span>
+            </div>
+            <div class="sidebar-item" onclick="showView('changelog')">
+                <span class="sidebar-icon">📋</span>
+                <span>Changelog</span>
+            </div>
+            <div class="sidebar-item" onclick="showView('config')">
+                <span class="sidebar-icon">⚙️</span>
+                <span>Configuration</span>
+            </div>
+            <div class="sidebar-item" onclick="showView('dashboard')">
+                <span class="sidebar-icon">📊</span>
+                <span>Dashboard</span>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Toolbar -->
+            <div class="toolbar">
+                <div class="toolbar-section">
+                    <label>Team & Features:</label>
+                    <button class="filter-button" id="teamFeatureBtn" onclick="openTeamFeatureModal()">
+                        <span id="teamFeatureLabel">Select...</span>
+                        <span class="filter-badge" id="teamFeatureBadge" style="display: none;">0</span>
+                    </button>
+                </div>
+                <div class="toolbar-section">
+                    <label>Machines:</label>
+                    <button class="filter-button" id="machineBtn" onclick="openMachineModal()">
+                        <span id="machineLabel">All Machines</span>
+                        <span class="filter-badge" id="machineBadge" style="display: none;">0</span>
+                    </button>
+                </div>
+                <div class="toolbar-section">
+                    <label>Configuration:</label>
+                    <select id="configFilter" onchange="applyFilters()">
+                        <option value="">All Configs</option>
+                        <option value="debug">Debug</option>
+                        <option value="release" selected>Release</option>
+                    </select>
+                </div>
+                <div class="toolbar-section">
+                    <input type="text" id="searchBox" placeholder="Search tests..." style="min-width: 250px;">
+                </div>
+                <div class="toolbar-section" style="margin-left: auto;">
+                    <button onclick="expandAll()">Expand All</button>
+                    <button onclick="collapseAll()">Collapse All</button>
+                    <button class="secondary" onclick="alert('Save Filter')">💾 Save</button>
+                    <button class="secondary" onclick="alert('Configure Dashboard')">⚙️ Configure</button>
+                </div>
+            </div>
+
+            <!-- Filter Chips -->
+            <div class="filter-chips" id="filterChips" style="display: none;">
+                <!-- Dynamically populated -->
+            </div>
+
+            <!-- Summary Bar -->
+            <div class="summary-bar">
+                <div class="summary-item">
+                    <span class="summary-label">Latest Run:</span>
+                    <span class="summary-value">Release-252_181659</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Total Tests:</span>
+                    <span class="summary-value">525</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Passed:</span>
+                    <span class="summary-value success">514 (98%)</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Failed:</span>
+                    <span class="summary-value error">11 (2%)</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Skipped:</span>
+                    <span class="summary-value warning">0</span>
+                </div>
+            </div>
+
+            <!-- Test Results Table -->
+            <div class="test-results-table">
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th class="name-column">Name</th>
+                                <th class="run-column">
+                                    <div class="run-header">
+                                        <div class="run-name">Release-252</div>
+                                        <div class="run-time">01/15/2026 22:55</div>
+                                        <div class="run-stats">514/525 (98%)</div>
+                                    </div>
+                                </th>
+                                <th class="run-column">
+                                    <div class="run-header">
+                                        <div class="run-name">Release-251</div>
+                                        <div class="run-time">01/14/2026 22:48</div>
+                                        <div class="run-stats">510/522 (98%)</div>
+                                    </div>
+                                </th>
+                                <th class="run-column">
+                                    <div class="run-header">
+                                        <div class="run-name">Release-250</div>
+                                        <div class="run-time">01/13/2026 23:03</div>
+                                        <div class="run-stats">514/522 (98%)</div>
+                                    </div>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="testResultsBody">
+                            <!-- Feature: Px Core - Alarm Dashboard -->
+                            <tr class="test-row feature-row" data-id="feature-1">
+                                <td class="name-column">
+                                    <div class="test-name">
+                                        <span class="expand-icon" onclick="toggleRow('feature-1')">+</span>
+                                        <span>Px Core - Alarm Dashboard</span>
+                                    </div>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">6/6</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">6/6</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">6/6</span>
+                                </td>
+                            </tr>
+
+                            <!-- Feature: Px Core - Alarm Manager -->
+                            <tr class="test-row feature-row" data-id="feature-2">
+                                <td class="name-column">
+                                    <div class="test-name">
+                                        <span class="expand-icon" onclick="toggleRow('feature-2')">+</span>
+                                        <span>Px Core - Alarm Manager</span>
+                                    </div>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">36/36</span>
+                                    <span class="change-indicator improved" title="Improved from previous run"></span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result fail">35/36</span>
+                                    <span class="change-indicator degraded" title="Degraded from previous run"></span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">36/36</span>
+                                </td>
+                            </tr>
+
+                            <!-- Suite: Regression Tests for Alarm Reports -->
+                            <tr class="test-row suite-row child-feature-2 collapsed" data-id="suite-2-1" data-parent="feature-2">
+                                <td class="name-column">
+                                    <div class="test-name indent-1">
+                                        <span class="expand-icon" onclick="toggleRow('suite-2-1')">+</span>
+                                        <span>Regression Tests for Alarm Reports</span>
+                                    </div>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">3/3</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">3/3</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">3/3</span>
+                                </td>
+                            </tr>
+
+                            <!-- Suite: Regression Tests for Alarm Configurations -->
+                            <tr class="test-row suite-row child-feature-2 collapsed" data-id="suite-2-2" data-parent="feature-2">
+                                <td class="name-column">
+                                    <div class="test-name indent-1">
+                                        <span class="expand-icon" onclick="toggleRow('suite-2-2')">+</span>
+                                        <span>Regression Tests for Alarm Configurations</span>
+                                    </div>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">9/9</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">9/9</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">9/9</span>
+                                </td>
+                            </tr>
+
+                            <!-- Suite: Regression Tests for Alarm Manager Page -->
+                            <tr class="test-row suite-row child-feature-2 collapsed" data-id="suite-2-3" data-parent="feature-2">
+                                <td class="name-column">
+                                    <div class="test-name indent-1">
+                                        <span class="expand-icon" onclick="toggleRow('suite-2-3')">+</span>
+                                        <span>Regression Tests for Alarm Manager Page</span>
+                                    </div>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">9/9</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">9/9</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">9/9</span>
+                                </td>
+                            </tr>
+
+                            <!-- Suite: Regression Tests for Alarm Notification Settings -->
+                            <tr class="test-row suite-row child-feature-2 collapsed" data-id="suite-2-4" data-parent="feature-2">
+                                <td class="name-column">
+                                    <div class="test-name indent-1">
+                                        <span class="expand-icon" onclick="toggleRow('suite-2-4')">+</span>
+                                        <span>Regression Tests for Alarm Notification Settings</span>
+                                    </div>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">7/7</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">7/7</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">7/7</span>
+                                </td>
+                            </tr>
+
+                            <!-- Suite: Regression Tests for Alarm Permissions -->
+                            <tr class="test-row suite-row child-feature-2 collapsed" data-id="suite-2-5" data-parent="feature-2">
+                                <td class="name-column">
+                                    <div class="test-name indent-1">
+                                        <span class="expand-icon" onclick="toggleRow('suite-2-5')">+</span>
+                                        <span>Regression Tests for Alarm Permissions</span>
+                                    </div>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">8/8</span>
+                                    <span class="change-indicator improved"></span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result fail">7/8</span>
+                                    <span class="change-indicator degraded"></span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">8/8</span>
+                                </td>
+                            </tr>
+
+                            <!-- Feature: Px Core - Alarm Manager Public API -->
+                            <tr class="test-row feature-row" data-id="feature-3">
+                                <td class="name-column">
+                                    <div class="test-name">
+                                        <span class="expand-icon" onclick="toggleRow('feature-3')">+</span>
+                                        <span>Px Core - Alarm Manager Public API</span>
+                                    </div>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">20/20</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">20/20</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">20/20</span>
+                                </td>
+                            </tr>
+
+                            <!-- Feature: Px Core - Central Line App -->
+                            <tr class="test-row feature-row" data-id="feature-4">
+                                <td class="name-column">
+                                    <div class="test-name">
+                                        <span class="expand-icon" onclick="toggleRow('feature-4')">+</span>
+                                        <span>Px Core - Central Line App</span>
+                                    </div>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">2/2</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">2/2</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">2/2</span>
+                                </td>
+                            </tr>
+
+                            <!-- Feature: Px Core - Central Reporting Config -->
+                            <tr class="test-row feature-row" data-id="feature-5">
+                                <td class="name-column">
+                                    <div class="test-name">
+                                        <span class="expand-icon" onclick="toggleRow('feature-5')">+</span>
+                                        <span>Px Core - Central Reporting Config</span>
+                                    </div>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">10/10</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">10/10</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">10/10</span>
+                                </td>
+                            </tr>
+
+                            <!-- Feature: Px Core - Central Reporting View -->
+                            <tr class="test-row feature-row" data-id="feature-6">
+                                <td class="name-column">
+                                    <div class="test-name">
+                                        <span class="expand-icon" onclick="toggleRow('feature-6')">+</span>
+                                        <span>Px Core - Central Reporting View</span>
+                                    </div>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">7/7</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">7/7</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">7/7</span>
+                                </td>
+                            </tr>
+
+                            <!-- Feature: Px Core - Data Manager -->
+                            <tr class="test-row feature-row" data-id="feature-7">
+                                <td class="name-column">
+                                    <div class="test-name">
+                                        <span class="expand-icon" onclick="toggleRow('feature-7')">+</span>
+                                        <span>Px Core - Data Manager</span>
+                                    </div>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">25/25</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">25/25</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">25/25</span>
+                                </td>
+                            </tr>
+
+                            <!-- Feature: Px Core - Generic Dashboard -->
+                            <tr class="test-row feature-row" data-id="feature-8">
+                                <td class="name-column">
+                                    <div class="test-name">
+                                        <span class="expand-icon" onclick="toggleRow('feature-8')">+</span>
+                                        <span>Px Core - Generic Dashboard</span>
+                                    </div>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">22/22</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">22/22</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">22/22</span>
+                                </td>
+                            </tr>
+
+                            <!-- Feature: Px Core - Home Screen -->
+                            <tr class="test-row feature-row" data-id="feature-9">
+                                <td class="name-column">
+                                    <div class="test-name">
+                                        <span class="expand-icon" onclick="toggleRow('feature-9')">+</span>
+                                        <span>Px Core - Home Screen</span>
+                                    </div>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">9/9</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">9/9</span>
+                                </td>
+                                <td class="run-column">
+                                    <span class="test-result">9/9</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Team & Feature Filter Modal -->
+    <div id="teamFeatureModal" class="filter-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Select Teams & Features</h2>
+                <button class="modal-close" onclick="closeTeamFeatureModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <input type="text" class="search-input" id="teamFeatureSearch" placeholder="Search teams or features..." onkeyup="filterTeamFeatureTree()">
+                <div class="tree-selector" id="teamFeatureTree">
+                    <!-- Team T&T -->
+                    <div class="tree-group">
+                        <div class="tree-parent" onclick="toggleTreeGroup('team-tt')">
+                            <span class="tree-toggle" id="toggle-team-tt">▼</span>
+                            <input type="checkbox" class="tree-checkbox" id="check-team-tt" onchange="checkTeamChildren('team-tt')">
+                            <label for="check-team-tt">Team T&T</label>
+                        </div>
+                        <div class="tree-children" id="children-team-tt">
+                            <div class="tree-child">
+                                <input type="checkbox" class="tree-checkbox feature-check" data-team="Team T&T" data-feature="Aggregation Level Carton" id="feature-tt-1">
+                                <label for="feature-tt-1">Aggregation Level Carton</label>
+                            </div>
+                            <div class="tree-child">
+                                <input type="checkbox" class="tree-checkbox feature-check" data-team="Team T&T" data-feature="Aggregation Level Pallet" id="feature-tt-2">
+                                <label for="feature-tt-2">Aggregation Level Pallet</label>
+                            </div>
+                            <div class="tree-child">
+                                <input type="checkbox" class="tree-checkbox feature-check" data-team="Team T&T" data-feature="Item Master Data" id="feature-tt-3">
+                                <label for="feature-tt-3">Item Master Data</label>
+                            </div>
+                            <div class="tree-child">
+                                <input type="checkbox" class="tree-checkbox feature-check" data-team="Team T&T" data-feature="Order Management" id="feature-tt-4">
+                                <label for="feature-tt-4">Order Management</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Team Alpha -->
+                    <div class="tree-group">
+                        <div class="tree-parent" onclick="toggleTreeGroup('team-alpha')">
+                            <span class="tree-toggle" id="toggle-team-alpha">▼</span>
+                            <input type="checkbox" class="tree-checkbox" id="check-team-alpha" onchange="checkTeamChildren('team-alpha')">
+                            <label for="check-team-alpha">Team Alpha</label>
+                        </div>
+                        <div class="tree-children" id="children-team-alpha">
+                            <div class="tree-child">
+                                <input type="checkbox" class="tree-checkbox feature-check" data-team="Team Alpha" data-feature="Alarm Dashboard" id="feature-alpha-1">
+                                <label for="feature-alpha-1">Alarm Dashboard</label>
+                            </div>
+                            <div class="tree-child">
+                                <input type="checkbox" class="tree-checkbox feature-check" data-team="Team Alpha" data-feature="Alarm Manager" id="feature-alpha-2">
+                                <label for="feature-alpha-2">Alarm Manager</label>
+                            </div>
+                            <div class="tree-child">
+                                <input type="checkbox" class="tree-checkbox feature-check" data-team="Team Alpha" data-feature="Alarm Public API" id="feature-alpha-3">
+                                <label for="feature-alpha-3">Alarm Public API</label>
+                            </div>
+                            <div class="tree-child">
+                                <input type="checkbox" class="tree-checkbox feature-check" data-team="Team Alpha" data-feature="User Management" id="feature-alpha-4">
+                                <label for="feature-alpha-4">User Management</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Team Beta -->
+                    <div class="tree-group">
+                        <div class="tree-parent" onclick="toggleTreeGroup('team-beta')">
+                            <span class="tree-toggle" id="toggle-team-beta">▼</span>
+                            <input type="checkbox" class="tree-checkbox" id="check-team-beta" onchange="checkTeamChildren('team-beta')">
+                            <label for="check-team-beta">Team Beta</label>
+                        </div>
+                        <div class="tree-children" id="children-team-beta">
+                            <div class="tree-child">
+                                <input type="checkbox" class="tree-checkbox feature-check" data-team="Team Beta" data-feature="Central Line App" id="feature-beta-1">
+                                <label for="feature-beta-1">Central Line App</label>
+                            </div>
+                            <div class="tree-child">
+                                <input type="checkbox" class="tree-checkbox feature-check" data-team="Team Beta" data-feature="Reporting Config" id="feature-beta-2">
+                                <label for="feature-beta-2">Reporting Config</label>
+                            </div>
+                            <div class="tree-child">
+                                <input type="checkbox" class="tree-checkbox feature-check" data-team="Team Beta" data-feature="Reporting View" id="feature-beta-3">
+                                <label for="feature-beta-3">Reporting View</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Team Gamma -->
+                    <div class="tree-group">
+                        <div class="tree-parent" onclick="toggleTreeGroup('team-gamma')">
+                            <span class="tree-toggle" id="toggle-team-gamma">▼</span>
+                            <input type="checkbox" class="tree-checkbox" id="check-team-gamma" onchange="checkTeamChildren('team-gamma')">
+                            <label for="check-team-gamma">Team Gamma</label>
+                        </div>
+                        <div class="tree-children" id="children-team-gamma">
+                            <div class="tree-child">
+                                <input type="checkbox" class="tree-checkbox feature-check" data-team="Team Gamma" data-feature="Data Manager" id="feature-gamma-1">
+                                <label for="feature-gamma-1">Data Manager</label>
+                            </div>
+                            <div class="tree-child">
+                                <input type="checkbox" class="tree-checkbox feature-check" data-team="Team Gamma" data-feature="Generic Dashboard" id="feature-gamma-2">
+                                <label for="feature-gamma-2">Generic Dashboard</label>
+                            </div>
+                            <div class="tree-child">
+                                <input type="checkbox" class="tree-checkbox feature-check" data-team="Team Gamma" data-feature="Home Screen" id="feature-gamma-3">
+                                <label for="feature-gamma-3">Home Screen</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="selected-items" id="selectedTeamFeatures" style="display: none;">
+                    <div class="selected-items-title">Selected:</div>
+                    <div id="selectedTeamFeaturesChips"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="clearTeamFeatureSelection()">Clear All</button>
+                <button class="secondary" onclick="closeTeamFeatureModal()">Cancel</button>
+                <button onclick="applyTeamFeatureSelection()">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Machine Filter Modal -->
+    <div id="machineModal" class="filter-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Select Machines (50 available)</h2>
+                <button class="modal-close" onclick="closeMachineModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <input type="text" class="search-input" id="machineSearch" placeholder="Search machines..." onkeyup="filterMachines()">
+                <div class="multi-select-grid" id="machineGrid">
+                    <div class="multi-select-item" data-name="Windows-01">
+                        <input type="checkbox" class="machine-check" id="machine-1" value="Windows-01">
+                        <label for="machine-1">Windows-01</label>
+                    </div>
+                    <div class="multi-select-item" data-name="Windows-02">
+                        <input type="checkbox" class="machine-check" id="machine-2" value="Windows-02">
+                        <label for="machine-2">Windows-02</label>
+                    </div>
+                    <div class="multi-select-item" data-name="Windows-03">
+                        <input type="checkbox" class="machine-check" id="machine-3" value="Windows-03">
+                        <label for="machine-3">Windows-03</label>
+                    </div>
+                    <div class="multi-select-item" data-name="Windows-04">
+                        <input type="checkbox" class="machine-check" id="machine-4" value="Windows-04">
+                        <label for="machine-4">Windows-04</label>
+                    </div>
+                    <div class="multi-select-item" data-name="Windows-05">
+                        <input type="checkbox" class="machine-check" id="machine-5" value="Windows-05">
+                        <label for="machine-5">Windows-05</label>
+                    </div>
+                    <div class="multi-select-item" data-name="Linux-01">
+                        <input type="checkbox" class="machine-check" id="machine-6" value="Linux-01">
+                        <label for="machine-6">Linux-01</label>
+                    </div>
+                    <div class="multi-select-item" data-name="Linux-02">
+                        <input type="checkbox" class="machine-check" id="machine-7" value="Linux-02">
+                        <label for="machine-7">Linux-02</label>
+                    </div>
+                    <div class="multi-select-item" data-name="Linux-03">
+                        <input type="checkbox" class="machine-check" id="machine-8" value="Linux-03">
+                        <label for="machine-8">Linux-03</label>
+                    </div>
+                    <div class="multi-select-item" data-name="Linux-04">
+                        <input type="checkbox" class="machine-check" id="machine-9" value="Linux-04">
+                        <label for="machine-9">Linux-04</label>
+                    </div>
+                    <div class="multi-select-item" data-name="Linux-05">
+                        <input type="checkbox" class="machine-check" id="machine-10" value="Linux-05">
+                        <label for="machine-10">Linux-05</label>
+                    </div>
+                    <div class="multi-select-item" data-name="macOS-01">
+                        <input type="checkbox" class="machine-check" id="machine-11" value="macOS-01">
+                        <label for="machine-11">macOS-01</label>
+                    </div>
+                    <div class="multi-select-item" data-name="macOS-02">
+                        <input type="checkbox" class="machine-check" id="machine-12" value="macOS-02">
+                        <label for="machine-12">macOS-02</label>
+                    </div>
+                    <div class="multi-select-item" data-name="macOS-03">
+                        <input type="checkbox" class="machine-check" id="machine-13" value="macOS-03">
+                        <label for="machine-13">macOS-03</label>
+                    </div>
+                    <div class="multi-select-item" data-name="Ubuntu-Server-01">
+                        <input type="checkbox" class="machine-check" id="machine-14" value="Ubuntu-Server-01">
+                        <label for="machine-14">Ubuntu-Server-01</label>
+                    </div>
+                    <div class="multi-select-item" data-name="Ubuntu-Server-02">
+                        <input type="checkbox" class="machine-check" id="machine-15" value="Ubuntu-Server-02">
+                        <label for="machine-15">Ubuntu-Server-02</label>
+                    </div>
+                    <!-- Add more machines to simulate 50 total -->
+                    <div class="multi-select-item" data-name="Build-Agent-01">
+                        <input type="checkbox" class="machine-check" id="machine-16" value="Build-Agent-01">
+                        <label for="machine-16">Build-Agent-01</label>
+                    </div>
+                    <div class="multi-select-item" data-name="Build-Agent-02">
+                        <input type="checkbox" class="machine-check" id="machine-17" value="Build-Agent-02">
+                        <label for="machine-17">Build-Agent-02</label>
+                    </div>
+                    <div class="multi-select-item" data-name="Build-Agent-03">
+                        <input type="checkbox" class="machine-check" id="machine-18" value="Build-Agent-03">
+                        <label for="machine-18">Build-Agent-03</label>
+                    </div>
+                    <div class="multi-select-item" data-name="Test-Runner-01">
+                        <input type="checkbox" class="machine-check" id="machine-19" value="Test-Runner-01">
+                        <label for="machine-19">Test-Runner-01</label>
+                    </div>
+                    <div class="multi-select-item" data-name="Test-Runner-02">
+                        <input type="checkbox" class="machine-check" id="machine-20" value="Test-Runner-02">
+                        <label for="machine-20">Test-Runner-02</label>
+                    </div>
+                </div>
+
+                <div class="selected-items" id="selectedMachines" style="display: none;">
+                    <div class="selected-items-title">Selected Machines:</div>
+                    <div id="selectedMachinesChips"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="selectAllMachines()">Select All</button>
+                <button onclick="clearMachineSelection()">Clear All</button>
+                <button class="secondary" onclick="closeMachineModal()">Cancel</button>
+                <button onclick="applyMachineSelection()">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Team & Feature Modal Functions
+        let selectedTeamFeatures = [];
+
+        function openTeamFeatureModal() {
+            document.getElementById('teamFeatureModal').classList.add('active');
+        }
+
+        function closeTeamFeatureModal() {
+            document.getElementById('teamFeatureModal').classList.remove('active');
+        }
+
+        function toggleTreeGroup(groupId) {
+            const toggle = document.getElementById('toggle-' + groupId);
+            const children = document.getElementById('children-' + groupId);
+            
+            if (children.classList.contains('collapsed')) {
+                children.classList.remove('collapsed');
+                toggle.textContent = '▼';
+            } else {
+                children.classList.add('collapsed');
+                toggle.textContent = '▶';
+            }
+        }
+
+        function checkTeamChildren(teamId) {
+            const teamCheckbox = document.getElementById('check-' + teamId);
+            const children = document.querySelectorAll(`#children-${teamId} .feature-check`);
+            children.forEach(child => {
+                child.checked = teamCheckbox.checked;
+            });
+            updateSelectedTeamFeatures();
+        }
+
+        function updateSelectedTeamFeatures() {
+            const selected = [];
+            document.querySelectorAll('.feature-check:checked').forEach(checkbox => {
+                selected.push({
+                    team: checkbox.dataset.team,
+                    feature: checkbox.dataset.feature,
+                    id: checkbox.id
+                });
+            });
+
+            const container = document.getElementById('selectedTeamFeatures');
+            const chipsContainer = document.getElementById('selectedTeamFeaturesChips');
+            
+            if (selected.length > 0) {
+                container.style.display = 'block';
+                chipsContainer.innerHTML = selected.map(item => 
+                    `<span class="selected-item-chip">${item.team} → ${item.feature}<span class="selected-item-remove" onclick="removeTeamFeature('${item.id}')">×</span></span>`
+                ).join('');
+            } else {
+                container.style.display = 'none';
+            }
+        }
+
+        function removeTeamFeature(id) {
+            document.getElementById(id).checked = false;
+            updateSelectedTeamFeatures();
+        }
+
+        function applyTeamFeatureSelection() {
+            const selected = [];
+            document.querySelectorAll('.feature-check:checked').forEach(checkbox => {
+                selected.push({
+                    team: checkbox.dataset.team,
+                    feature: checkbox.dataset.feature
+                });
+            });
+
+            selectedTeamFeatures = selected;
+            
+            const btn = document.getElementById('teamFeatureBtn');
+            const label = document.getElementById('teamFeatureLabel');
+            const badge = document.getElementById('teamFeatureBadge');
+            
+            if (selected.length > 0) {
+                btn.classList.add('has-selection');
+                label.textContent = selected.length === 1 ? selected[0].feature : `${selected.length} selected`;
+                badge.textContent = selected.length;
+                badge.style.display = 'inline-block';
+            } else {
+                btn.classList.remove('has-selection');
+                label.textContent = 'Select...';
+                badge.style.display = 'none';
+            }
+            
+            closeTeamFeatureModal();
+            applyFilters();
+        }
+
+        function clearTeamFeatureSelection() {
+            document.querySelectorAll('.feature-check').forEach(checkbox => checkbox.checked = false);
+            document.querySelectorAll('.tree-checkbox').forEach(checkbox => checkbox.checked = false);
+            updateSelectedTeamFeatures();
+        }
+
+        function filterTeamFeatureTree() {
+            const searchTerm = document.getElementById('teamFeatureSearch').value.toLowerCase();
+            document.querySelectorAll('.tree-group').forEach(group => {
+                const teamName = group.querySelector('.tree-parent label').textContent.toLowerCase();
+                const features = group.querySelectorAll('.tree-child');
+                let groupVisible = false;
+
+                features.forEach(feature => {
+                    const featureName = feature.querySelector('label').textContent.toLowerCase();
+                    if (teamName.includes(searchTerm) || featureName.includes(searchTerm)) {
+                        feature.style.display = '';
+                        groupVisible = true;
+                    } else {
+                        feature.style.display = 'none';
+                    }
+                });
+
+                group.style.display = groupVisible ? '' : 'none';
+            });
+        }
+
+        // Machine Modal Functions
+        let selectedMachines = [];
+
+        function openMachineModal() {
+            document.getElementById('machineModal').classList.add('active');
+        }
+
+        function closeMachineModal() {
+            document.getElementById('machineModal').classList.remove('active');
+        }
+
+        function updateSelectedMachines() {
+            const selected = [];
+            document.querySelectorAll('.machine-check:checked').forEach(checkbox => {
+                selected.push(checkbox.value);
+            });
+
+            const container = document.getElementById('selectedMachines');
+            const chipsContainer = document.getElementById('selectedMachinesChips');
+            
+            if (selected.length > 0) {
+                container.style.display = 'block';
+                chipsContainer.innerHTML = selected.map(machine => 
+                    `<span class="selected-item-chip">${machine}<span class="selected-item-remove" onclick="removeMachine('${machine}')">×</span></span>`
+                ).join('');
+            } else {
+                container.style.display = 'none';
+            }
+        }
+
+        function removeMachine(machine) {
+            document.querySelector(`.machine-check[value="${machine}"]`).checked = false;
+            updateSelectedMachines();
+        }
+
+        function applyMachineSelection() {
+            const selected = [];
+            document.querySelectorAll('.machine-check:checked').forEach(checkbox => {
+                selected.push(checkbox.value);
+            });
+
+            selectedMachines = selected;
+            
+            const btn = document.getElementById('machineBtn');
+            const label = document.getElementById('machineLabel');
+            const badge = document.getElementById('machineBadge');
+            
+            if (selected.length > 0) {
+                btn.classList.add('has-selection');
+                label.textContent = selected.length === 1 ? selected[0] : `${selected.length} selected`;
+                badge.textContent = selected.length;
+                badge.style.display = 'inline-block';
+            } else {
+                btn.classList.remove('has-selection');
+                label.textContent = 'All Machines';
+                badge.style.display = 'none';
+            }
+            
+            closeMachineModal();
+            applyFilters();
+        }
+
+        function clearMachineSelection() {
+            document.querySelectorAll('.machine-check').forEach(checkbox => checkbox.checked = false);
+            updateSelectedMachines();
+        }
+
+        function selectAllMachines() {
+            document.querySelectorAll('.machine-check').forEach(checkbox => checkbox.checked = true);
+            updateSelectedMachines();
+        }
+
+        function filterMachines() {
+            const searchTerm = document.getElementById('machineSearch').value.toLowerCase();
+            document.querySelectorAll('.multi-select-item').forEach(item => {
+                const machineName = item.dataset.name.toLowerCase();
+                item.style.display = machineName.includes(searchTerm) ? '' : 'none';
+            });
+        }
+
+        // Event listeners for checkboxes
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.feature-check').forEach(checkbox => {
+                checkbox.addEventListener('change', updateSelectedTeamFeatures);
+            });
+            
+            document.querySelectorAll('.machine-check').forEach(checkbox => {
+                checkbox.addEventListener('change', updateSelectedMachines);
+            });
+
+            // Close modals when clicking outside
+            document.querySelectorAll('.filter-modal').forEach(modal => {
+                modal.addEventListener('click', function(e) {
+                    if (e.target === modal) {
+                        modal.classList.remove('active');
+                    }
+                });
+            });
+        });
+
+        // Existing functions
+        function toggleRow(id) {
+            const icon = event.target;
+            const childRows = document.querySelectorAll(`.child-${id}`);
+            
+            if (icon.textContent === '+') {
+                icon.textContent = '−';
+                childRows.forEach(row => row.classList.remove('collapsed'));
+            } else {
+                icon.textContent = '+';
+                childRows.forEach(row => row.classList.add('collapsed'));
+                // Also collapse children of children
+                childRows.forEach(row => {
+                    const rowId = row.getAttribute('data-id');
+                    const nestedChildren = document.querySelectorAll(`.child-${rowId}`);
+                    nestedChildren.forEach(nested => nested.classList.add('collapsed'));
+                    const nestedIcon = row.querySelector('.expand-icon');
+                    if (nestedIcon) nestedIcon.textContent = '+';
+                });
+            }
+        }
+
+        function expandAll() {
+            document.querySelectorAll('.expand-icon').forEach(icon => icon.textContent = '−');
+            document.querySelectorAll('.test-row').forEach(row => row.classList.remove('collapsed'));
+        }
+
+        function collapseAll() {
+            document.querySelectorAll('.expand-icon').forEach(icon => icon.textContent = '+');
+            document.querySelectorAll('.test-row').forEach((row, index) => {
+                if (!row.classList.contains('feature-row')) {
+                    row.classList.add('collapsed');
+                }
+            });
+        }
+
+        function applyFilters() {
+            const config = document.getElementById('configFilter').value;
+            
+            const filterChips = document.getElementById('filterChips');
+            let html = '';
+            
+            if (selectedTeamFeatures.length > 0) {
+                selectedTeamFeatures.forEach(item => {
+                    html += `<span class="filter-chip">${item.team} → ${item.feature} <span class="filter-chip-close" onclick="removeActiveTeamFeature('${item.feature}')">×</span></span>`;
+                });
+            }
+            
+            if (selectedMachines.length > 0) {
+                if (selectedMachines.length <= 3) {
+                    selectedMachines.forEach(machine => {
+                        html += `<span class="filter-chip">Machine: ${machine} <span class="filter-chip-close" onclick="removeActiveMachine('${machine}')">×</span></span>`;
+                    });
+                } else {
+                    html += `<span class="filter-chip">Machines: ${selectedMachines.length} selected <span class="filter-chip-close" onclick="clearActiveMachines()">×</span></span>`;
+                }
+            }
+            
+            if (config) {
+                html += `<span class="filter-chip">Config: ${config} <span class="filter-chip-close" onclick="clearFilter('configFilter')">×</span></span>`;
+            }
+            
+            filterChips.innerHTML = html;
+            filterChips.style.display = html ? 'flex' : 'none';
+        }
+
+        function removeActiveTeamFeature(feature) {
+            const checkbox = document.querySelector(`.feature-check[data-feature="${feature}"]`);
+            if (checkbox) {
+                checkbox.checked = false;
+            }
+            selectedTeamFeatures = selectedTeamFeatures.filter(item => item.feature !== feature);
+            
+            // Update button
+            const btn = document.getElementById('teamFeatureBtn');
+            const label = document.getElementById('teamFeatureLabel');
+            const badge = document.getElementById('teamFeatureBadge');
+            
+            if (selectedTeamFeatures.length > 0) {
+                label.textContent = selectedTeamFeatures.length === 1 ? selectedTeamFeatures[0].feature : `${selectedTeamFeatures.length} selected`;
+                badge.textContent = selectedTeamFeatures.length;
+            } else {
+                btn.classList.remove('has-selection');
+                label.textContent = 'Select...';
+                badge.style.display = 'none';
+            }
+            
+            applyFilters();
+        }
+
+        function removeActiveMachine(machine) {
+            const checkbox = document.querySelector(`.machine-check[value="${machine}"]`);
+            if (checkbox) {
+                checkbox.checked = false;
+            }
+            selectedMachines = selectedMachines.filter(m => m !== machine);
+            
+            // Update button
+            const btn = document.getElementById('machineBtn');
+            const label = document.getElementById('machineLabel');
+            const badge = document.getElementById('machineBadge');
+            
+            if (selectedMachines.length > 0) {
+                label.textContent = selectedMachines.length === 1 ? selectedMachines[0] : `${selectedMachines.length} selected`;
+                badge.textContent = selectedMachines.length;
+            } else {
+                btn.classList.remove('has-selection');
+                label.textContent = 'All Machines';
+                badge.style.display = 'none';
+            }
+            
+            applyFilters();
+        }
+
+        function clearActiveMachines() {
+            document.querySelectorAll('.machine-check').forEach(checkbox => checkbox.checked = false);
+            selectedMachines = [];
+            
+            const btn = document.getElementById('machineBtn');
+            const label = document.getElementById('machineLabel');
+            const badge = document.getElementById('machineBadge');
+            
+            btn.classList.remove('has-selection');
+            label.textContent = 'All Machines';
+            badge.style.display = 'none';
+            
+            applyFilters();
+        }
+
+        function clearFilter(filterId) {
+            document.getElementById(filterId).value = '';
+            applyFilters();
+        }
+
+        function showView(view) {
+            document.querySelectorAll('.sidebar-item').forEach(item => item.classList.remove('active'));
+            event.target.closest('.sidebar-item').classList.add('active');
+            
+            if (view !== 'home') {
+                alert(`Navigating to ${view} view (not implemented in mock)`);
+            }
+        }
+
+        // Search functionality
+        document.getElementById('searchBox').addEventListener('input', function(e) {
+            const searchTerm = e.target.value.toLowerCase();
+            document.querySelectorAll('.test-row').forEach(row => {
+                const text = row.textContent.toLowerCase();
+                if (text.includes(searchTerm)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+
+        // Initialize
+        applyFilters();
+    </script>
+</body>
+</html>
