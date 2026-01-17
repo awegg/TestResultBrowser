@@ -1,0 +1,48 @@
+@using TestResultBrowser.Web.Models
+
+@if (Matrix == null)
+{
+    <MudAlert Severity="Severity.Info">No matrix data.</MudAlert>
+}
+else
+{
+    <table class="mud-table" style="width:100%;">
+        <thead>
+            <tr>
+                <th>Version \ Config</th>
+                @foreach (var nc in Matrix.NamedConfigs)
+                {
+                    <th>@nc</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var version in Matrix.Versions)
+            {
+                <tr>
+                    <td style="font-weight:600;">@version</td>
+                    @foreach (var nc in Matrix.NamedConfigs)
+                    {
+                        <td>
+                            @{ var cell = Matrix.Cells.TryGetValue(version, out var map) && map.TryGetValue(nc, out var c) ? c : null; }
+                            @if (cell == null)
+                            {
+                                <span>N/A</span>
+                            }
+                            else
+                            {
+                                var color = cell.FailedTests > 0 ? "#d32f2f" : "#2e7d32";
+                                <button style="color:@color;border:none;background:transparent;cursor:pointer;" @onclick="(() => OnCellClick.InvokeAsync(cell.ConfigurationId))">@cell.PassRate.ToString("F1")%</button>
+                            }
+                        </td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Parameter] public ConfigurationMatrix? Matrix { get; set; }
+    [Parameter] public EventCallback<string> OnCellClick { get; set; }
+}

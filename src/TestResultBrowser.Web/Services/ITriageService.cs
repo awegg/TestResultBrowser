@@ -25,4 +25,12 @@ public interface ITriageService
         string todayBuildId, 
         string yesterdayBuildId, 
         List<string>? selectedDomains = null);
+
+    /// <summary>
+    /// Performs release triage for a specific release build, optionally compared to a previous candidate
+    /// </summary>
+    /// <param name="releaseBuildId">Current release build ID</param>
+    /// <param name="previousReleaseBuildId">Optional previous release build ID for comparison</param>
+    /// <returns>Release triage result including configuration matrix and summaries</returns>
+    Task<ReleaseTriageResult?> GetReleaseTriageAsync(string releaseBuildId, string? previousReleaseBuildId = null);
 }

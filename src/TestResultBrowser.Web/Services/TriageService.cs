@@ -203,4 +203,148 @@ public class TriageService : ITriageService
             };
         });
     }
+
+    /// <inheritdoc/>
+    public async Task<ReleaseTriageResult?> GetReleaseTriageAsync(string releaseBuildId, string? previousReleaseBuildId = null)
+    {
+        return await Task.Run(() =>
+        {
+            _logger.LogInformation("Starting release triage for build {ReleaseBuildId}", releaseBuildId);
+
+            var currentResults = _testDataService.GetTestResultsByBuild(releaseBuildId).ToList();
+            if (!currentResults.Any())
+            {
+                _logger.LogWarning("No test results found for build {ReleaseBuildId}", releaseBuildId);
+                return null;
+            }
+
+            // Build configuration matrix (Version × NamedConfig)
+            var versions = new HashSet<string>();
+            var namedConfigs = new HashSet<string>();
+            var cells = new Dictionary<string, Dictionary<string, Models.ConfigCell>>();
+
+            foreach (var group in currentResults.GroupBy(r => r.ConfigurationId))
+            {
+                var parts = group.Key.Split('_');
+                if (parts.Length < 4) continue; // {Version}_{TestType}_{NamedConfig}_{Domain}
+                var version = parts[0];
+                var namedConfig = parts[2];
+
+                versions.Add(version);
+                namedConfigs.Add(namedConfig);
+
+                var total = group.Count(r => r.Status != Models.TestStatus.Skip);
+                var passed = group.Count(r => r.Status == Models.TestStatus.Pass);
+                var failed = group.Count(r => r.Status == Models.TestStatus.Fail);
+                var passRate = total > 0 ? (double)passed / total * 100.0 : 0.0;
+
+                if (!cells.ContainsKey(version))
+                    cells[version] = new Dictionary<string, Models.ConfigCell>();
+
+                cells[version][namedConfig] = new Models.ConfigCell
+                {
+                    ConfigurationId = group.Key,
+                    TotalTests = total,
+                    PassedTests = passed,
+                    FailedTests = failed,
+                    PassRate = passRate
+                };
+            }
+
+            // Identify failing configurations (any failed tests)
+            var failingConfigs = cells
+                .SelectMany(v => v.Value.Values)
+                .Where(c => c.FailedTests > 0)
+                .Select(c => c.ConfigurationId)
+                .Distinct()
+                .OrderBy(c => c)
+                .ToList();
+
+            // Domain and feature pass rates
+            var domainPassRates = currentResults
+                .GroupBy(r => r.DomainId)
+                .ToDictionary(
+                    g => g.Key,
+                    g =>
+                    {
+                        var total = g.Count(r => r.Status != Models.TestStatus.Skip);
+                        var passed = g.Count(r => r.Status == Models.TestStatus.Pass);
+                        return total > 0 ? (double)passed / total * 100.0 : 0.0;
+                    });
+
+            var featurePassRates = currentResults
+                .GroupBy(r => r.FeatureId)
+                .ToDictionary(
+                    g => g.Key,
+                    g =>
+                    {
+                        var total = g.Count(r => r.Status != Models.TestStatus.Skip);
+                        var passed = g.Count(r => r.Status == Models.TestStatus.Pass);
+                        return total > 0 ? (double)passed / total * 100.0 : 0.0;
+                    });
+
+            // Comparison to previous release candidate (optional)
+            Models.ComparisonMetrics? comparison = null;
+            if (!string.IsNullOrWhiteSpace(previousReleaseBuildId))
+            {
+                var previousResults = _testDataService.GetTestResultsByBuild(previousReleaseBuildId!).ToList();
+                if (previousResults.Any())
+                {
+                    var prevByTest = previousResults.GroupBy(r => r.TestFullName).ToDictionary(g => g.Key, g => g.ToList());
+                    var currByTest = currentResults.GroupBy(r => r.TestFullName).ToDictionary(g => g.Key, g => g.ToList());
+
+                    int regressed = 0;
+                    int improved = 0;
+
+                    foreach (var kvp in currByTest)
+                    {
+                        var testName = kvp.Key;
+                        var currList = kvp.Value;
+                        if (!prevByTest.TryGetValue(testName, out var prevList)) continue;
+
+                        // Compare per configuration where both builds have entries
+                        foreach (var curr in currList)
+                        {
+                            var prev = prevList.FirstOrDefault(p => p.ConfigurationId == curr.ConfigurationId);
+                            if (prev == null) continue;
+
+                            if (prev.Status == Models.TestStatus.Pass && curr.Status == Models.TestStatus.Fail) regressed++;
+                            if (prev.Status == Models.TestStatus.Fail && curr.Status == Models.TestStatus.Pass) improved++;
+                        }
+                    }
+
+                    var currTotal = currentResults.Count(r => r.Status != Models.TestStatus.Skip);
+                    var currPassed = currentResults.Count(r => r.Status == Models.TestStatus.Pass);
+                    var currRate = currTotal > 0 ? (double)currPassed / currTotal * 100.0 : 0.0;
+
+                    var prevTotal = previousResults.Count(r => r.Status != Models.TestStatus.Skip);
+                    var prevPassed = previousResults.Count(r => r.Status == Models.TestStatus.Pass);
+                    var prevRate = prevTotal > 0 ? (double)prevPassed / prevTotal * 100.0 : 0.0;
+
+                    comparison = new Models.ComparisonMetrics
+                    {
+                        TestsRegressed = regressed,
+                        TestsImproved = improved,
+                        PassRateChange = currRate - prevRate
+                    };
+                }
+            }
+
+            return new Models.ReleaseTriageResult
+            {
+                ReleaseBuildId = releaseBuildId,
+                PreviousReleaseBuildId = previousReleaseBuildId,
+                Matrix = new Models.ConfigurationMatrix
+                {
+                    Versions = versions.OrderBy(v => v).ToList(),
+                    NamedConfigs = namedConfigs.OrderBy(n => n).ToList(),
+                    Cells = cells
+                },
+                FailingConfigurations = failingConfigs,
+                DomainPassRates = domainPassRates,
+                FeaturePassRates = featurePassRates,
+                ComparisonToPrevious = comparison
+            };
+        });
+    }
 }

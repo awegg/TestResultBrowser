@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.SignalR;
+using TestResultBrowser.Web.Hubs;
 
 namespace TestResultBrowser.Web.Services;
 
@@ -86,6 +88,7 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
     private readonly ILogger<FileWatcherService> _logger;
     private readonly IServiceProvider _serviceProvider;
     private readonly TestResultBrowserOptions _options;
+    private readonly IHubContext<TestDataHub> _hubContext;
     private Timer? _timer;
 
     public DateTime? LastScanTime { get; private set; }
@@ -95,11 +98,13 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
     public FileWatcherService(
         ILogger<FileWatcherService> logger,
         IServiceProvider serviceProvider,
-        IOptions<TestResultBrowserOptions> options)
+        IOptions<TestResultBrowserOptions> options,
+        IHubContext<TestDataHub> hubContext)
     {
         _logger = logger;
         _serviceProvider = serviceProvider;
         _options = options.Value;
+        _hubContext = hubContext;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -125,17 +130,17 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
     {
         if (IsScanningInProgress)
         {
-            _logger.LogWarning("Scan already in progress, skipping");
+            _logger.LogWarning("Scan already in progress, skipping requested scan");
             return;
         }
 
-        IsScanningInProgress = true;
-        var startTime = DateTime.UtcNow;
-        var fileCount = 0;
-
         try
         {
-            _logger.LogInformation("Starting file system scan of {Path}", _options.FileSharePath);
+            IsScanningInProgress = true;
+            var startTime = DateTime.UtcNow;
+            var fileCount = 0;
+
+            _logger.LogInformation("Starting manual file system scan of {Path}", _options.FileSharePath);
 
             if (!Directory.Exists(_options.FileSharePath))
             {
@@ -200,6 +205,15 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
             var duration = DateTime.UtcNow - startTime;
             _logger.LogInformation("File system scan completed. Processed {Count} files in {Duration:mm\\:ss}. Total test results: {Total}",
                 fileCount, duration, testDataService.GetTotalCount());
+
+            // Notify all connected clients that new data is available
+            await _hubContext.Clients.All.SendAsync("TestDataUpdated", new
+            {
+                filesProcessed = fileCount,
+                totalTestResults = testDataService.GetTotalCount(),
+                scanTime = LastScanTime
+            });
+            _logger.LogInformation("Notified clients of test data update via SignalR");
         }
         catch (Exception ex)
         {

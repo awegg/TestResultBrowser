@@ -1,8 +1,14 @@
 @page "/system-status"
+@rendermode InteractiveServer
 @using TestResultBrowser.Web.Services
 @using MudBlazor
+@using Microsoft.AspNetCore.SignalR.Client
 @inject ITestDataService TestDataService
 @inject IFileWatcherService FileWatcher
+@inject ILogger<SystemStatus> Logger
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@implements IAsyncDisposable
 
 <PageTitle>System Status</PageTitle>
 
@@ -58,6 +64,114 @@
                         <strong>Memory %:</strong> @memoryPercentage.ToString("N1")% of @maxMemoryGB GB limit
                     </MudText>
                     <MudProgressLinear Color="@GetMemoryColor()" Value="@memoryPercentage" Class="my-2" />
+                </MudStack>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+    
+    <MudItem xs="12" md="6">
+        <MudCard>
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Data Coverage</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudStack Spacing="2">
+                    <MudText>
+                        <strong>Total Builds:</strong> @totalBuilds
+                    </MudText>
+                    <MudText>
+                        <strong>Configurations:</strong> @totalConfigurations
+                    </MudText>
+                    <MudText>
+                        <strong>Domains:</strong> @totalDomains
+                    </MudText>
+                    <MudText>
+                        <strong>Date Range:</strong> @GetDateRangeDisplay()
+                    </MudText>
+                </MudStack>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+    
+    <MudItem xs="12" md="6">
+        <MudCard>
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Recent Builds</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                @if (recentBuilds.Any())
+                {
+                    <MudList T="string" Dense="true">
+                        @foreach (var build in recentBuilds.Take(10))
+                        {
+                            <MudListItem T="string" Icon="@Icons.Material.Filled.Build">
+                                @build
+                            </MudListItem>
+                        }
+                    </MudList>
+                }
+                else
+                {
+                    <MudText Color="Color.Secondary">No builds loaded yet</MudText>
+                }
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+    
+    <MudItem xs="12" md="6">
+        <MudCard>
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Monitored Configurations</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudStack Spacing="3">
+                    <div>
+                        <MudText Typo="Typo.subtitle2"><strong>Versions:</strong></MudText>
+                        @if (versions.Any())
+                        {
+                            <MudChipSet T="string">
+                                @foreach (var version in versions.Take(8))
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Primary">@version</MudChip>
+                                }
+                                @if (versions.Count() > 8)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Default">+@(versions.Count() - 8) more</MudChip>
+                                }
+                            </MudChipSet>
+                        }
+                        else
+                        {
+                            <MudText Color="Color.Secondary">None</MudText>
+                        }
+                    </div>
+                    
+                    <div>
+                        <MudText Typo="Typo.subtitle2"><strong>Named Configs:</strong></MudText>
+                        @if (namedConfigs.Any())
+                        {
+                            <MudChipSet T="string">
+                                @foreach (var config in namedConfigs.Take(8))
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Secondary">@config</MudChip>
+                                }
+                                @if (namedConfigs.Count() > 8)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Default">+@(namedConfigs.Count() - 8) more</MudChip>
+                                }
+                            </MudChipSet>
+                        }
+                        else
+                        {
+                            <MudText Color="Color.Secondary">None</MudText>
+                        }
+                    </div>
                 </MudStack>
             </MudCardContent>
         </MudCard>
@@ -121,21 +235,49 @@
 </MudGrid>
 
 @code {
+    private HubConnection? hubConnection;
     private int totalResults;
     private double memoryUsageMB;
     private double memoryPercentage;
     private int maxMemoryGB = 15; // From appsettings.json
+    private int totalBuilds;
+    private int totalConfigurations;
+    private int totalDomains;
+    private DateTime? earliestDate;
+    private DateTime? latestDate;
+    private List<string> recentBuilds = new();
+    private List<string> versions = new();
+    private List<string> namedConfigs = new();
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         UpdateStatistics();
         
-        // Refresh every 5 seconds
-        var timer = new System.Threading.Timer(_ =>
+        // Initialize SignalR connection
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri("/hubs/testdata"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        // Register handler for test data updates
+        hubConnection.On<object>("TestDataUpdated", async (updateInfo) =>
         {
+            Logger.LogInformation("Received TestDataUpdated notification from SignalR");
             UpdateStatistics();
-            InvokeAsync(StateHasChanged);
-        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+            
+            // Show toast notification to user
+            Snackbar.Add("✅ New test results imported!", Severity.Success, config =>
+            {
+                config.VisibleStateDuration = 4000;
+                config.HideTransitionDuration = 400;
+                config.ShowTransitionDuration = 400;
+            });
+            
+            await InvokeAsync(StateHasChanged);
+        });
+
+        await hubConnection.StartAsync();
+        Logger.LogInformation("SignalR connection established");
     }
 
     private void UpdateStatistics()
@@ -146,6 +288,33 @@
         
         var maxMemoryBytes = maxMemoryGB * 1024L * 1024L * 1024L;
         memoryPercentage = (memoryUsageBytes / (double)maxMemoryBytes) * 100;
+        
+        // Update data coverage statistics
+        var buildIds = TestDataService.GetAllBuildIds().ToList();
+        totalBuilds = buildIds.Count;
+        recentBuilds = buildIds.Take(10).ToList();
+        
+        totalConfigurations = TestDataService.GetAllConfigurationIds().Count();
+        totalDomains = TestDataService.GetAllDomainIds().Count();
+        
+        var dateRange = TestDataService.GetDateRange();
+        earliestDate = dateRange.Earliest;
+        latestDate = dateRange.Latest;
+        
+        // Update configuration monitoring
+        versions = TestDataService.GetAllVersions().ToList();
+        namedConfigs = TestDataService.GetAllNamedConfigs().ToList();
+    }
+    
+    private string GetDateRangeDisplay()
+    {
+        if (earliestDate == null || latestDate == null)
+            return "No data";
+            
+        if (earliestDate.Value.Date == latestDate.Value.Date)
+            return earliestDate.Value.ToString("yyyy-MM-dd");
+            
+        return $"{earliestDate.Value:yyyy-MM-dd} to {latestDate.Value:yyyy-MM-dd}";
     }
 
     private Color GetMemoryColor()
@@ -158,13 +327,26 @@
 
     private async Task RefreshData()
     {
+        Logger.LogInformation("Scan Now button clicked. Current scanning status: {Status}", FileWatcher.IsScanningInProgress);
         await FileWatcher.ScanNowAsync();
+        Logger.LogInformation("Scan completed. Updating statistics...");
         UpdateStatistics();
+        await InvokeAsync(StateHasChanged);
+        Logger.LogInformation("UI updated");
     }
 
     private void ClearCache()
     {
         TestDataService.Clear();
         UpdateStatistics();
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
     }
 }

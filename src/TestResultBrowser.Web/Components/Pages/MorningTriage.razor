@@ -1,8 +1,14 @@
 @page "/morning-triage"
+@rendermode InteractiveServer
 @using TestResultBrowser.Web.Models
 @using TestResultBrowser.Web.Services
+@using Microsoft.AspNetCore.SignalR.Client
+@using MudBlazor
 @inject ITriageService TriageService
 @inject ITestDataService TestDataService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@implements IAsyncDisposable
 
 <PageTitle>Morning Triage - Test Results Browser</PageTitle>
 
@@ -127,6 +133,7 @@ else
 }
 
 @code {
+    private HubConnection? hubConnection;
     private MorningTriageResult? triageResult;
     private bool isLoading = true;
     private List<string> availableDomains = new();
@@ -135,6 +142,30 @@ else
     protected override async Task OnInitializedAsync()
     {
         await LoadData();
+
+        // Initialize SignalR connection for real-time updates
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri("/hubs/testdata"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        // Auto-refresh when new data is imported
+        hubConnection.On<object>("TestDataUpdated", async (updateInfo) =>
+        {
+            await LoadData();
+            
+            // Show toast notification to user
+            Snackbar.Add("✅ New test results imported - Triage updated!", Severity.Success, config =>
+            {
+                config.VisibleStateDuration = 4000;
+                config.HideTransitionDuration = 400;
+                config.ShowTransitionDuration = 400;
+            });
+            
+            await InvokeAsync(StateHasChanged);
+        });
+
+        await hubConnection.StartAsync();
     }
 
     private async Task LoadData()
@@ -163,5 +194,13 @@ else
         if (diff > 0.1) return "↑";
         if (diff < -0.1) return "↓";
         return "→";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
     }
 }

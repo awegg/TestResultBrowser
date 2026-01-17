@@ -1,6 +1,7 @@
 using TestResultBrowser.Web.Components;
 using MudBlazor.Services;
 using TestResultBrowser.Web.Services;
+using TestResultBrowser.Web.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,6 +15,9 @@ builder.Services.AddRazorComponents()
 
 // Add MudBlazor services
 builder.Services.AddMudServices();
+
+// Add SignalR for real-time updates
+builder.Services.AddSignalR();
 
 // Register application services
 builder.Services.AddSingleton<IVersionMapperService, VersionMapperService>();
@@ -57,5 +61,7 @@ app.UseAntiforgery();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+app.MapHub<TestDataHub>("/hubs/testdata");
 
 app.Run();

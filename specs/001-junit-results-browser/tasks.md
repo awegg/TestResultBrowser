@@ -7,7 +7,7 @@
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story. P0 (Morning/Release Triage) stories are highest priority for MVP.
 
-**🎯 SCOPE**: Ultra-Lean MVP approach - 121 tasks focused on core triage workflows + essential features. Deferred features marked with ⏸️ and can be added post-MVP based on user feedback.
+**🎯 SCOPE**: Ultra-Lean MVP approach - 141 tasks focused on core triage workflows + essential features including configuration history view. Deferred features marked with ⏸️ and can be added post-MVP based on user feedback.
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -112,27 +112,27 @@ Based on plan.md project structure:
 
 **Goal**: Enable release readiness assessment across all configurations with configuration matrix view
 
-**Effort**: 1.5-2 days (12-16 hours) | **Status**: Not Started
+**Effort**: 1.5-2 days (12-16 hours) | **Status**: ✅ COMPLETE
 
 **Independent Test**: Load release candidate results across all OS/DB/Version configurations and verify Release Triage dashboard shows configuration matrix with pass rates and highlights failing configurations
 
 ### Implementation for User Story 2
 
-- [ ] T041 [P] [US2] Create ReleaseTriageResult record in src/TestResultBrowser.Web/Models/ReleaseTriageResult.cs
-- [ ] T042 [P] [US2] Create ComparisonMetrics record in src/TestResultBrowser.Web/Models/ComparisonMetrics.cs
-- [ ] T043 [P] [US2] Create ConfigurationMatrix record in src/TestResultBrowser.Web/Models/ConfigurationMatrix.cs (data-model.md entity #14)
-- [ ] T044 [P] [US2] Create ConfigCell record in src/TestResultBrowser.Web/Models/ConfigCell.cs
-- [ ] T045 [US2] Implement TriageService.GetReleaseTriageAsync in src/TestResultBrowser.Web/Services/TriageService.cs (generate config matrix, compute domain/feature pass rates)
-- [ ] T046 [US2] Create ReleaseTriage.razor page in src/TestResultBrowser.Web/Pages/ReleaseTriage.razor
-- [ ] T047 [US2] Implement stats cards in ReleaseTriage.razor (Overall Pass Rate, Passing Configs, Failing Configs, Release Status)
-- [ ] T048 [US2] Create ConfigMatrix component in src/TestResultBrowser.Web/Components/ConfigMatrix.razor (Version×NamedConfig grid with color-coded cells)
-- [ ] T049 [US2] Integrate ConfigMatrix into ReleaseTriage.razor showing only valid tested combinations
-- [ ] T050 [US2] Add click handlers to ConfigMatrix cells to drill into specific configuration failures
-- [ ] T051 [US2] Implement domain-level pass rate summary in ReleaseTriage.razor with trend indicators (↑↓→)
-- [ ] T052 [US2] Add comparison to previous release candidate in ReleaseTriage.razor (highlight regressed/improved tests)
-- [ ] T053 [US2] Add navigation link to ReleaseTriage page in MainLayout.razor sidebar
+- [x] T041 [P] [US2] Create ReleaseTriageResult record in src/TestResultBrowser.Web/Models/ReleaseTriageResult.cs
+- [x] T042 [P] [US2] Create ComparisonMetrics record in src/TestResultBrowser.Web/Models/ComparisonMetrics.cs
+- [x] T043 [P] [US2] Create ConfigurationMatrix record in src/TestResultBrowser.Web/Models/ConfigurationMatrix.cs (data-model.md entity #14)
+- [x] T044 [P] [US2] Create ConfigCell record in src/TestResultBrowser.Web/Models/ConfigCell.cs
+- [x] T045 [US2] Implement TriageService.GetReleaseTriageAsync in src/TestResultBrowser.Web/Services/TriageService.cs (generate config matrix, compute domain/feature pass rates)
+- [x] T046 [US2] Create ReleaseTriage.razor page in src/TestResultBrowser.Web/Pages/ReleaseTriage.razor
+- [x] T047 [US2] Implement stats cards in ReleaseTriage.razor (Overall Pass Rate, Passing Configs, Failing Configs, Release Status)
+- [x] T048 [US2] Create ConfigMatrix component in src/TestResultBrowser.Web/Components/ConfigMatrix.razor (Version×NamedConfig grid with color-coded cells)
+- [x] T049 [US2] Integrate ConfigMatrix into ReleaseTriage.razor showing only valid tested combinations
+- [x] T050 [US2] Add click handlers to ConfigMatrix cells to drill into specific configuration failures
+- [x] T051 [US2] Implement domain-level pass rate summary in ReleaseTriage.razor with trend indicators (↑↓→)
+- [x] T052 [US2] Add comparison to previous release candidate in ReleaseTriage.razor (highlight regressed/improved tests)
+- [x] T053 [US2] Add navigation link to ReleaseTriage page in MainLayout.razor sidebar
 
-**Checkpoint**: At this point, User Stories 1 AND 2 should both work independently - Morning Triage for daily workflow, Release Triage for release readiness
+**Checkpoint**: ✅ User Stories 1 AND 2 are both complete - Morning Triage for daily workflow, Release Triage for release readiness
 
 ---
 
@@ -140,29 +140,75 @@ Based on plan.md project structure:
 
 **Goal**: Enable automatic polling of shared file system for new test results every 15 minutes
 
-**Effort**: 1-1.5 days (8-12 hours) | **Status**: Not Started
+**Effort**: 1-1.5 days (8-12 hours) | **Status**: Complete ✅
 
 **Independent Test**: Place new JUnit XML files on shared file system and verify they are detected and imported within 15 minutes
 
 ### Implementation for User Story 11
 
-- [ ] T054 [US11] Implement file system scanning logic in FileWatcherService.ExecuteAsync (detect new Release-{BuildNumber} folders)
-- [ ] T055 [US11] Implement incremental import in FileWatcherService (track known builds, import only new XML files)
-- [ ] T056 [US11] Add error handling in FileWatcherService for malformed XML files (log errors, continue processing valid files)
+- [x] T054 [US11] Implement file system scanning logic in FileWatcherService.ExecuteAsync (detect new Release-{BuildNumber} folders)
+- [x] T055 [US11] Implement incremental import in FileWatcherService (track known builds, import only new XML files)
+- [x] T056 [US11] Add error handling in FileWatcherService for malformed XML files (log errors, continue processing valid files)
+- [x] T056c [US11] Add disk space monitoring in FileWatcherService (warn if memory usage exceeds 80% of configured limit)
+- [x] T057 [US11] Implement duplicate detection in FileWatcherService (avoid re-importing same build)
+- [x] T058 [US11] Add manual "Refresh Now" button to System Status page (calls IFileWatcherService.ScanNowAsync)
+- [x] T059 [US11] Create System Status page in src/TestResultBrowser.Web/Components/Pages/SystemStatus.razor showing scanner status, cache stats, data coverage, recent builds, monitored configurations, and memory management
+- [x] T060 [US11] Add navigation link to System Status page in NavMenu.razor sidebar
+- [x] T061 [US11] Implement real-time notification in UI when new files are imported (SignalR with TestDataHub broadcasting to SystemStatus and MorningTriage pages)
+
+**Checkpoint**: System automatically imports new test results and provides comprehensive monitoring dashboard
+
+**⏸️ Post-MVP Error Handling Enhancements for Phase 5**:
 - [ ] T056a [US11] Add network failure retry logic in FileWatcherService (exponential backoff, max 3 retries)
 - [ ] T056b [US11] Add permission error handling in FileWatcherService (log access denied errors, skip inaccessible directories)
-- [ ] T056c [US11] Add disk space monitoring in FileWatcherService (warn if memory usage exceeds 80% of configured limit)
-- [ ] T057 [US11] Implement duplicate detection in FileWatcherService (avoid re-importing same build)
-- [ ] T058 [US11] Add manual "Refresh Now" button to toolbar in MainLayout.razor (calls IFileWatcherService.ScanFileSystemNowAsync)
-- [ ] T059 [US11] Create Import status page in src/TestResultBrowser.Web/Pages/ImportStatus.razor showing last scan time, files imported, errors
-- [ ] T060 [US11] Add navigation link to ImportStatus page in MainLayout.razor sidebar
-- [ ] T061 [US11] Implement real-time notification in UI when new files are imported (SignalR or polling)
-
-**Checkpoint**: At this point, system automatically imports new test results without manual intervention - critical for continuous integration workflow
 
 ---
 
-## Phase 6: User Story 12 - Flaky Test Detection & Management (Priority: P1)
+## Phase 6: User Story 5 - Configuration History View (Priority: P0) 🎯 MVP
+
+**Goal**: Enable browsing hierarchical test results with multi-build history across filtered configurations
+
+**Effort**: 2-3 days (16-24 hours) | **Status**: Not Started
+
+**Independent Test**: Select a configuration/machine, verify hierarchical test tree displays with last N builds showing pass/fail counts per build, and visual indicators (green/red cells)
+
+**Features**:
+- Configuration/Release dropdown filter
+- Machine/NamedConfig filter
+- Hierarchical tree: Domain → Feature → Test Suite → Test (expandable/collapsible)
+- Multi-column history showing last 5-10 builds
+- Color-coded cells: Green (all passed), Red (failures), with pass/fail counts (e.g., "36/36", "35/36")
+- Click to expand/collapse tree nodes
+- Summary stats at top: Latest Run, Total Tests, Passed, Failed, Skipped
+
+### Implementation for User Story 5
+
+- [ ] T062 [P] [US5] Create ConfigurationHistoryResult record in src/TestResultBrowser.Web/Models/ConfigurationHistoryResult.cs
+- [ ] T063 [P] [US5] Create HistoryColumn record in src/TestResultBrowser.Web/Models/HistoryColumn.cs (buildId, date, pass/fail counts)
+- [ ] T064 [P] [US5] Create HierarchyNode record in src/TestResultBrowser.Web/Models/HierarchyNode.cs (name, level, children, history data)
+- [ ] T065 [US5] Create IConfigurationHistoryService interface in src/TestResultBrowser.Web/Services/IConfigurationHistoryService.cs
+- [ ] T066 [US5] Implement ConfigurationHistoryService.GetConfigurationHistoryAsync in src/TestResultBrowser.Web/Services/ConfigurationHistoryService.cs
+- [ ] T067 [US5] Implement BuildHierarchyTree method (organize tests into Domain → Feature → Suite → Test tree)
+- [ ] T068 [US5] Implement GetLastNBuilds method (retrieve last N builds for selected configuration)
+- [ ] T069 [US5] Implement CalculateHistoryForNode method (aggregate pass/fail counts per build per node)
+- [ ] T070 [US5] Create ConfigurationHistory.razor page in src/TestResultBrowser.Web/Pages/ConfigurationHistory.razor
+- [ ] T071 [US5] Add configuration/release dropdown filter in ConfigurationHistory.razor
+- [ ] T072 [US5] Add machine/named config filter dropdown in ConfigurationHistory.razor
+- [ ] T073 [US5] Implement summary stats cards (Latest Run, Total Tests, Passed %, Failed, Skipped)
+- [ ] T074 [US5] Create HierarchyTreeView component in src/TestResultBrowser.Web/Components/HierarchyTreeView.razor
+- [ ] T075 [US5] Implement expandable/collapsible tree nodes with indentation in HierarchyTreeView
+- [ ] T076 [US5] Create HistoryGrid component in src/TestResultBrowser.Web/Components/HistoryGrid.razor
+- [ ] T077 [US5] Render multi-column history grid with build headers (date, buildId)
+- [ ] T078 [US5] Implement color-coded cells in HistoryGrid (green for all pass, red for failures)
+- [ ] T079 [US5] Display pass/fail counts in each cell (e.g., "36/36", "35/36")
+- [ ] T080 [US5] Add "Expand All" / "Collapse All" buttons to toolbar
+- [ ] T081 [US5] Add navigation link to ConfigurationHistory page in NavMenu.razor sidebar
+
+**Checkpoint**: Configuration History View provides complete test overview with historical context for any configuration
+
+---
+
+## Phase 7: User Story 12 - Flaky Test Detection & Management (Priority: P1)
 
 **Goal**: Identify and filter tests that fail inconsistently to reduce triage noise
 
@@ -172,26 +218,26 @@ Based on plan.md project structure:
 
 ### Implementation for User Story 12
 
-- [ ] T062 [P] [US12] Create FlakyTest record in src/TestResultBrowser.Web/Models/FlakyTest.cs (data-model.md entity #11)
-- [ ] T063 [P] [US12] Create TestResultSummary record in src/TestResultBrowser.Web/Models/TestResultSummary.cs
-- [ ] T064 [US12] Create IFlakyDetectionService interface in src/TestResultBrowser.Web/Services/IFlakyDetectionService.cs
-- [ ] T065 [US12] Implement FlakyDetectionService in src/TestResultBrowser.Web/Services/FlakyDetectionService.cs (rolling window calculation, 20 runs, 30% threshold)
-- [ ] T066 [US12] Implement FlakyDetectionService.DetectFlakyTestsAsync (analyze all tests in cache, compute flakiness scores)
-- [ ] T067 [US12] Implement FlakyDetectionService.CheckTestFlakinessAsync (check single test for flakiness)
-- [ ] T068 [US12] Implement auto-clear logic in FlakyDetectionService (clear flag after 10 consecutive passes)
-- [ ] T069 [US12] Create FlakyTestBadge component in src/TestResultBrowser.Web/Components/FlakyTestBadge.razor (🔀 icon with percentage)
-- [ ] T070 [US12] Integrate FlakyTestBadge into TestHierarchy component for flaky tests
-- [ ] T071 [US12] Create FlakyTests.razor page in src/TestResultBrowser.Web/Pages/FlakyTests.razor listing all identified flaky tests
-- [ ] T072 [US12] Add "Hide Flaky Tests" toggle button to toolbar in MainLayout.razor (filters tests with flakiness score >30%)
-- [ ] T073 [US12] Implement flaky test filtering in MorningTriage.razor (respect "Hide Flaky Tests" toggle)
-- [ ] T074 [US12] Add pass/fail history timeline visualization in FlakyTests.razor showing recent 20 runs
-- [ ] T075 [US12] Add navigation link to FlakyTests page in MainLayout.razor sidebar
+- [ ] T082 [P] [US12] Create FlakyTest record in src/TestResultBrowser.Web/Models/FlakyTest.cs (data-model.md entity #11)
+- [ ] T083 [P] [US12] Create TestResultSummary record in src/TestResultBrowser.Web/Models/TestResultSummary.cs
+- [ ] T084 [US12] Create IFlakyDetectionService interface in src/TestResultBrowser.Web/Services/IFlakyDetectionService.cs
+- [ ] T085 [US12] Implement FlakyDetectionService in src/TestResultBrowser.Web/Services/FlakyDetectionService.cs (rolling window calculation, 20 runs, 30% threshold)
+- [ ] T086 [US12] Implement FlakyDetectionService.DetectFlakyTestsAsync (analyze all tests in cache, compute flakiness scores)
+- [ ] T087 [US12] Implement FlakyDetectionService.CheckTestFlakinessAsync (check single test for flakiness)
+- [ ] T088 [US12] Implement auto-clear logic in FlakyDetectionService (clear flag after 10 consecutive passes)
+- [ ] T089 [US12] Create FlakyTestBadge component in src/TestResultBrowser.Web/Components/FlakyTestBadge.razor (🔀 icon with percentage)
+- [ ] T090 [US12] Integrate FlakyTestBadge into TestHierarchy component for flaky tests
+- [ ] T091 [US12] Create FlakyTests.razor page in src/TestResultBrowser.Web/Pages/FlakyTests.razor listing all identified flaky tests
+- [ ] T092 [US12] Add "Hide Flaky Tests" toggle button to toolbar in MainLayout.razor (filters tests with flakiness score >30%)
+- [ ] T093 [US12] Implement flaky test filtering in MorningTriage.razor (respect "Hide Flaky Tests" toggle)
+- [ ] T094 [US12] Add pass/fail history timeline visualization in FlakyTests.razor showing recent 20 runs
+- [ ] T095 [US12] Add navigation link to FlakyTests page in MainLayout.razor sidebar
 
 **Checkpoint**: Flaky test detection reduces triage noise by 20-30% by filtering out intermittent failures
 
 ---
 
-## Phase 7: User Story 13 - Polarion Integration (Priority: P1)
+## Phase 8: User Story 13 - Polarion Integration (Priority: P1)
 
 **Goal**: Auto-link Polarion ticket IDs in test names for immediate context during triage
 
@@ -201,21 +247,21 @@ Based on plan.md project structure:
 
 ### Implementation for User Story 13
 
-- [ ] T076 [P] [US13] Create PolarionTicketReference record in src/TestResultBrowser.Web/Models/PolarionTicketReference.cs (data-model.md entity #19)
-- [ ] T077 [US13] Create IPolarionLinkService interface in src/TestResultBrowser.Web/Services/IPolarionLinkService.cs
-- [ ] T078 [US13] Implement PolarionLinkService in src/TestResultBrowser.Web/Services/PolarionLinkService.cs (regex extraction of PEXC-\d+ pattern)
-- [ ] T079 [US13] Implement PolarionLinkService.ExtractTicketIds (extract all ticket IDs from test name)
-- [ ] T080 [US13] Implement PolarionLinkService.GenerateTicketUrl (construct URL using configured Polarion base URL)
-- [ ] T081 [US13] Create PolarionLink component in src/TestResultBrowser.Web/Components/PolarionLink.razor (clickable badge)
-- [ ] T082 [US13] Integrate PolarionLink component into TestHierarchy component for all tests with ticket references
-- [ ] T083 [US13] Add Polarion base URL configuration to appsettings.json (PolarionBaseUrl setting)
-- [ ] T084 [US13] Display multiple Polarion links when test name contains multiple ticket IDs
+- [ ] T096 [P] [US13] Create PolarionTicketReference record in src/TestResultBrowser.Web/Models/PolarionTicketReference.cs (data-model.md entity #19)
+- [ ] T097 [US13] Create IPolarionLinkService interface in src/TestResultBrowser.Web/Services/IPolarionLinkService.cs
+- [ ] T098 [US13] Implement PolarionLinkService in src/TestResultBrowser.Web/Services/PolarionLinkService.cs (regex extraction of PEXC-\d+ pattern)
+- [ ] T099 [US13] Implement PolarionLinkService.ExtractTicketIds (extract all ticket IDs from test name)
+- [ ] T100 [US13] Implement PolarionLinkService.GenerateTicketUrl (construct URL using configured Polarion base URL)
+- [ ] T101 [US13] Create PolarionLink component in src/TestResultBrowser.Web/Components/PolarionLink.razor (clickable badge)
+- [ ] T102 [US13] Integrate PolarionLink component into TestHierarchy component for all tests with ticket references
+- [ ] T103 [US13] Add Polarion base URL configuration to appsettings.json (PolarionBaseUrl setting)
+- [ ] T104 [US13] Display multiple Polarion links when test name contains multiple ticket IDs
 
 **Checkpoint**: Polarion integration eliminates manual lookup, saves minutes per failure during triage
 
 ---
 
-## Phase 8: User Story 14 - Failure Grouping by Root Cause (Priority: P1)
+## Phase 9: User Story 14 - Failure Grouping by Root Cause (Priority: P1)
 
 **Goal**: Group failures by similar error patterns to identify root causes instead of individual test noise
 
@@ -225,23 +271,23 @@ Based on plan.md project structure:
 
 ### Implementation for User Story 14
 
-- [ ] T085 [P] [US14] Create FailureGroup record in src/TestResultBrowser.Web/Models/FailureGroup.cs (data-model.md entity #12)
-- [ ] T086 [US14] Create IFailureGroupingService interface in src/TestResultBrowser.Web/Services/IFailureGroupingService.cs
-- [ ] T087 [US14] Implement FailureGroupingService in src/TestResultBrowser.Web/Services/FailureGroupingService.cs (Levenshtein distance algorithm, 80% similarity threshold)
-- [ ] T088 [US14] Implement FailureGroupingService.GroupFailuresAsync (cluster failed tests by error message similarity)
-- [ ] T089 [US14] Implement exact match grouping first (same error message → same group)
-- [ ] T090 [US14] Implement fuzzy matching for near-duplicates (Levenshtein distance >80%)
-- [ ] T091 [US14] Create FailureGroups.razor page in src/TestResultBrowser.Web/Pages/FailureGroups.razor
-- [ ] T092 [US14] Implement failure group summary cards in FailureGroups.razor (error pattern, test count, affected domains/features)
-- [ ] T093 [US14] Add drill-down capability in FailureGroups.razor to show all tests in a group
-- [ ] T094 [US14] Integrate failure grouping into MorningTriage.razor (group new failures by error pattern)
-- [ ] T095 [US14] Add navigation link to FailureGroups page in MainLayout.razor sidebar
+- [ ] T105 [P] [US14] Create FailureGroup record in src/TestResultBrowser.Web/Models/FailureGroup.cs (data-model.md entity #12)
+- [ ] T106 [US14] Create IFailureGroupingService interface in src/TestResultBrowser.Web/Services/IFailureGroupingService.cs
+- [ ] T107 [US14] Implement FailureGroupingService in src/TestResultBrowser.Web/Services/FailureGroupingService.cs (Levenshtein distance algorithm, 80% similarity threshold)
+- [ ] T108 [US14] Implement FailureGroupingService.GroupFailuresAsync (cluster failed tests by error message similarity)
+- [ ] T109 [US14] Implement exact match grouping first (same error message → same group)
+- [ ] T110 [US14] Implement fuzzy matching for near-duplicates (Levenshtein distance >80%)
+- [ ] T111 [US14] Create FailureGroups.razor page in src/TestResultBrowser.Web/Pages/FailureGroups.razor
+- [ ] T112 [US14] Implement failure group summary cards in FailureGroups.razor (error pattern, test count, affected domains/features)
+- [ ] T113 [US14] Add drill-down capability in FailureGroups.razor to show all tests in a group
+- [ ] T114 [US14] Integrate failure grouping into MorningTriage.razor (group new failures by error pattern)
+- [ ] T115 [US14] Add navigation link to FailureGroups page in MainLayout.razor sidebar
 
 **Checkpoint**: Failure grouping helps focus on root causes - fixing one issue resolves many failures
 
 ---
 
-## Phase 9: User Story 3 - View Test Results by Domain (Priority: P1)
+## Phase 10: User Story 3 - View Test Results by Domain (Priority: P1)
 
 **Goal**: Enable domain-specific filtering to isolate relevant test results
 
@@ -251,22 +297,22 @@ Based on plan.md project structure:
 
 ### Implementation for User Story 3
 
-- [ ] T096 [P] [US3] Create DomainSummary record in src/TestResultBrowser.Web/Models/DomainSummary.cs (data-model.md entity #13)
-- [ ] T097 [P] [US3] Create FeatureSummary record in src/TestResultBrowser.Web/Models/FeatureSummary.cs
-- [ ] T098 [US3] Implement ITestDataService.GetDomainSummary in TestDataService (aggregate pass/fail counts for domain)
-- [ ] T099 [US3] Implement ITestDataService.GetFeatureSummary in TestDataService (aggregate pass/fail counts for feature)
-- [ ] T100 [US3] Create DomainExplorer.razor page in src/TestResultBrowser.Web/Pages/DomainExplorer.razor
-- [ ] T101 [US3] Implement domain filter dropdown in DomainExplorer.razor using FilterPanel component
-- [ ] T102 [US3] Display Domain→Feature→Suite→Test hierarchy in DomainExplorer.razor using TestHierarchy component
-- [ ] T103 [US3] Show pass/fail counts at each hierarchy level in DomainExplorer.razor
-- [ ] T104 [US3] Implement expand/collapse all functionality in DomainExplorer.razor
-- [ ] T105 [US3] Add navigation link to DomainExplorer page in MainLayout.razor sidebar
+- [ ] T116 [P] [US3] Create DomainSummary record in src/TestResultBrowser.Web/Models/DomainSummary.cs (data-model.md entity #13)
+- [ ] T117 [P] [US3] Create FeatureSummary record in src/TestResultBrowser.Web/Models/FeatureSummary.cs
+- [ ] T118 [US3] Implement ITestDataService.GetDomainSummary in TestDataService (aggregate pass/fail counts for domain)
+- [ ] T119 [US3] Implement ITestDataService.GetFeatureSummary in TestDataService (aggregate pass/fail counts for feature)
+- [ ] T120 [US3] Create DomainExplorer.razor page in src/TestResultBrowser.Web/Pages/DomainExplorer.razor
+- [ ] T121 [US3] Implement domain filter dropdown in DomainExplorer.razor using FilterPanel component
+- [ ] T122 [US3] Display Domain→Feature→Suite→Test hierarchy in DomainExplorer.razor using TestHierarchy component
+- [ ] T123 [US3] Show pass/fail counts at each hierarchy level in DomainExplorer.razor
+- [ ] T124 [US3] Implement expand/collapse all functionality in DomainExplorer.razor
+- [ ] T125 [US3] Add navigation link to DomainExplorer page in MainLayout.razor sidebar
 
 **Checkpoint**: Domain filtering provides isolated views for domain-specific quality assessment
 
 ---
 
-## Phase 10: User Story 10 - Save and Reuse Filter Configurations (Priority: P3) ✅ MVP
+## Phase 11: User Story 10 - Save and Reuse Filter Configurations (Priority: P3) ✅ MVP
 
 **Goal**: Enable users to save filter presets for repeated use
 
@@ -276,33 +322,33 @@ Based on plan.md project structure:
 
 ### Implementation for User Story 10
 
-- [ ] T106 [P] [US10] Create SavedFilterConfiguration record in src/TestResultBrowser.Web/Models/SavedFilterConfiguration.cs (data-model.md entity #8)
-- [ ] T107 [P] [US10] Create DashboardConfiguration record in src/TestResultBrowser.Web/Models/DashboardConfiguration.cs (data-model.md entity #10)
-- [ ] T108 [US10] Create IUserDataService interface in src/TestResultBrowser.Web/Services/IUserDataService.cs (contracts/ interface #9)
-- [ ] T109 [US10] Implement UserDataService in src/TestResultBrowser.Web/Services/UserDataService.cs (LiteDB CRUD operations for SavedFilterConfiguration)
-- [ ] T110 [US10] Initialize LiteDB database connection in Program.cs (connection string from appsettings.json)
-- [ ] T111 [US10] Create SaveFilterDialog component in src/TestResultBrowser.Web/Components/SaveFilterDialog.razor (name, description, current filter state)
-- [ ] T112 [US10] Create LoadFilterDropdown component in src/TestResultBrowser.Web/Components/LoadFilterDropdown.razor (list saved filters, apply on selection)
-- [ ] T113 [US10] Integrate SaveFilterDialog into FilterPanel component (Save button opens dialog)
-- [ ] T114 [US10] Integrate LoadFilterDropdown into FilterPanel component (Load dropdown applies saved filter)
+- [ ] T126 [P] [US10] Create SavedFilterConfiguration record in src/TestResultBrowser.Web/Models/SavedFilterConfiguration.cs (data-model.md entity #8)
+- [ ] T127 [P] [US10] Create DashboardConfiguration record in src/TestResultBrowser.Web/Models/DashboardConfiguration.cs (data-model.md entity #10)
+- [ ] T128 [US10] Create IUserDataService interface in src/TestResultBrowser.Web/Services/IUserDataService.cs (contracts/ interface #9)
+- [ ] T129 [US10] Implement UserDataService in src/TestResultBrowser.Web/Services/UserDataService.cs (LiteDB CRUD operations for SavedFilterConfiguration)
+- [ ] T130 [US10] Initialize LiteDB database connection in Program.cs (connection string from appsettings.json)
+- [ ] T131 [US10] Create SaveFilterDialog component in src/TestResultBrowser.Web/Components/SaveFilterDialog.razor (name, description, current filter state)
+- [ ] T132 [US10] Create LoadFilterDropdown component in src/TestResultBrowser.Web/Components/LoadFilterDropdown.razor (list saved filters, apply on selection)
+- [ ] T133 [US10] Integrate SaveFilterDialog into FilterPanel component (Save button opens dialog)
+- [ ] T134 [US10] Integrate LoadFilterDropdown into FilterPanel component (Load dropdown applies saved filter)
 
 **Checkpoint**: Saved filters improve workflow efficiency by eliminating repetitive filter configuration
 
 ---
 
-## Phase 11: Polish & Cross-Cutting Concerns ✅ MVP
+## Phase 12: Polish & Cross-Cutting Concerns ✅ MVP
 
 **Purpose**: Essential improvements for production readiness
 
 **Effort**: 1 day (8 hours) | **Status**: Not Started
 
-- [ ] T115 [P] Add loading spinners to all pages during data fetch operations
-- [ ] T116 [P] Implement error boundaries and user-friendly error messages for all components
-- [ ] T117 [P] Optimize performance: implement caching for aggregated summaries (5-minute cache)
-- [ ] T118 [P] Implement logging for all service operations (Serilog integration)
-- [ ] T119 [P] Create deployment guide in docs/deployment.md (IIS configuration, appsettings)
-- [ ] T120 Code cleanup: remove unused imports, apply consistent naming conventions
-- [ ] T121 Run quickstart.md validation (verify setup steps work for new developers)
+- [ ] T135 [P] Add loading spinners to all pages during data fetch operations
+- [ ] T136 [P] Implement error boundaries and user-friendly error messages for all components
+- [ ] T137 [P] Optimize performance: implement caching for aggregated summaries (5-minute cache)
+- [ ] T138 [P] Implement logging for all service operations (Serilog integration)
+- [ ] T139 [P] Create deployment guide in docs/deployment.md (IIS configuration, appsettings)
+- [ ] T140 Code cleanup: remove unused imports, apply consistent naming conventions
+- [ ] T141 Run quickstart.md validation (verify setup steps work for new developers)
 
 ---
 
@@ -312,7 +358,7 @@ Based on plan.md project structure:
 
 ---
 
-## Phase 12: User Story 6 - Feature Impact Analysis (Priority: P1) ⏸️ DEFERRED
+## Phase 13: User Story 6 - Feature Impact Analysis (Priority: P1) ⏸️ DEFERRED
 
 **Goal**: Assess which features are impacted by failures across all configurations
 
@@ -322,18 +368,18 @@ Based on plan.md project structure:
 
 ### Implementation for User Story 6
 
-- [ ] T115 [US5] Implement multi-dimensional filter in FilterPanel component (Version + NamedConfig + OS/DB)
-- [ ] T116 [US5] Add configuration filter dropdowns to toolbar in MainLayout.razor
-- [ ] T117 [US5] Implement ITestDataService.FilterTestResults with multi-dimensional criteria support
-- [ ] T118 [US5] Display active filter chips in toolbar showing applied configuration filters
-- [ ] T119 [US5] Implement configuration-specific failure highlighting in ConfigMatrix component
-- [ ] T120 [US5] Add tooltip to ConfigMatrix cells showing detailed test results for that configuration
+- [ ] T142 [US5] Implement multi-dimensional filter in FilterPanel component (Version + NamedConfig + OS/DB)
+- [ ] T143 [US5] Add configuration filter dropdowns to toolbar in MainLayout.razor
+- [ ] T144 [US5] Implement ITestDataService.FilterTestResults with multi-dimensional criteria support
+- [ ] T145 [US5] Display active filter chips in toolbar showing applied configuration filters
+- [ ] T146 [US5] Implement configuration-specific failure highlighting in ConfigMatrix component
+- [ ] T147 [US5] Add tooltip to ConfigMatrix cells showing detailed test results for that configuration
 
 **Checkpoint**: Configuration matrix filtering enables identification of environment-specific issues
 
 ---
 
-## Phase 13: User Story 5 - Browse Results by Configuration Matrix (Priority: P1) ⏸️ DEFERRED
+## Phase 14: User Story 5 - Browse Results by Configuration Matrix (Priority: P1) ⏸️ DEFERRED
 
 **Goal**: Filter by configuration dimensions to identify environment-specific patterns
 
@@ -343,25 +389,25 @@ Based on plan.md project structure:
 
 ### Implementation for User Story 4
 
-- [ ] T121 [P] [US4] Create QualityTrend record in src/TestResultBrowser.Web/Models/QualityTrend.cs (data-model.md entity #15)
-- [ ] T122 [P] [US4] Create TrendDataPoint record in src/TestResultBrowser.Web/Models/TrendDataPoint.cs
-- [ ] T123 [P] [US4] Create TrendDirection enum in src/TestResultBrowser.Web/Models/TrendDirection.cs
-- [ ] T124 [US4] Create IQualityTrendService interface in src/TestResultBrowser.Web/Services/IQualityTrendService.cs
-- [ ] T125 [US4] Implement QualityTrendService in src/TestResultBrowser.Web/Services/QualityTrendService.cs
-- [ ] T126 [US4] Implement QualityTrendService.GetDomainTrendAsync (compute pass rate trends over last 30 builds)
-- [ ] T127 [US4] Implement trend direction calculation in QualityTrendService (Improving/Stable/Degrading)
-- [ ] T128 [US4] Create Trends.razor page in src/TestResultBrowser.Web/Pages/Trends.razor
-- [ ] T129 [US4] Integrate MudBlazor chart component in Trends.razor to visualize pass rate trends
-- [ ] T130 [US4] Add domain selector in Trends.razor to filter trends by domain
-- [ ] T131 [US4] Display trend direction indicators (↑↓→) in Trends.razor
-- [ ] T132 [US4] Implement comparison between two specific runs in Trends.razor (highlight new failures, new passes, consistently failing)
-- [ ] T133 [US4] Add navigation link to Trends page in MainLayout.razor sidebar
+- [ ] T148 [P] [US4] Create QualityTrend record in src/TestResultBrowser.Web/Models/QualityTrend.cs (data-model.md entity #15)
+- [ ] T149 [P] [US4] Create TrendDataPoint record in src/TestResultBrowser.Web/Models/TrendDataPoint.cs
+- [ ] T150 [P] [US4] Create TrendDirection enum in src/TestResultBrowser.Web/Models/TrendDirection.cs
+- [ ] T151 [US4] Create IQualityTrendService interface in src/TestResultBrowser.Web/Services/IQualityTrendService.cs
+- [ ] T152 [US4] Implement QualityTrendService in src/TestResultBrowser.Web/Services/QualityTrendService.cs
+- [ ] T153 [US4] Implement QualityTrendService.GetDomainTrendAsync (compute pass rate trends over last 30 builds)
+- [ ] T154 [US4] Implement trend direction calculation in QualityTrendService (Improving/Stable/Degrading)
+- [ ] T155 [US4] Create Trends.razor page in src/TestResultBrowser.Web/Pages/Trends.razor
+- [ ] T156 [US4] Integrate MudBlazor chart component in Trends.razor to visualize pass rate trends
+- [ ] T157 [US4] Add domain selector in Trends.razor to filter trends by domain
+- [ ] T158 [US4] Display trend direction indicators (↑↓→) in Trends.razor
+- [ ] T159 [US4] Implement comparison between two specific runs in Trends.razor (highlight new failures, new passes, consistently failing)
+- [ ] T160 [US4] Add navigation link to Trends page in MainLayout.razor sidebar
 
 **Checkpoint**: Quality trend tracking enables proactive quality management
 
 ---
 
-## Phase 14: User Story 8 - Search Test Results (Priority: P2) ⏸️ DEFERRED
+## Phase 15: User Story 8 - Search Test Results (Priority: P2) ⏸️ DEFERRED
 
 **Goal**: Enable quick search by test name, error message, or failure pattern
 
@@ -371,9 +417,9 @@ Based on plan.md project structure:
 
 ### Implementation for User Story 8
 
-- [ ] T134 [US8] Add search input box to toolbar in MainLayout.razor
-- [ ] T135 [US8] Implement ITestDataService.SearchTests method (search by test name, error message)
-- [ ] T136 [US8] Create SearchResults.razor page in src/TestResultBrowser.Web/Pages/SearchResults.razor
+- [ ] T161 [US8] Add search input box to toolbar in MainLayout.razor
+- [ ] T162 [US8] Implement ITestDataService.SearchTests method (search by test name, error message)
+- [ ] T163 [US8] Create SearchResults.razor page in src/TestResultBrowser.Web/Pages/SearchResults.razor
 - [ ] T137 [US8] Display search results grouped by domain/feature in SearchResults.razor
 - [ ] T138 [US8] Implement combined filtering (search + domain + date range) in SearchResults.razor
 
@@ -381,7 +427,7 @@ Based on plan.md project structure:
 
 ---
 
-## Phase 15: User Story 4 - Compare Test Results Over Time (Priority: P1) ⏸️ DEFERRED
+## Phase 16: User Story 4 - Compare Test Results Over Time (Priority: P1) ⏸️ DEFERRED
 
 **Goal**: Track quality trends across multiple test runs
 
@@ -405,27 +451,11 @@ Based on plan.md project structure:
 - [ ] T148 [US4] Implement comparison between two specific runs in Trends.razor (highlight new failures, new passes, consistently failing)
 - [ ] T149 [US4] Add navigation link to Trends page in MainLayout.razor sidebar
 
-**Goal**: Enable users to save filter presets for repeated use
-
-**Independent Test**: Create and save filter configuration, then verify it can be recalled and applied correctly
-
-### Implementation for User Story 10
-
-- [ ] T139 [P] [US10] Create SavedFilterConfiguration class in src/TestResultBrowser.Web/Models/SavedFilterConfiguration.cs (data-model.md entity #8)
-- [ ] T140 [US10] Create IUserDataService interface in src/TestResultBrowser.Web/Services/IUserDataService.cs (LiteDB persistence)
-- [ ] T141 [US10] Implement UserDataService in src/TestResultBrowser.Web/Services/UserDataService.cs using LiteDB
-- [ ] T142 [US10] Implement IUserDataService.CreateFilterAsync in UserDataService
-- [ ] T143 [US10] Implement IUserDataService.GetFiltersByUserAsync in UserDataService
-- [ ] T144 [US10] Add "Save Filter" button to toolbar in MainLayout.razor
-- [ ] T145 [US10] Create SaveFilterDialog component in src/TestResultBrowser.Web/Components/SaveFilterDialog.razor (MudDialog)
-- [ ] T146 [US10] Add "Load Filter" dropdown to toolbar in MainLayout.razor showing saved filters
-- [ ] T147 [US10] Implement filter application when user selects saved filter from dropdown
-
-**Checkpoint**: Saved filters improve convenience for regular monitoring workflows
+**Checkpoint**: Quality trend tracking enables proactive quality management
 
 ---
 
-## Phase 16: User Story 16 - Smart Baseline Comparison (Priority: P2) ⏸️ DEFERRED
+## Phase 17: User Story 16 - Smart Baseline Comparison (Priority: P2) ⏸️ DEFERRED
 
 **Goal**: Compare current build against known stable baseline instead of just previous run
 
@@ -449,7 +479,7 @@ Based on plan.md project structure:
 
 ---
 
-## Phase 17: User Story 15 - Configuration Diff View (Priority: P2) ⏸️ DEFERRED
+## Phase 18: User Story 15 - Configuration Diff View (Priority: P2) ⏸️ DEFERRED
 
 **Goal**: Compare same build across different configurations side-by-side
 
@@ -470,7 +500,7 @@ Based on plan.md project structure:
 
 ---
 
-## Phase 18: User Story 17 - Build Quality Trend Analytics (Priority: P2) ⏸️ DEFERRED
+## Phase 19: User Story 17 - Build Quality Trend Analytics (Priority: P2) ⏸️ DEFERRED
 
 **Goal**: Visualize quality trends over time per domain with alerts
 
@@ -489,7 +519,7 @@ Based on plan.md project structure:
 
 ---
 
-## Phase 19: User Story 19 - Failure History Heatmap (Priority: P2) ⏸️ DEFERRED
+## Phase 20: User Story 19 - Failure History Heatmap (Priority: P2) ⏸️ DEFERRED
 
 **Goal**: Visual overview of chronically unstable features across recent builds
 
@@ -514,7 +544,7 @@ Based on plan.md project structure:
 
 ---
 
-## Phase 20: User Story 18 - Test Execution Time Regression Detection (Priority: P3) ⏸️ DEFERRED
+## Phase 21: User Story 18 - Test Execution Time Regression Detection (Priority: P3) ⏸️ DEFERRED
 
 **Goal**: Identify tests slowing down over time to catch performance regressions
 

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using TestResultBrowser.Web.Models;
 
 namespace TestResultBrowser.Web.Services;
@@ -123,10 +124,9 @@ public class TestDataService : ITestDataService
     /// <inheritdoc/>
     public long GetApproximateMemoryUsage()
     {
-        // Approximate calculation:
-        // Each TestResult ~400 bytes base + strings
-        // Secondary indices overhead ~100 bytes per entry
-        return _testResults.Count * 500L;
+        // Use actual process memory instead of calculation
+        using var currentProcess = Process.GetCurrentProcess();
+        return currentProcess.WorkingSet64;
     }
 
     /// <inheritdoc/>
@@ -142,6 +142,58 @@ public class TestDataService : ITestDataService
             _byBuild.Clear();
             _byTestName.Clear();
         }
+    }
+
+    /// <inheritdoc/>
+    public IEnumerable<string> GetAllBuildIds()
+    {
+        return _byBuild.Keys.OrderByDescending(b => b);
+    }
+
+    /// <inheritdoc/>
+    public IEnumerable<string> GetAllConfigurationIds()
+    {
+        return _byConfiguration.Keys.OrderBy(c => c);
+    }
+
+    /// <inheritdoc/>
+    public IEnumerable<string> GetAllDomainIds()
+    {
+        return _byDomain.Keys.OrderBy(d => d);
+    }
+
+    /// <inheritdoc/>
+    public (DateTime? Earliest, DateTime? Latest) GetDateRange()
+    {
+        var results = _testResults.Values;
+        if (!results.Any())
+            return (null, null);
+
+        return (results.Min(r => r.Timestamp), results.Max(r => r.Timestamp));
+    }
+
+    /// <inheritdoc/>
+    public IEnumerable<string> GetAllVersions()
+    {
+        return _testResults.Values
+            .Select(r => r.ConfigurationId.Split('_').FirstOrDefault())
+            .Where(v => !string.IsNullOrEmpty(v))
+            .Distinct()
+            .OrderBy(v => v)!;
+    }
+
+    /// <inheritdoc/>
+    public IEnumerable<string> GetAllNamedConfigs()
+    {
+        return _testResults.Values
+            .Select(r =>
+            {
+                var parts = r.ConfigurationId.Split('_');
+                return parts.Length >= 3 ? parts[2] : null;
+            })
+            .Where(nc => !string.IsNullOrEmpty(nc))
+            .Distinct()
+            .OrderBy(nc => nc)!;
     }
 
     private void UpdateIndices(TestResult testResult)
