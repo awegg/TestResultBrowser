@@ -73,6 +73,12 @@ public class CacheSettings
     public int MaxMemoryGB { get; set; } = 15;
 
     /// <summary>
+    /// Maximum memory for data cache in MB (for stricter limits)
+    /// Default: 512 MB
+    /// </summary>
+    public int MaxMemoryCacheMB { get; set; } = 512;
+
+    /// <summary>
     /// Aggregation cache duration in minutes
     /// Default: 5
     /// </summary>
@@ -148,11 +154,14 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
                 return;
             }
 
-            // Find all XML files matching pattern: Release-*/*/*.xml
-            var xmlFiles = Directory.GetFiles(
-                _options.FileSharePath,
-                "*.xml",
-                SearchOption.AllDirectories);
+            // Retry logic with exponential backoff for network resilience
+            var xmlFiles = await RetryWithBackoffAsync(
+                () => Task.FromResult(Directory.GetFiles(
+                    _options.FileSharePath,
+                    "*.xml",
+                    SearchOption.AllDirectories)),
+                maxRetries: 3,
+                operationName: "Directory.GetFiles");
 
             _logger.LogInformation("Found {Count} XML files to process", xmlFiles.Length);
 
@@ -185,6 +194,14 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
                         var results = await junitParser.ParseJUnitXmlAsync(xmlFile, parsedPath);
                         allResults.AddRange(results);
                         fileCount++;
+                    }
+                    catch (UnauthorizedAccessException ex)
+                    {
+                        _logger.LogWarning(ex, "Permission denied accessing file: {Path}. Skipping. Ensure service account has read permissions.", xmlFile);
+                    }
+                    catch (IOException ex) when (ex.Message.Contains("used by another process"))
+                    {
+                        _logger.LogWarning(ex, "File is locked by another process: {Path}. Will retry on next scan.", xmlFile);
                     }
                     catch (Exception ex)
                     {
@@ -223,6 +240,32 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
         {
             IsScanningInProgress = false;
         }
+    }
+
+    /// <summary>
+    /// Retry an operation with exponential backoff strategy for network failures
+    /// </summary>
+    private async Task<T> RetryWithBackoffAsync<T>(Func<Task<T>> operation, int maxRetries = 3, string operationName = "Operation")
+    {
+        int attempt = 0;
+        while (attempt < maxRetries)
+        {
+            try
+            {
+                return await operation();
+            }
+            catch (Exception ex) when (attempt < maxRetries - 1)
+            {
+                attempt++;
+                var delayMs = (int)Math.Pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
+                _logger.LogWarning(ex, "{OperationName} failed (attempt {Attempt}/{Max}), retrying in {DelayMs}ms", 
+                    operationName, attempt, maxRetries, delayMs);
+                await Task.Delay(delayMs);
+            }
+        }
+
+        // Final attempt without catching
+        return await operation();
     }
 
     public override void Dispose()

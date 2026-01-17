@@ -10,10 +10,12 @@ namespace TestResultBrowser.Web.Services;
 public class JUnitParserService : IJUnitParserService
 {
     private readonly IVersionMapperService _versionMapper;
+    private readonly ILogger<JUnitParserService> _logger;
 
-    public JUnitParserService(IVersionMapperService versionMapper)
+    public JUnitParserService(IVersionMapperService versionMapper, ILogger<JUnitParserService> logger)
     {
         _versionMapper = versionMapper;
+        _logger = logger;
     }
 
     /// <inheritdoc/>
@@ -57,9 +59,24 @@ public class JUnitParserService : IJUnitParserService
         // Parse each testcase
         foreach (var testCase in testSuite.Descendants("testcase"))
         {
-            var className = testCase.Attribute("classname")?.Value ?? "";
-            var methodName = testCase.Attribute("name")?.Value ?? "";
+            var classNameAttr = testCase.Attribute("classname")?.Value;
+            var methodNameAttr = testCase.Attribute("name")?.Value;
             var timeStr = testCase.Attribute("time")?.Value ?? "0";
+
+            // Validate required fields and log warnings for missing data
+            var className = classNameAttr;
+            if (string.IsNullOrEmpty(className))
+            {
+                className = "<unknown>";
+                _logger.LogWarning("Test case missing 'classname' attribute in file {File}. Using '<unknown>'", xmlFilePath);
+            }
+
+            var methodName = methodNameAttr;
+            if (string.IsNullOrEmpty(methodName))
+            {
+                methodName = "<unknown>";
+                _logger.LogWarning("Test case missing 'name' attribute in file {File}. Using '<unknown>'", xmlFilePath);
+            }
             
             if (!double.TryParse(timeStr, out var executionTime))
             {
@@ -121,8 +138,14 @@ public class JUnitParserService : IJUnitParserService
             // Map version
             var version = _versionMapper.MapVersion(parsedPath.VersionRaw);
 
-            // Build IDs
-            var configurationId = $"{version}_{parsedPath.TestType}_{parsedPath.NamedConfig}_{parsedPath.DomainId}";
+            // Build IDs with validation for required fields
+            var versionStr = version ?? "<unknown>";
+            if (string.IsNullOrEmpty(version))
+            {
+                _logger.LogWarning("Failed to map version from {VersionRaw} in file {File}. Using '<unknown>'", parsedPath.VersionRaw, xmlFilePath);
+            }
+
+            var configurationId = $"{versionStr}_{parsedPath.TestType}_{parsedPath.NamedConfig}_{parsedPath.DomainId}";
             var testFullName = $"{className}.{methodName}";
             var testResultId = $"{configurationId}_{parsedPath.BuildId}_{testFullName}";
 
@@ -132,20 +155,32 @@ public class JUnitParserService : IJUnitParserService
             
             if (parsedPath.NamedConfig.Contains("Win"))
             {
-                os = System.Text.RegularExpressions.Regex.Match(parsedPath.NamedConfig, @"Win\d+").Value;
+                var osMatch = System.Text.RegularExpressions.Regex.Match(parsedPath.NamedConfig, @"Win\d+").Value;
+                os = !string.IsNullOrEmpty(osMatch) ? osMatch : "<unknown>";
             }
             else if (parsedPath.NamedConfig.Contains("Ubuntu"))
             {
                 os = "Ubuntu";
             }
+            else
+            {
+                os = "<unknown>";
+                _logger.LogWarning("Unable to extract OS from NamedConfig '{Config}' in file {File}", parsedPath.NamedConfig, xmlFilePath);
+            }
             
             if (parsedPath.NamedConfig.Contains("SQL"))
             {
-                db = System.Text.RegularExpressions.Regex.Match(parsedPath.NamedConfig, @"SQLServer\d+").Value;
+                var dbMatch = System.Text.RegularExpressions.Regex.Match(parsedPath.NamedConfig, @"SQLServer\d+").Value;
+                db = !string.IsNullOrEmpty(dbMatch) ? dbMatch : "<unknown>";
             }
             else if (parsedPath.NamedConfig.Contains("MySQL"))
             {
                 db = "MySQL";
+            }
+            else
+            {
+                db = "<unknown>";
+                _logger.LogWarning("Unable to extract Database from NamedConfig '{Config}' in file {File}", parsedPath.NamedConfig, xmlFilePath);
             }
 
             var testResult = new TestResult
