@@ -2,6 +2,8 @@
 @using Microsoft.JSInterop
 @inject IJSRuntime JS
 
+<CascadingValue Value="this">
+
 @if (IsRootNode)
 {
     @* Root node - render the entire table *@
@@ -27,7 +29,7 @@
         <tbody>
             @foreach (var child in Node.Children)
             {
-                <HierarchyTreeView Node="child" HistoryColumns="HistoryColumns" IsRootNode="false" />
+                <HierarchyTreeView Node="child" HistoryColumns="HistoryColumns" IsRootNode="false" OnTestSelected="OnTestSelected" />
             }
         </tbody>
     </table>
@@ -77,28 +79,57 @@ else
                         : Node.ReportDirectoryPath;
 
                     var deltaInfo = GetDeltaInfo(idx);
+                    var isFailedCell = cell.Status == HistoryCellStatus.HasFailures && Node.NodeType == HierarchyNodeType.Test;
                 }
 
                 @if (!string.IsNullOrEmpty(reportPath))
                 {
-                    <div class="@cellClass py-1 px-2" style="cursor: pointer; user-select: none; display: inline-block;" @onclick="() => OpenTestReport(reportPath)">
+                    <div class="@cellClass py-1 px-2" 
+                         style="cursor: pointer; user-select: none; display: inline-block;" 
+                         @onclick="@(async () => 
+                         {
+                             if (isFailedCell)
+                             {
+                                 await OnTestSelected.InvokeAsync(Node);
+                             }
+                             else
+                             {
+                                 await OpenTestReport(reportPath);
+                             }
+                         })">
                         <MudText Typo="Typo.caption" style="cursor: pointer;">
                             @deltaInfo.BaseText
                             @if (deltaInfo.HasDelta)
                             {
                                 <span class="@deltaInfo.DeltaClass" style="margin-left: 4px;">(@deltaInfo.DeltaText)</span>
                             }
+                            @if (isFailedCell)
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" style="margin-left: 4px; vertical-align: middle;" />
+                            }
                         </MudText>
                     </div>
                 }
                 else
                 {
-                    <div class="@cellClass py-1 px-2" style="display: inline-block;">
+                    <div class="@cellClass py-1 px-2" 
+                         style="display: inline-block;@(isFailedCell ? " cursor: pointer;" : "")"
+                         @onclick="@(async () => 
+                         {
+                             if (isFailedCell)
+                             {
+                                 await OnTestSelected.InvokeAsync(Node);
+                             }
+                         })">
                         <MudText Typo="Typo.caption">
                             @deltaInfo.BaseText
                             @if (deltaInfo.HasDelta)
                             {
                                 <span class="@deltaInfo.DeltaClass" style="margin-left: 4px;">(@deltaInfo.DeltaText)</span>
+                            }
+                            @if (isFailedCell)
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" style="margin-left: 4px; vertical-align: middle;" />
                             }
                         </MudText>
                     </div>
@@ -112,10 +143,11 @@ else
     {
         @foreach (var child in Node.Children)
         {
-            <HierarchyTreeView Node="child" HistoryColumns="HistoryColumns" IsRootNode="false" />
+            <HierarchyTreeView Node="child" HistoryColumns="HistoryColumns" IsRootNode="false" OnTestSelected="OnTestSelected" />
         }
     }
 }
+</CascadingValue>
 
 @code {
     [Parameter]
@@ -126,6 +158,9 @@ else
 
     [Parameter]
     public bool IsRootNode { get; set; } = true;
+
+    [Parameter]
+    public EventCallback<HierarchyNode> OnTestSelected { get; set; }
 
     private void ToggleExpanded()
     {

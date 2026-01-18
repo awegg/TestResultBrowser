@@ -41,7 +41,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
             }
 
             // Take last N builds
-            var selectedBuilds = allBuilds.Take(numberOfBuilds).OrderBy(b => ExtractBuildNumber(b)).ToList();
+            var selectedBuilds = allBuilds.Take(numberOfBuilds).OrderByDescending(b => ExtractBuildNumber(b)).ToList();
 
             // Build history columns (newest first for display)
             result.HistoryColumns = selectedBuilds
@@ -57,7 +57,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
             // Set latest build info
             if (selectedBuilds.Any())
             {
-                result.LatestBuildId = selectedBuilds.Last();
+                result.LatestBuildId = selectedBuilds.First();
                 result.LatestBuildTime = GetBuildTime(result.LatestBuildId);
             }
 
@@ -142,14 +142,13 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
         List<string> selectedBuilds,
         List<HistoryColumn> historyColumns)
     {
-        // Group by feature directory path from filesystem (e.g., "Px Core - Alarm Dashboard")
+        // Group by Feature property from TestResult (extracted during import)
         var features = testResults
-            .GroupBy(t => ExtractFeatureDirectoryName(t.ReportDirectoryPath))
+            .GroupBy(t => t.Feature)
             .OrderBy(g => g.Key)
             .ToList();
 
         var featureNodes = new List<HierarchyNode>();
-
         foreach (var featureGroup in features)
         {
             var featureName = featureGroup.Key;
@@ -181,14 +180,35 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                 };
 
                 // Individual tests under suite - deduplicate by TestFullName
+                // Take the LATEST result from the LATEST build (by timestamp)
+                var latestBuild = selectedBuilds.Last();
                 var tests = suiteGroup
                     .GroupBy(t => t.TestFullName)
-                    .Select(g => g.First())  // Take first occurrence of each unique test
+                    .Select(g =>
+                    {
+                        // Get all results from the latest build for this test
+                        var latestBuildResults = g.Where(t => t.BuildId == latestBuild).ToList();
+                        
+                        // If test exists in latest build, take the LATEST result by timestamp
+                        if (latestBuildResults.Any())
+                        {
+                            return latestBuildResults.OrderByDescending(t => t.Timestamp).First();
+                        }
+                        
+                        // Fallback: if test doesn't exist in latest build, take most recent from any build
+                        return g.OrderByDescending(t => ExtractBuildNumber(t.BuildId))
+                                .ThenByDescending(t => t.Timestamp)
+                                .First();
+                    })
                     .OrderBy(t => t.TestFullName)
                     .ToList();
 
                 foreach (var test in tests)
                 {
+                    // DEBUG: Log to verify we selected the correct test
+                    _logger.LogDebug("Selected test '{TestName}' from build {BuildId} (timestamp: {Timestamp}) with status {Status}. ErrorMessage length: {ErrorLength}",
+                        test.TestFullName, test.BuildId, test.Timestamp, test.Status, test.ErrorMessage?.Length ?? 0);
+
                     var testNode = new HierarchyNode
                     {
                         Name = test.MethodName,
@@ -197,24 +217,35 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                         TestFullName = test.TestFullName,  // Store for deduplication
                         IndentLevel = 2,
                         IsExpanded = false,
-                        ReportDirectoryPath = test.ReportDirectoryPath
+                        ReportDirectoryPath = test.ReportDirectoryPath,
+                        // Error fields will be populated from the latest build's result (see below)
+                        ErrorMessage = null,
+                        StackTrace = null
                     };
 
                     // Build history cells for this test
                     testNode.HistoryCells = BuildHistoryCells(test, selectedBuilds, historyColumns, testResults);
                     
-                    // Latest stats
-                    var latestBuild = selectedBuilds.Last();
-                    var latestResult = testResults.FirstOrDefault(r => r.Id == test.Id && r.BuildId == latestBuild);
-                    if (latestResult != null)
+                    // Extract error information from the latest build's HistoryCellData
+                    // This ensures error messages match the result that determines the cell color
+                    if (testNode.HistoryCells.Any())
                     {
-                        testNode.LatestStats = new TestNodeStats
+                        var latestBuildCell = testNode.HistoryCells.Last(); // Last = latest build (selectedBuilds is ordered)
+                        if (latestBuildCell.SourceTestResult != null)
                         {
-                            Passed = latestResult.Status == TestStatus.Pass ? 1 : 0,
-                            Failed = latestResult.Status == TestStatus.Fail ? 1 : 0,
-                            Skipped = latestResult.Status == TestStatus.Skip ? 1 : 0
-                        };
+                            testNode.ErrorMessage = latestBuildCell.SourceTestResult.ErrorMessage;
+                            testNode.StackTrace = latestBuildCell.SourceTestResult.StackTrace;
+                            testNode.FirstErrorMessage = latestBuildCell.SourceTestResult.ErrorMessage;
+                        }
                     }
+                    
+                    // Latest stats - use the test object which is already from the latest build
+                    testNode.LatestStats = new TestNodeStats
+                    {
+                        Passed = test.Status == TestStatus.Pass ? 1 : 0,
+                        Failed = test.Status == TestStatus.Fail ? 1 : 0,
+                        Skipped = test.Status == TestStatus.Skip ? 1 : 0
+                    };
 
                     suiteNode.Children.Add(testNode);
                 }
@@ -259,16 +290,37 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
         var cells = selectedBuilds
             .Select(buildId => 
             {
+                // Get all results for this test in this build
                 var buildResults = allResults
                     .Where(r => r.BuildId == buildId && r.TestFullName == test.TestFullName)
                     .ToList();
 
+                // Take ONLY the latest result (handles retries, reruns, parametrized tests)
+                // Order by timestamp to get the most recent result
+                var latestResult = buildResults
+                    .OrderByDescending(r => r.Timestamp)
+                    .FirstOrDefault();
+
+                // Count based on the latest result only
+                var passed = latestResult?.Status == TestStatus.Pass ? 1 : 0;
+                var failed = latestResult?.Status == TestStatus.Fail ? 1 : 0;
+                var skipped = latestResult?.Status == TestStatus.Skip ? 1 : 0;
+
+                // Log if there were multiple results (indicates retries/reruns)
+                if (buildResults.Count > 1)
+                {
+                    _logger.LogDebug("Test '{TestName}' had {Count} runs in {BuildId}. Using latest: {LatestStatus}. All statuses: {Statuses}", 
+                        test.TestFullName, buildResults.Count, buildId, latestResult?.Status,
+                        string.Join(",", buildResults.OrderBy(r => r.Timestamp).Select(r => r.Status)));
+                }
+
                 return new HistoryCellData
                 {
-                    Passed = buildResults.Count(r => r.Status == TestStatus.Pass),
-                    Failed = buildResults.Count(r => r.Status == TestStatus.Fail),
-                    Skipped = buildResults.Count(r => r.Status == TestStatus.Skip),
-                    ReportDirectoryPath = buildResults.FirstOrDefault()?.ReportDirectoryPath
+                    Passed = passed,
+                    Failed = failed,
+                    Skipped = skipped,
+                    ReportDirectoryPath = latestResult?.ReportDirectoryPath,
+                    SourceTestResult = latestResult  // Store the actual result used for this cell
                 };
             })
             .ToList();
@@ -287,12 +339,12 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
         // Get all unique test full names under this node (handles deduplication)
         var allTestFullNames = GetAllTestFullNamesUnderNode(node);
 
-        // Latest build stats - deduplicate by TestFullName
+        // Latest build stats - deduplicate by TestFullName, selecting latest by timestamp
         var latestBuild = selectedBuilds.Last();
         var latestTests = allResults
             .Where(r => r.BuildId == latestBuild && allTestFullNames.Contains(r.TestFullName))
             .GroupBy(r => r.TestFullName)
-            .Select(g => g.First())  // Take first of each unique test
+            .Select(g => g.OrderByDescending(r => r.Timestamp).First())  // Take latest by timestamp
             .ToList();
 
         node.LatestStats = new TestNodeStats
@@ -302,14 +354,14 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
             Skipped = latestTests.Count(t => t.Status == TestStatus.Skip)
         };
 
-        // History cells - deduplicate by TestFullName per build
+        // History cells - deduplicate by TestFullName per build, selecting latest by timestamp
         node.HistoryCells = selectedBuilds
             .Select(buildId => 
             {
                 var buildTests = allResults
                     .Where(r => r.BuildId == buildId && allTestFullNames.Contains(r.TestFullName))
                     .GroupBy(r => r.TestFullName)
-                    .Select(g => g.First())  // Take first of each unique test
+                    .Select(g => g.OrderByDescending(r => r.Timestamp).First())  // Take latest by timestamp
                     .ToList();
 
                 return new HistoryCellData
@@ -340,6 +392,24 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
         if (!string.IsNullOrEmpty(firstReportPath))
         {
             node.ReportDirectoryPath = firstReportPath;
+        }
+
+        // For parent nodes, capture the first error message from any failed child test
+        if (node.NodeType != HierarchyNodeType.Test)
+        {
+            var firstFailedTest = allResults
+                .Where(r => selectedBuilds.Contains(r.BuildId) 
+                    && allTestFullNames.Contains(r.TestFullName) 
+                    && r.Status == TestStatus.Fail 
+                    && !string.IsNullOrEmpty(r.ErrorMessage))
+                .OrderByDescending(r => ExtractBuildNumber(r.BuildId))
+                .ThenByDescending(r => r.Timestamp)  // For same build, get latest timestamp
+                .FirstOrDefault();
+
+            if (firstFailedTest != null)
+            {
+                node.FirstErrorMessage = firstFailedTest.ErrorMessage;
+            }
         }
     }
 
@@ -409,20 +479,6 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
             .FirstOrDefault(t => t.BuildId == buildId);
         
         return testForBuild?.Timestamp ?? DateTime.UtcNow;
-    }
-
-    /// <summary>
-    /// Extract feature directory name from the report path
-    /// e.g., "C:\data\Release-252_181639\Px Core - Alarm Dashboard" → "Px Core - Alarm Dashboard"
-    /// </summary>
-    private string ExtractFeatureDirectoryName(string? reportDirectoryPath)
-    {
-        if (string.IsNullOrEmpty(reportDirectoryPath))
-            return "Unknown";
-
-        // Get the last directory component
-        var dirInfo = new System.IO.DirectoryInfo(reportDirectoryPath);
-        return dirInfo.Name ?? "Unknown";
     }
 
     /// <summary>

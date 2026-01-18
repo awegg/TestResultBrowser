@@ -58,98 +58,102 @@
         </div>
     </MudPaper>
 
-    @* Quick Actions *@
-    <MudPaper Class="mb-4 pa-2">
-        <div class="d-flex gap-2">
-            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ExpandAll">Expand All</MudButton>
-            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="CollapseAll">Collapse All</MudButton>
-        </div>
-    </MudPaper>
-
-    @* Stats Section *@
-    @if (historyResult != null)
-    {
-        <MudGrid Class="mb-4">
-            <MudItem xs="12" sm="6" md="2">
-                <MudCard Class="slim-card" Variant="Variant.Outlined">
-                    <MudCardContent>
-                        <MudText Typo="Typo.caption" Color="Color.Default">Latest Run</MudText>
-                        <MudText Typo="Typo.h6">@historyResult.LatestBuildId</MudText>
-                        <MudText Typo="Typo.caption">@historyResult.LatestBuildTime.ToString("MM/dd/yyyy HH:mm")</MudText>
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-
-            <MudItem xs="12" sm="6" md="2">
-                <MudCard Class="slim-card" Variant="Variant.Outlined">
-                    <MudCardContent>
-                        <MudText Typo="Typo.caption" Color="Color.Default">Total Tests</MudText>
-                        <MudText Typo="Typo.h6">@historyResult.TotalTests</MudText>
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-
-            <MudItem xs="12" sm="6" md="2">
-                <MudCard Class="slim-card" Variant="Variant.Outlined">
-                    <MudCardContent>
-                        <MudText Typo="Typo.caption" Color="Color.Default">Passed</MudText>
-                        <MudText Typo="Typo.h6" Color="Color.Success">@historyResult.PassedTests (@historyResult.PassRatePercentage.ToString("F1")%)</MudText>
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-
-            <MudItem xs="12" sm="6" md="2">
-                <MudCard Class="slim-card" Variant="Variant.Outlined" Style="cursor: pointer;" @onclick="ToggleFailedFilter">
-                    <MudCardContent>
-                        <MudText Typo="Typo.caption" Color="Color.Default">Failed</MudText>
-                        <MudText Typo="Typo.h6" Color="Color.Error">@historyResult.FailedTests</MudText>
-                        <MudText Typo="Typo.caption" Style="font-size: 0.75rem; color: #999; margin-top: 4px;">@(showOnlyFailed ? "✓ Filtered" : "Click to filter")</MudText>
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-
-            <MudItem xs="12" sm="6" md="2">
-                <MudCard Class="slim-card" Variant="Variant.Outlined">
-                    <MudCardContent>
-                        <MudText Typo="Typo.caption" Color="Color.Default">Skipped</MudText>
-                        <MudText Typo="Typo.h6">@historyResult.SkippedTests</MudText>
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-        </MudGrid>
-
-        @* Hierarchical Tree View *@
-        <MudPaper Class="pa-4">
-            @if (historyResult.HierarchyNodes.Count == 0)
-            {
-                <MudText Color="Color.Default" Typo="Typo.body2">No test results found for selected configuration.</MudText>
-            }
-            else
-            {
-                <div class="table-container" style="overflow-x: auto;">
-                    @* Render hierarchy tree *@
-                    @foreach (var domainNode in historyResult.HierarchyNodes)
-                    {
-                        <HierarchyTreeView Node="GetFilteredNode(domainNode)" HistoryColumns="historyResult.HistoryColumns" />
-                    }
+    @* Content area (full width) *@
+    <MudGrid Class="config-history-grid">
+        <MudItem xs="12" md="12" Class="main-content">
+            @* Quick Actions *@
+            <MudPaper Class="mb-4 pa-2">
+                <div class="d-flex gap-2">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ExpandAll">Expand All</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="CollapseAll">Collapse All</MudButton>
                 </div>
+            </MudPaper>
+
+            @* Stats Section *@
+            @if (historyResult != null)
+            {
+                <MudGrid Class="mb-4">
+                    <MudItem xs="12" sm="6" md="2">
+                        <MudCard Class="slim-card" Variant="Variant.Outlined">
+                            <MudCardContent>
+                                <MudText Typo="Typo.caption" Color="Color.Default">Latest Run</MudText>
+                                <MudText Typo="Typo.h6">@historyResult.LatestBuildId</MudText>
+                                <MudText Typo="Typo.caption">@historyResult.LatestBuildTime.ToString("MM/dd/yyyy HH:mm")</MudText>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+
+                    <MudItem xs="12" sm="6" md="2">
+                        <MudCard Class="slim-card" Variant="Variant.Outlined">
+                            <MudCardContent>
+                                <MudText Typo="Typo.caption" Color="Color.Default">Total Tests</MudText>
+                                <MudText Typo="Typo.h6">@historyResult.TotalTests</MudText>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+
+                    <MudItem xs="12" sm="6" md="2">
+                        <MudCard Class="slim-card" Variant="Variant.Outlined">
+                            <MudCardContent>
+                                <MudText Typo="Typo.caption" Color="Color.Default">Passed</MudText>
+                                <MudText Typo="Typo.h6" Color="Color.Success">@historyResult.PassedTests (@historyResult.PassRatePercentage.ToString("F1")%)</MudText>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+
+                    <MudItem xs="12" sm="6" md="2">
+                        <MudCard Class="slim-card" Variant="Variant.Outlined" Style="cursor: pointer;" @onclick="ToggleFailedFilter">
+                            <MudCardContent>
+                                <MudText Typo="Typo.caption" Color="Color.Default">Failed</MudText>
+                                <MudText Typo="Typo.h6" Color="Color.Error">@historyResult.FailedTests</MudText>
+                                <MudText Typo="Typo.caption" Style="font-size: 0.75rem; color: #999; margin-top: 4px;">@(showOnlyFailed ? "✓ Filtered" : "Click to filter")</MudText>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+
+                    <MudItem xs="12" sm="6" md="2">
+                        <MudCard Class="slim-card" Variant="Variant.Outlined">
+                            <MudCardContent>
+                                <MudText Typo="Typo.caption" Color="Color.Default">Skipped</MudText>
+                                <MudText Typo="Typo.h6">@historyResult.SkippedTests</MudText>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                </MudGrid>
+
+                @* Hierarchical Tree View *@
+                <MudPaper Class="pa-4">
+                    @if (historyResult.HierarchyNodes.Count == 0)
+                    {
+                        <MudText Color="Color.Default" Typo="Typo.body2">No test results found for selected configuration.</MudText>
+                    }
+                    else
+                    {
+                        <div class="table-container" style="overflow-x: auto;">
+                            @* Render hierarchy tree *@
+                            @foreach (var domainNode in historyResult.HierarchyNodes)
+                            {
+                                <HierarchyTreeView Node="GetFilteredNode(domainNode)" 
+                                                   HistoryColumns="historyResult.HistoryColumns"
+                                                   OnTestSelected="SelectTest" />
+                            }
+                        </div>
+                    }
+                </MudPaper>
             }
-        </MudPaper>
-    }
-    else if (isLoading)
-    {
-        <MudContainer Class="d-flex justify-center align-center" style="min-height: 400px;">
-            <MudProgressCircular Size="Size.Large" Indeterminate="true" />
-        </MudContainer>
-    }
-    else if (!string.IsNullOrEmpty(selectedConfiguration))
-    {
-        <MudAlert Severity="Severity.Info">Select a configuration and click Refresh to load data.</MudAlert>
-    }
-
+            else if (isLoading)
+            {
+                <MudContainer Class="d-flex justify-center align-center" style="min-height: 400px;">
+                    <MudProgressCircular Size="Size.Large" Indeterminate="true" />
+                </MudContainer>
+            }
+            else if (!string.IsNullOrEmpty(selectedConfiguration))
+            {
+                <MudAlert Severity="Severity.Info">Select a configuration and click Refresh to load data.</MudAlert>
+            }
+        </MudItem>
+    </MudGrid>
 </MudContainer>
-
-@* Configuration Selection Modal *@
 @if (showConfigurationDialog)
 {
     <div class="modal-overlay" @onclick="@(() => { showConfigurationDialog = false; })" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1300; display: flex; align-items: center; justify-content: center;">
@@ -191,6 +195,15 @@
         </div>
     </div>
 }
+@* Test Details Popup *@
+@if (showDetailsDialog)
+{
+    <div class="modal-overlay" @onclick="@(() => { ClearSelectedTest(); })" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1400; display: flex; align-items: center; justify-content: center;">
+        <div @onclick:stopPropagation="true" style="background: white; border-radius: 4px; max-width: 900px; width: 95%; max-height: 80vh; display: flex; flex-direction: column;">
+            <TestDetailsSidePanel SelectedNode="selectedTestNode" OnClose="@(() => ClearSelectedTest())" />
+        </div>
+    </div>
+}
 
 @code {
     [SupplyParameterFromQuery(Name = "config")]
@@ -207,6 +220,8 @@
     private string searchText = string.Empty;
     private bool showConfigurationDialog = false;
     private bool showOnlyFailed = false;
+    private HierarchyNode? selectedTestNode;  // Track selected test for side panel
+    private bool showDetailsDialog = false;   // Controls visibility of test details popup
 
     protected override async Task OnInitializedAsync()
     {
@@ -377,6 +392,18 @@
     private void ToggleFailedFilter()
     {
         showOnlyFailed = !showOnlyFailed;
+    }
+
+    private void SelectTest(HierarchyNode testNode)
+    {
+        selectedTestNode = testNode;
+        showDetailsDialog = true;
+    }
+
+    private void ClearSelectedTest()
+    {
+        selectedTestNode = null;
+        showDetailsDialog = false;
     }
 
     private HierarchyNode GetFilteredNode(HierarchyNode node)

@@ -1,7 +1,7 @@
 # Tasks: JUnit Test Results Browser
 
 **Input**: Design documents from `/specs/001-junit-results-browser/`
-**Prerequisites**: plan.md, spec.md, research.md, data-model.md, contracts/service-interfaces.md, quickstart.md
+**Prerequisites**: plan.md (required), spec.md (required), research.md, data-model.md, contracts/, quickstart.md
 
 **Tests**: Tests are NOT explicitly requested in the feature specification, so NO test tasks are included. Implementation tasks only.
 

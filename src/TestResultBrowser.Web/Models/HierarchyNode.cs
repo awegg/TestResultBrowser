@@ -65,6 +65,21 @@ public class HierarchyNode
     /// Full test name including class and method (for deduplication) - only for Test nodes
     /// </summary>
     public string? TestFullName { get; set; }
+
+    /// <summary>
+    /// Error message for failed test nodes (only populated for Test nodes with Status=Fail)
+    /// </summary>
+    public string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// Stack trace for failed test nodes (only populated for Test nodes with Status=Fail)
+    /// </summary>
+    public string? StackTrace { get; set; }
+
+    /// <summary>
+    /// First error message (for parent nodes, this is the error from the first failed child test)
+    /// </summary>
+    public string? FirstErrorMessage { get; set; }
 }
 
 /// <summary>

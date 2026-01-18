@@ -165,7 +165,6 @@ public class JUnitParserService : IJUnitParserService
             else
             {
                 os = "<unknown>";
-                _logger.LogWarning("Unable to extract OS from NamedConfig '{Config}' in file {File}", parsedPath.NamedConfig, xmlFilePath);
             }
             
             if (parsedPath.NamedConfig.Contains("SQL"))
@@ -180,8 +179,13 @@ public class JUnitParserService : IJUnitParserService
             else
             {
                 db = "<unknown>";
-                _logger.LogWarning("Unable to extract Database from NamedConfig '{Config}' in file {File}", parsedPath.NamedConfig, xmlFilePath);
             }
+
+            // Extract feature directory name from the report path
+            var reportDirectory = Path.GetDirectoryName(xmlFilePath);
+            var featureDirectoryName = !string.IsNullOrEmpty(reportDirectory)
+                ? new System.IO.DirectoryInfo(reportDirectory).Name
+                : "Unknown";
 
             var testResult = new TestResult
             {
@@ -201,8 +205,9 @@ public class JUnitParserService : IJUnitParserService
                 BuildId = parsedPath.BuildId,
                 BuildNumber = parsedPath.BuildNumber,
                 Machine = os ?? parsedPath.NamedConfig,
+                Feature = featureDirectoryName,
                 PolarionTickets = polarionTickets,
-                ReportDirectoryPath = Path.GetDirectoryName(xmlFilePath)
+                ReportDirectoryPath = reportDirectory
             };
 
             results.Add(testResult);

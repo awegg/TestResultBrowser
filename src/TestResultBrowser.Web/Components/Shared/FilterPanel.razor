@@ -54,15 +54,37 @@
         </MudItem>
         
         <MudItem xs="12" md="6">
-            <MudSelect T="string" Label="Build" MultiSelection="true" 
-                       @bind-SelectedValues="SelectedBuilds"
-                       SelectAll="true"
-                       SelectAllText="All Builds">
-                @foreach (var build in AvailableBuilds)
+            <MudStack Spacing="1">
+                <MudSelect T="string" Label="Build Number" MultiSelection="true"
+                           @bind-SelectedValues="SelectedBuilds"
+                           SelectAll="true"
+                           SelectAllText="All Builds (Historical + Current)"
+                           HelperText="@GetBuildHelperText()">
+                    @foreach (var build in AvailableBuilds)
+                    {
+                        var isLatest = build == AvailableBuilds.FirstOrDefault();
+                        <MudSelectItem T="string" Value="@build">
+                            @if (isLatest)
+                            {
+                                <MudStack Row="true" AlignItems="AlignItems.Center">
+                                    <MudIcon Icon="@Icons.Material.Filled.FiberNew" Color="Color.Success" Size="Size.Small" />
+                                    <MudText>@build (Latest)</MudText>
+                                </MudStack>
+                            }
+                            else
+                            {
+                                <MudText Color="Color.Default">@build</MudText>
+                            }
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+                @if (SelectedBuilds.Count() > 1)
                 {
-                    <MudSelectItem T="string" Value="@build">@build</MudSelectItem>
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mt-1">
+                        <MudText Typo="Typo.caption">Showing results from @SelectedBuilds.Count() builds (current + historical)</MudText>
+                    </MudAlert>
                 }
-            </MudSelect>
+            </MudStack>
         </MudItem>
         
         <MudItem xs="12" md="6">
@@ -127,12 +149,13 @@
         AvailableConfigurations = allResults.Select(r => r.ConfigurationId).Distinct().OrderBy(c => c).ToList();
         AvailableBuilds = allResults.Select(r => r.BuildId).Distinct().OrderByDescending(b => b).ToList();
         
-        // Default to all selected
+        // Default to all selected EXCEPT builds - default to latest build only
         SelectedDomains = AvailableDomains;
         SelectedFeatures = AvailableFeatures;
         SelectedVersions = AvailableVersions;
         SelectedConfigurations = AvailableConfigurations;
-        SelectedBuilds = AvailableBuilds;
+        // Default to only the most recent build to avoid confusion between current and historical results
+        SelectedBuilds = AvailableBuilds.Take(1).ToList();
     }
     
     private async Task ApplyFilters()
@@ -160,5 +183,20 @@
         SelectedStatuses = new HashSet<string> { "Pass", "Fail", "Skip" };
         
         await ApplyFilters();
+    }
+    
+    private string GetBuildHelperText()
+    {
+        if (!SelectedBuilds.Any())
+            return "No builds selected";
+        
+        if (SelectedBuilds.Count() == 1)
+        {
+            var selectedBuild = SelectedBuilds.First();
+            var isLatest = selectedBuild == AvailableBuilds.FirstOrDefault();
+            return isLatest ? "Showing only the latest build" : $"Showing historical build: {selectedBuild}";
+        }
+        
+        return $"Showing {SelectedBuilds.Count()} builds (includes historical data)";
     }
 }

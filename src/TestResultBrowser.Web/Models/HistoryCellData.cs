@@ -53,6 +53,12 @@ public class HistoryCellData
     /// Directory path to test report (for test nodes only)
     /// </summary>
     public string? ReportDirectoryPath { get; set; }
+
+    /// <summary>
+    /// The actual TestResult used for this cell (latest by timestamp for the build).
+    /// Used to provide accurate error messages and stack traces in the side panel.
+    /// </summary>
+    public TestResult? SourceTestResult { get; set; }
 }
 
 /// <summary>
