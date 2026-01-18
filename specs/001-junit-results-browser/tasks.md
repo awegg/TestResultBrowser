@@ -168,7 +168,7 @@ Based on plan.md project structure:
 
 **Goal**: Enable browsing hierarchical test results with multi-build history across filtered configurations
 
-**Effort**: 2-3 days (16-24 hours) | **Status**: Not Started
+**Effort**: 2-3 days (16-24 hours) | **Status**: ✅ COMPLETE
 
 **Independent Test**: Select a configuration/machine, verify hierarchical test tree displays with last N builds showing pass/fail counts per build, and visual indicators (green/red cells)
 
@@ -183,28 +183,30 @@ Based on plan.md project structure:
 
 ### Implementation for User Story 5
 
-- [ ] T062 [P] [US5] Create ConfigurationHistoryResult record in src/TestResultBrowser.Web/Models/ConfigurationHistoryResult.cs
-- [ ] T063 [P] [US5] Create HistoryColumn record in src/TestResultBrowser.Web/Models/HistoryColumn.cs (buildId, date, pass/fail counts)
-- [ ] T064 [P] [US5] Create HierarchyNode record in src/TestResultBrowser.Web/Models/HierarchyNode.cs (name, level, children, history data)
-- [ ] T065 [US5] Create IConfigurationHistoryService interface in src/TestResultBrowser.Web/Services/IConfigurationHistoryService.cs
-- [ ] T066 [US5] Implement ConfigurationHistoryService.GetConfigurationHistoryAsync in src/TestResultBrowser.Web/Services/ConfigurationHistoryService.cs
-- [ ] T067 [US5] Implement BuildHierarchyTree method (organize tests into Domain → Feature → Suite → Test tree)
-- [ ] T068 [US5] Implement GetLastNBuilds method (retrieve last N builds for selected configuration)
-- [ ] T069 [US5] Implement CalculateHistoryForNode method (aggregate pass/fail counts per build per node)
-- [ ] T070 [US5] Create ConfigurationHistory.razor page in src/TestResultBrowser.Web/Pages/ConfigurationHistory.razor
-- [ ] T071 [US5] Add configuration/release dropdown filter in ConfigurationHistory.razor
-- [ ] T072 [US5] Add machine/named config filter dropdown in ConfigurationHistory.razor
-- [ ] T073 [US5] Implement summary stats cards (Latest Run, Total Tests, Passed %, Failed, Skipped)
-- [ ] T074 [US5] Create HierarchyTreeView component in src/TestResultBrowser.Web/Components/HierarchyTreeView.razor
-- [ ] T075 [US5] Implement expandable/collapsible tree nodes with indentation in HierarchyTreeView
-- [ ] T076 [US5] Create HistoryGrid component in src/TestResultBrowser.Web/Components/HistoryGrid.razor
-- [ ] T077 [US5] Render multi-column history grid with build headers (date, buildId)
-- [ ] T078 [US5] Implement color-coded cells in HistoryGrid (green for all pass, red for failures)
-- [ ] T079 [US5] Display pass/fail counts in each cell (e.g., "36/36", "35/36")
-- [ ] T080 [US5] Add "Expand All" / "Collapse All" buttons to toolbar
-- [ ] T081 [US5] Add navigation link to ConfigurationHistory page in NavMenu.razor sidebar
+- [x] T062 [P] [US5] Create ConfigurationHistoryResult record in src/TestResultBrowser.Web/Models/ConfigurationHistoryResult.cs
+- [x] T063 [P] [US5] Create HistoryColumn record in src/TestResultBrowser.Web/Models/HistoryColumn.cs (buildId, date, pass/fail counts)
+- [x] T064 [P] [US5] Create HierarchyNode record in src/TestResultBrowser.Web/Models/HierarchyNode.cs (name, level, children, history data)
+- [x] T065 [US5] Create IConfigurationHistoryService interface in src/TestResultBrowser.Web/Services/IConfigurationHistoryService.cs
+- [x] T066 [US5] Implement ConfigurationHistoryService.GetConfigurationHistoryAsync in src/TestResultBrowser.Web/Services/ConfigurationHistoryService.cs
+- [x] T067 [US5] Implement BuildHierarchyTree method (organize tests into Domain → Feature → Suite → Test tree)
+- [x] T068 [US5] Implement GetLastNBuilds method (retrieve last N builds for selected configuration)
+- [x] T069 [US5] Implement CalculateHistoryForNode method (aggregate pass/fail counts per build per node)
+- [x] T070 [US5] Create ConfigurationHistory.razor page in src/TestResultBrowser.Web/Pages/ConfigurationHistory.razor
+- [x] T071 [US5] Add configuration/release dropdown filter in ConfigurationHistory.razor
+- [x] T072 [US5] Add machine/named config filter dropdown in ConfigurationHistory.razor
+- [x] T073 [US5] Implement summary stats cards (Latest Run, Total Tests, Passed %, Failed, Skipped)
+- [x] T074 [US5] Create HierarchyTreeView component in src/TestResultBrowser.Web/Components/HierarchyTreeView.razor
+- [x] T075 [US5] Implement expandable/collapsible tree nodes with indentation in HierarchyTreeView
+- [x] T076 [US5] Create HistoryGrid component in src/TestResultBrowser.Web/Components/HistoryGrid.razor
+- [x] T077 [US5] Render multi-column history grid with build headers (date, buildId)
+- [x] T078 [US5] Implement color-coded cells in HistoryGrid (green for all pass, red for failures)
+- [x] T079 [US5] Display pass/fail counts in each cell (e.g., "36/36", "35/36")
+- [x] T080 [US5] Add "Expand All" / "Collapse All" buttons to toolbar
+- [x] T081 [US5] Add navigation link to ConfigurationHistory page in NavMenu.razor sidebar
 
 **Checkpoint**: Configuration History View provides complete test overview with historical context for any configuration
+
+**✅ Phase 6 COMPLETE**: All 20 tasks including Configuration History page, hierarchy tree with multi-build history, filtering, stats cards, and navigation integration implemented
 
 ---
 

@@ -1,0 +1,492 @@
+@page "/configuration-history"
+@using TestResultBrowser.Web.Models
+@using TestResultBrowser.Web.Services
+@using MudBlazor
+@using Microsoft.AspNetCore.Components
+@inject IConfigurationHistoryService ConfigHistoryService
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+<PageTitle>Configuration History</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    
+    @* Compact Header Bar: config + builds + load button in one line *@
+    <MudPaper Class="mb-3 pa-3">
+        <div class="header-bar">
+            <MudButton Variant="Variant.Outlined"
+                      Color="Color.Primary"
+                      OnClick="OpenConfigurationDialog"
+                      Class="header-control header-config text-left"
+                      Style="justify-content: flex-start;">
+                <MudIcon Icon="@Icons.Material.Filled.Settings" Class="mr-2"></MudIcon>
+                @if (string.IsNullOrEmpty(selectedConfiguration))
+                {
+                    <span>Select configuration…</span>
+                }
+                else
+                {
+                    <span>@selectedConfiguration</span>
+                }
+                <MudSpacer />
+                <MudIcon Icon="@Icons.Material.Filled.MoreVert"></MudIcon>
+            </MudButton>
+
+            <MudNumericField Value="@numberOfBuilds"
+                             ValueChanged="@(async (int newValue) => await OnNumberOfBuildsChanged(newValue))"
+                             Min="1" Max="20"
+                             Dense="true"
+                             Variant="Variant.Outlined"
+                             Class="header-control builds-field"
+                             Placeholder="Builds" />
+
+            <MudButton Variant="Variant.Filled"
+                      Color="Color.Primary"
+                      OnClick="RefreshData"
+                      Disabled="@isLoading"
+                      Class="header-control load-btn">
+                @if (isLoading)
+                {
+                    <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                }
+                else
+                {
+                    <span>Load Data</span>
+                }
+            </MudButton>
+        </div>
+    </MudPaper>
+
+    @* Quick Actions *@
+    <MudPaper Class="mb-4 pa-2">
+        <div class="d-flex gap-2">
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ExpandAll">Expand All</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="CollapseAll">Collapse All</MudButton>
+        </div>
+    </MudPaper>
+
+    @* Stats Section *@
+    @if (historyResult != null)
+    {
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" sm="6" md="2">
+                <MudCard Class="slim-card" Variant="Variant.Outlined">
+                    <MudCardContent>
+                        <MudText Typo="Typo.caption" Color="Color.Default">Latest Run</MudText>
+                        <MudText Typo="Typo.h6">@historyResult.LatestBuildId</MudText>
+                        <MudText Typo="Typo.caption">@historyResult.LatestBuildTime.ToString("MM/dd/yyyy HH:mm")</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="2">
+                <MudCard Class="slim-card" Variant="Variant.Outlined">
+                    <MudCardContent>
+                        <MudText Typo="Typo.caption" Color="Color.Default">Total Tests</MudText>
+                        <MudText Typo="Typo.h6">@historyResult.TotalTests</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="2">
+                <MudCard Class="slim-card" Variant="Variant.Outlined">
+                    <MudCardContent>
+                        <MudText Typo="Typo.caption" Color="Color.Default">Passed</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Success">@historyResult.PassedTests (@historyResult.PassRatePercentage.ToString("F1")%)</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="2">
+                <MudCard Class="slim-card" Variant="Variant.Outlined" Style="cursor: pointer;" @onclick="ToggleFailedFilter">
+                    <MudCardContent>
+                        <MudText Typo="Typo.caption" Color="Color.Default">Failed</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Error">@historyResult.FailedTests</MudText>
+                        <MudText Typo="Typo.caption" Style="font-size: 0.75rem; color: #999; margin-top: 4px;">@(showOnlyFailed ? "✓ Filtered" : "Click to filter")</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="2">
+                <MudCard Class="slim-card" Variant="Variant.Outlined">
+                    <MudCardContent>
+                        <MudText Typo="Typo.caption" Color="Color.Default">Skipped</MudText>
+                        <MudText Typo="Typo.h6">@historyResult.SkippedTests</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+
+        @* Hierarchical Tree View *@
+        <MudPaper Class="pa-4">
+            @if (historyResult.HierarchyNodes.Count == 0)
+            {
+                <MudText Color="Color.Default" Typo="Typo.body2">No test results found for selected configuration.</MudText>
+            }
+            else
+            {
+                <div class="table-container" style="overflow-x: auto;">
+                    @* Render hierarchy tree *@
+                    @foreach (var domainNode in historyResult.HierarchyNodes)
+                    {
+                        <HierarchyTreeView Node="GetFilteredNode(domainNode)" HistoryColumns="historyResult.HistoryColumns" />
+                    }
+                </div>
+            }
+        </MudPaper>
+    }
+    else if (isLoading)
+    {
+        <MudContainer Class="d-flex justify-center align-center" style="min-height: 400px;">
+            <MudProgressCircular Size="Size.Large" Indeterminate="true" />
+        </MudContainer>
+    }
+    else if (!string.IsNullOrEmpty(selectedConfiguration))
+    {
+        <MudAlert Severity="Severity.Info">Select a configuration and click Refresh to load data.</MudAlert>
+    }
+
+</MudContainer>
+
+@* Configuration Selection Modal *@
+@if (showConfigurationDialog)
+{
+    <div class="modal-overlay" @onclick="@(() => { showConfigurationDialog = false; })" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1300; display: flex; align-items: center; justify-content: center;">
+        <div @onclick:stopPropagation="true" style="background: white; border-radius: 4px; max-width: 600px; width: 90%; max-height: 600px; display: flex; flex-direction: column;">
+            <div style="padding: 16px; border-bottom: 1px solid #e0e0e0;">
+                <MudText Typo="Typo.h6">Select Configuration (@availableConfigurations.Count available)</MudText>
+            </div>
+            <div style="padding: 16px; flex: 1; overflow: auto;">
+                <MudTextField @bind-Value="searchText" 
+                             Placeholder="Search configurations..." 
+                             Adornment="Adornment.Start"
+                             AdornmentIcon="@Icons.Material.Filled.Search"
+                             Variant="Variant.Outlined"
+                             Immediate="true"
+                             Dense="true"
+                             FullWidth="true"
+                             AutoFocus="true"
+                             Class="mb-3" />
+                
+                <MudList T="string" Clickable="true" Dense="true" Style="max-height: 400px; overflow-y: auto;">
+                    @foreach (var config in GetFilteredConfigurations())
+                    {
+                        <MudListItem T="string" OnClick="@(() => SelectConfigurationFromDialog(config))"
+                                    Style="@(config == selectedConfiguration ? "background-color: #e3f2fd;" : "")">
+                            <div class="d-flex align-center justify-space-between" Style="width: 100%;">
+                                <MudText>@config</MudText>
+                                @if (config == selectedConfiguration)
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.Check" Color="Color.Primary" Size="Size.Small" />
+                                }
+                            </div>
+                        </MudListItem>
+                    }
+                </MudList>
+            </div>
+            <div style="padding: 16px; border-top: 1px solid #e0e0e0; display: flex; justify-content: flex-end;">
+                <MudButton Variant="Variant.Text" OnClick="@(() => { showConfigurationDialog = false; })">Cancel</MudButton>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "config")]
+    public string? ConfigFromUrl { get; set; }
+    
+    [SupplyParameterFromQuery(Name = "builds")]
+    public int? BuildsFromUrl { get; set; }
+    
+    private List<string> availableConfigurations = new();
+    private string selectedConfiguration = string.Empty;
+    private ConfigurationHistoryResult? historyResult;
+    private int numberOfBuilds = 5;
+    private bool isLoading = false;
+    private string searchText = string.Empty;
+    private bool showConfigurationDialog = false;
+    private bool showOnlyFailed = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAvailableConfigurations();
+        
+        // Load from URL parameters if present
+        if (BuildsFromUrl.HasValue && BuildsFromUrl.Value >= 1 && BuildsFromUrl.Value <= 20)
+        {
+            numberOfBuilds = BuildsFromUrl.Value;
+        }
+        
+        if (!string.IsNullOrEmpty(ConfigFromUrl) && availableConfigurations.Contains(ConfigFromUrl))
+        {
+            selectedConfiguration = ConfigFromUrl;
+            await RefreshData();
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Handle URL changes (browser back/forward)
+        if (!string.IsNullOrEmpty(ConfigFromUrl) && ConfigFromUrl != selectedConfiguration)
+        {
+            if (availableConfigurations.Contains(ConfigFromUrl))
+            {
+                selectedConfiguration = ConfigFromUrl;
+                await RefreshData();
+            }
+        }
+    }
+
+    private async Task LoadAvailableConfigurations()
+    {
+        try
+        {
+            availableConfigurations = await ConfigHistoryService.GetAvailableConfigurationsAsync();
+            if (availableConfigurations.Count > 0)
+            {
+                selectedConfiguration = availableConfigurations[0];
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading configurations: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private Task<IEnumerable<string>> SearchConfigurations(string value, CancellationToken token)
+    {
+        // If value is empty, return all configurations
+        if (string.IsNullOrEmpty(value))
+            return Task.FromResult<IEnumerable<string>>(availableConfigurations);
+        
+        // Filter configurations based on search text (case-insensitive)
+        var results = availableConfigurations
+            .Where(x => x.Contains(value, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        
+        return Task.FromResult<IEnumerable<string>>(results);
+    }
+
+    private IEnumerable<string> GetFilteredConfigurations()
+    {
+        if (string.IsNullOrEmpty(searchText))
+            return availableConfigurations;
+        
+        return availableConfigurations
+            .Where(x => x.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    private async Task SelectConfigurationFromDialog(string config)
+    {
+        selectedConfiguration = config;
+        showConfigurationDialog = false;
+        UpdateUrl();
+        await RefreshData();
+    }
+
+    private void OpenConfigurationDialog()
+    {
+        searchText = string.Empty;
+        showConfigurationDialog = true;
+    }
+
+    private void UpdateUrl()
+    {
+        var uri = NavigationManager.GetUriWithQueryParameters(new Dictionary<string, object?>
+        {
+            ["config"] = selectedConfiguration,
+            ["builds"] = numberOfBuilds
+        });
+        NavigationManager.NavigateTo(uri, replace: true);
+    }
+
+    private async Task OnConfigurationChanged(string newConfig)
+    {
+        selectedConfiguration = newConfig;
+        UpdateUrl();
+        await RefreshData();
+    }
+
+    private async Task OnNumberOfBuildsChanged(int newValue)
+    {
+        numberOfBuilds = newValue;
+        UpdateUrl();
+        await RefreshData();
+    }
+
+    private async Task RefreshData()
+    {
+        if (string.IsNullOrEmpty(selectedConfiguration))
+        {
+            Snackbar.Add("Please select a configuration first", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            isLoading = true;
+            historyResult = await ConfigHistoryService.GetConfigurationHistoryAsync(selectedConfiguration, numberOfBuilds);
+            Snackbar.Add("✅ Configuration history loaded", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading configuration history: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ExpandAll()
+    {
+        if (historyResult?.HierarchyNodes != null)
+        {
+            ExpandAllNodes(historyResult.HierarchyNodes);
+        }
+    }
+
+    private void CollapseAll()
+    {
+        if (historyResult?.HierarchyNodes != null)
+        {
+            CollapseAllNodes(historyResult.HierarchyNodes);
+        }
+    }
+
+    private void ExpandAllNodes(List<HierarchyNode> nodes)
+    {
+        foreach (var node in nodes)
+        {
+            node.IsExpanded = true;
+            ExpandAllNodes(node.Children);
+        }
+    }
+
+    private void CollapseAllNodes(List<HierarchyNode> nodes)
+    {
+        foreach (var node in nodes)
+        {
+            node.IsExpanded = false;
+            CollapseAllNodes(node.Children);
+        }
+    }
+
+    private void ToggleFailedFilter()
+    {
+        showOnlyFailed = !showOnlyFailed;
+    }
+
+    private HierarchyNode GetFilteredNode(HierarchyNode node)
+    {
+        if (!showOnlyFailed)
+        {
+            return node;
+        }
+
+        // Create a filtered copy that only shows failed tests
+        var filteredNode = new HierarchyNode
+        {
+            Name = node.Name,
+            NodeType = node.NodeType,
+            IndentLevel = node.IndentLevel,
+            IsExpanded = node.IsExpanded,
+            ReportDirectoryPath = node.ReportDirectoryPath,
+            TestFullName = node.TestFullName,
+            HistoryCells = node.HistoryCells,
+            LatestStats = node.LatestStats,
+            Children = new()
+        };
+
+        // Recursively filter children to only include those with failures
+        foreach (var child in node.Children)
+        {
+            var filtered = FilterNodeForFailures(child);
+            if (filtered != null)
+            {
+                filteredNode.Children.Add(filtered);
+            }
+        }
+
+        return filteredNode;
+    }
+
+    private HierarchyNode? FilterNodeForFailures(HierarchyNode node)
+    {
+        // If it's a test node, check if it has any failures
+        if (node.NodeType == HierarchyNodeType.Test)
+        {
+            var hasFailure = node.HistoryCells.Any(c => c.Status == HistoryCellStatus.HasFailures);
+            if (!hasFailure)
+            {
+                return null;
+            }
+            return node; // Include the test
+        }
+
+        // For non-test nodes, recursively filter children
+        var filteredNode = new HierarchyNode
+        {
+            Name = node.Name,
+            NodeType = node.NodeType,
+            IndentLevel = node.IndentLevel,
+            IsExpanded = node.IsExpanded,
+            ReportDirectoryPath = node.ReportDirectoryPath,
+            TestFullName = node.TestFullName,
+            HistoryCells = node.HistoryCells,
+            LatestStats = node.LatestStats,
+            Children = new()
+        };
+
+        foreach (var child in node.Children)
+        {
+            var filtered = FilterNodeForFailures(child);
+            if (filtered != null)
+            {
+                filteredNode.Children.Add(filtered);
+            }
+        }
+
+        // Only include this node if it has children after filtering
+        return filteredNode.Children.Count > 0 ? filteredNode : null;
+    }
+}
+
+<style>
+    .header-bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .header-control {
+        min-height: 42px;
+    }
+
+    .header-config {
+        flex: 1 1 420px;
+    }
+
+    .builds-field {
+        width: 140px;
+    }
+
+    .load-btn {
+        width: 160px;
+    }
+
+    .slim-card .mud-card-content {
+        padding: 8px;
+    }
+
+    .slim-card .mud-typography-h6 {
+        font-size: 1rem;
+    }
+
+    .slim-card .mud-typography-caption {
+        font-size: 0.82rem;
+    }
+</style>

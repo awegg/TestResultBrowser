@@ -201,7 +201,8 @@ public class JUnitParserService : IJUnitParserService
                 BuildId = parsedPath.BuildId,
                 BuildNumber = parsedPath.BuildNumber,
                 Machine = os ?? parsedPath.NamedConfig,
-                PolarionTickets = polarionTickets
+                PolarionTickets = polarionTickets,
+                ReportDirectoryPath = Path.GetDirectoryName(xmlFilePath)
             };
 
             results.Add(testResult);

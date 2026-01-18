@@ -2,19 +2,11 @@
 @implements IDisposable
 
 <MudLayout>
-    <MudAppBar Elevation="1">
-        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@ToggleDrawer" />
-        <MudText Typo="Typo.h5" Class="ml-3">JUnit Test Results Browser</MudText>
-        <MudSpacer />
-        <MudText Typo="Typo.body2">Last Scan: @(fileWatcher?.LastScanTime?.ToLocalTime().ToString("HH:mm:ss") ?? "Never")</MudText>
-        <MudIconButton Icon="@Icons.Material.Filled.Refresh" Color="Color.Inherit" OnClick="@RefreshData" Class="ml-2" />
-    </MudAppBar>
-    
     <MudDrawer @bind-Open="@_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2">
         <NavMenu />
     </MudDrawer>
     
-    <MudMainContent Class="pt-16 px-4">
+    <MudMainContent Class="px-4">
         @Body
     </MudMainContent>
 </MudLayout>

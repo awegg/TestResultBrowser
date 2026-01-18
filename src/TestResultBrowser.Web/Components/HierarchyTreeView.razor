@@ -1,0 +1,265 @@
+@using TestResultBrowser.Web.Models
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+@if (IsRootNode)
+{
+    @* Root node - render the entire table *@
+    <table class="hierarchy-table">
+        <thead>
+            <tr>
+                <th style="text-align: left; padding: 8px; min-width: 300px;">Test Hierarchy</th>
+                @foreach (var (column, index) in HistoryColumns.Select((c, i) => (c, i)))
+                {
+                    var passRateCell = index < Node.HistoryCells.Count ? Node.HistoryCells[index] : null;
+                    var passRateText = passRateCell?.Total > 0 
+                        ? $"({passRateCell.Passed}/{passRateCell.Total}) {passRateCell.PassPercentage:F1}%"
+                        : "-";
+                    
+                    <th style="text-align: center; padding: 8px; min-width: 120px;">
+                        <div>@column.BuildId</div>
+                        <div style="font-size: 0.85rem; font-weight: normal;">@column.DisplayDate</div>
+                        <div style="font-size: 0.8rem; font-weight: normal; color: #666; margin-top: 2px;">@passRateText</div>
+                    </th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var child in Node.Children)
+            {
+                <HierarchyTreeView Node="child" HistoryColumns="HistoryColumns" IsRootNode="false" />
+            }
+        </tbody>
+    </table>
+}
+else
+{
+    @* Child node - render as table row *@
+    <tr class="hierarchy-row">
+        <td style="padding: 8px; padding-left: @((Node.IndentLevel * 20) + 8)px;">
+            <div style="display: flex; align-items: center; gap: 4px;">
+                @if (Node.Children.Count > 0)
+                {
+                    <MudIconButton Icon="@(Node.IsExpanded ? Icons.Material.Filled.ExpandMore : Icons.Material.Filled.ChevronRight)"
+                                 Size="Size.Small"
+                                 OnClick="@(() => ToggleExpanded())" />
+                }
+                else
+                {
+                    <div style="width: 40px;"></div>
+                }
+                
+                <MudIcon Icon="@GetNodeIcon()" Size="Size.Small" />
+                <MudText Typo="Typo.body2" style="flex: 1;">
+                    @Node.Name
+                </MudText>
+            </div>
+        </td>
+
+        @* History cells *@
+        @foreach (var item in Node.HistoryCells.Select((cell, idx) => new { cell, idx }))
+        {
+            var cell = item.cell;
+            var idx = item.idx;
+
+            var cellClass = cell.Status switch
+            {
+                HistoryCellStatus.AllPassed => "cell-passed",
+                HistoryCellStatus.HasFailures => "cell-failed",
+                HistoryCellStatus.AllSkipped => "cell-skipped",
+                _ => "cell-nodata"
+            };
+
+            <td style="text-align: center; padding: 8px;">
+                @{
+                    var reportPath = !string.IsNullOrEmpty(cell.ReportDirectoryPath)
+                        ? cell.ReportDirectoryPath
+                        : Node.ReportDirectoryPath;
+
+                    var deltaInfo = GetDeltaInfo(idx);
+                }
+
+                @if (!string.IsNullOrEmpty(reportPath))
+                {
+                    <div class="@cellClass py-1 px-2" style="cursor: pointer; user-select: none; display: inline-block;" @onclick="() => OpenTestReport(reportPath)">
+                        <MudText Typo="Typo.caption" style="cursor: pointer;">
+                            @deltaInfo.BaseText
+                            @if (deltaInfo.HasDelta)
+                            {
+                                <span class="@deltaInfo.DeltaClass" style="margin-left: 4px;">(@deltaInfo.DeltaText)</span>
+                            }
+                        </MudText>
+                    </div>
+                }
+                else
+                {
+                    <div class="@cellClass py-1 px-2" style="display: inline-block;">
+                        <MudText Typo="Typo.caption">
+                            @deltaInfo.BaseText
+                            @if (deltaInfo.HasDelta)
+                            {
+                                <span class="@deltaInfo.DeltaClass" style="margin-left: 4px;">(@deltaInfo.DeltaText)</span>
+                            }
+                        </MudText>
+                    </div>
+                }
+            </td>
+        }
+    </tr>
+
+    @* Render children if expanded as additional rows *@
+    @if (Node.IsExpanded)
+    {
+        @foreach (var child in Node.Children)
+        {
+            <HierarchyTreeView Node="child" HistoryColumns="HistoryColumns" IsRootNode="false" />
+        }
+    }
+}
+
+@code {
+    [Parameter]
+    public HierarchyNode Node { get; set; } = null!;
+
+    [Parameter]
+    public List<HistoryColumn> HistoryColumns { get; set; } = new();
+
+    [Parameter]
+    public bool IsRootNode { get; set; } = true;
+
+    private void ToggleExpanded()
+    {
+        Node.IsExpanded = !Node.IsExpanded;
+    }
+
+    private async Task OpenTestReport(string reportDirectoryPath)
+    {
+        Console.WriteLine($"OpenTestReport called with path: '{reportDirectoryPath}'");
+        
+        if (!string.IsNullOrEmpty(reportDirectoryPath))
+        {
+            // Encode the path for URL
+            var encodedPath = Uri.EscapeDataString(reportDirectoryPath);
+            var reportUrl = $"/api/TestReport?path={encodedPath}";
+            
+            Console.WriteLine($"Opening report URL: {reportUrl}");
+            
+            // Open in new window using JavaScript
+            await JS.InvokeVoidAsync("window.open", reportUrl, "_blank");
+        }
+        else
+        {
+            Console.WriteLine("ReportDirectoryPath is null or empty!");
+        }
+    }
+
+    private string GetNodeIcon() => Node.NodeType switch
+    {
+        HierarchyNodeType.Domain => Icons.Material.Filled.Folder,
+        HierarchyNodeType.Feature => Icons.Material.Filled.FolderOpen,
+        HierarchyNodeType.Suite => Icons.Material.Filled.ListAlt,
+        HierarchyNodeType.Test => Icons.Material.Filled.CheckCircle,
+        _ => Icons.Material.Filled.Help
+    };
+
+    private record DeltaInfo(string BaseText, bool HasDelta, string DeltaText, string DeltaClass);
+
+    // Show delta of passed tests vs previous build (index 0 is latest)
+    private DeltaInfo GetDeltaInfo(int index)
+    {
+        if (index < 0 || index >= Node.HistoryCells.Count)
+            return new DeltaInfo("-", false, string.Empty, string.Empty);
+
+        var cell = Node.HistoryCells[index];
+        var baseText = cell.DisplayText;
+
+        // No delta if no previous build or no data
+        if (cell.Total == 0 || index + 1 >= Node.HistoryCells.Count)
+            return new DeltaInfo(baseText, false, string.Empty, string.Empty);
+
+        var previous = Node.HistoryCells[index + 1];
+        var delta = cell.Passed - previous.Passed;
+
+        if (delta == 0)
+            return new DeltaInfo(baseText, false, string.Empty, string.Empty);
+
+        var signText = delta > 0 ? $"+{delta}" : delta.ToString();
+        var deltaClass = delta > 0 ? "delta-positive" : "delta-negative";
+        return new DeltaInfo(baseText, true, signText, deltaClass);
+    }
+}
+
+<style>
+    .hierarchy-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+    }
+
+    .hierarchy-table thead tr {
+        background-color: #f5f5f5;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    .hierarchy-table tbody tr {
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .hierarchy-row:hover {
+        background-color: #fafafa;
+    }
+
+    .cell-passed {
+        background-color: #c8e6c9;
+        border-radius: 4px;
+        color: #1b5e20;
+        transition: opacity 0.2s;
+    }
+
+    .cell-passed:hover {
+        opacity: 0.8;
+    }
+
+    .cell-failed {
+        background-color: #ffcdd2;
+        border-radius: 4px;
+        color: #b71c1c;
+        transition: opacity 0.2s;
+    }
+
+    .cell-failed:hover {
+        opacity: 0.8;
+    }
+
+    .cell-skipped {
+        background-color: #f5f5f5;
+        border-radius: 4px;
+        color: #616161;
+    }
+
+    .cell-nodata {
+        background-color: #e0e0e0;
+        border-radius: 4px;
+        color: #9e9e9e;
+    }
+
+        .delta-positive {
+            color: #0b3d0e;
+            background-color: #c8e6c9;
+            border: 1px solid #1b5e20;
+            border-radius: 12px;
+            padding: 0 6px;
+            font-weight: 700;
+            font-size: 0.82rem;
+        }
+
+        .delta-negative {
+            color: #7f0000;
+            background-color: #ffcdd2;
+            border: 1px solid #b71c1c;
+            border-radius: 12px;
+            padding: 0 6px;
+            font-weight: 700;
+            font-size: 0.82rem;
+        }
+</style>

@@ -13,6 +13,9 @@ builder.Services.Configure<TestResultBrowserOptions>(
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
+// Add controllers for API endpoints
+builder.Services.AddControllers();
+
 // Add MudBlazor services
 builder.Services.AddMudServices();
 
@@ -25,6 +28,7 @@ builder.Services.AddSingleton<IFilePathParserService, FilePathParserService>();
 builder.Services.AddSingleton<IJUnitParserService, JUnitParserService>();
 builder.Services.AddSingleton<ITestDataService, TestDataService>();
 builder.Services.AddSingleton<ITriageService, TriageService>();
+builder.Services.AddSingleton<IConfigurationHistoryService, ConfigurationHistoryService>();
 builder.Services.AddSingleton<ConfigurationValidator>();
 
 // Register background services
@@ -58,6 +62,9 @@ app.UseHttpsRedirection();
 
 app.UseStaticFiles();
 app.UseAntiforgery();
+
+// Map API controllers
+app.MapControllers();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

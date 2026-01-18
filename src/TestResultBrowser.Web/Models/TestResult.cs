@@ -57,4 +57,7 @@ public record TestResult
     
     /// <summary>Extracted Polarion ticket references, e.g., ["PEXC-28044"]</summary>
     public List<string> PolarionTickets { get; init; } = new();
+
+    /// <summary>Directory path containing the test report (index.html) - e.g., "C:\data\Release-252\Px Core - Alarm Dashboard"</summary>
+    public string? ReportDirectoryPath { get; init; }
 }
