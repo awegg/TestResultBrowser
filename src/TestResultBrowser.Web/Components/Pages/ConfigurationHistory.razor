@@ -3,9 +3,12 @@
 @using TestResultBrowser.Web.Services
 @using MudBlazor
 @using Microsoft.AspNetCore.Components
+@using Microsoft.JSInterop
 @inject IConfigurationHistoryService ConfigHistoryService
+@inject IUserDataService UserDataService
 @inject ISnackbar Snackbar
 @inject NavigationManager NavigationManager
+@inject IJSRuntime JS
 
 <PageTitle>Configuration History</PageTitle>
 
@@ -63,6 +66,11 @@
             @* Quick Actions *@
             <MudPaper Class="mb-4 pa-2">
                 <div class="d-flex gap-2">
+                    <LoadFilterDropdown @ref="loadFilterDropdown" Username="@currentUsername" OnFilterLoaded="ApplyFilter" OnCopyLinkRequested="CopyFilterLink" />
+                    <MudButton Variant="Variant.Outlined" Color="Color.Info" OnClick="OpenSaveFilterDialog" Disabled="@(historyResult == null)">
+                        <MudIcon Icon="@Icons.Material.Filled.Save" Class="mr-1" /> Save Filter
+                    </MudButton>
+                    <MudSpacer />
                     <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ExpandAll">Expand All</MudButton>
                     <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="CollapseAll">Collapse All</MudButton>
                     <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="OpenFeatureDialog" Disabled="@(historyResult == null)">Select Features</MudButton>
@@ -412,7 +420,12 @@
     </div>
 }
 
-
+@* Save Filter Dialog *@
+<SaveFilterDialog IsOpen="@showSaveFilterDialog" 
+                  IsOpenChanged="@((bool value) => showSaveFilterDialog = value)"
+                  CurrentFilter="@GetCurrentFilterState()"
+                  OnFilterSaved="OnFilterSaved"
+                  DefaultUsername="@currentUsername" />
 
 @code {
     [SupplyParameterFromQuery(Name = "config")]
@@ -420,6 +433,9 @@
     
     [SupplyParameterFromQuery(Name = "builds")]
     public int? BuildsFromUrl { get; set; }
+
+    [SupplyParameterFromQuery(Name = "filterId")]
+    public int? FilterIdFromUrl { get; set; }
     
     private List<string> availableConfigurations = new();
     private List<ConfigurationMetadata> configurationMetadata = new();
@@ -436,10 +452,17 @@
     private bool showTestDetailsDialog = false;  // Controls test details modal
     private Dictionary<string, List<string>> featureGroups = new();  // Groups of features
     private HashSet<string> selectedFeatureNames = new();  // Currently selected features
+    private bool showSaveFilterDialog = false;  // Controls save filter dialog
+    private LoadFilterDropdown? loadFilterDropdown;  // Reference to load filter dropdown
+    private string currentUsername = "DefaultUser";  // Current user (can be from auth later)
+    private int? lastAppliedFilterId;  // Tracks the last applied filter for sharing
 
     protected override async Task OnInitializedAsync()
     {
         await LoadAvailableConfigurations();
+
+        // Apply saved filter from URL (if provided)
+        var filterApplied = await ApplyFilterFromUrlAsync();
         
         // Load from URL parameters if present (has priority)
         if (!string.IsNullOrEmpty(ConfigFromUrl) && availableConfigurations.Contains(ConfigFromUrl))
@@ -459,7 +482,7 @@
         }
         
         // Load data after selection is finalized
-        if (!string.IsNullOrEmpty(selectedConfiguration))
+        if (!filterApplied && !string.IsNullOrEmpty(selectedConfiguration))
         {
             await RefreshData();
         }
@@ -945,6 +968,116 @@
 
         // Only include this node if it has children after filtering
         return filteredNode.Children.Count > 0 ? filteredNode : null;
+    }
+
+    private void OpenSaveFilterDialog()
+    {
+        showSaveFilterDialog = true;
+    }
+
+    private SavedFilterConfiguration GetCurrentFilterState()
+    {
+        return new SavedFilterConfiguration
+        {
+            Name = string.Empty,  // Will be filled by dialog
+            SavedBy = currentUsername,
+            SavedDate = DateTime.UtcNow,
+            SelectedConfiguration = selectedConfiguration,
+            NumberOfBuilds = numberOfBuilds,
+            Features = selectedFeatureNames.ToList(),
+            Domains = new List<string>(),  // Can be extended later
+            Versions = new List<string>(),
+            NamedConfigs = new List<string>(),
+            Machines = new List<string>(),
+            OnlyFailures = showOnlyFailed
+        };
+    }
+
+    private async Task OnFilterSaved(SavedFilterConfiguration savedFilter)
+    {
+        // Refresh the load filter dropdown to show the newly saved filter
+        if (loadFilterDropdown != null)
+        {
+            await loadFilterDropdown.Refresh();
+        }
+
+        // Track last saved filter so user can share it
+        lastAppliedFilterId = savedFilter.Id;
+    }
+
+    private async Task ApplyFilter(SavedFilterConfiguration filter)
+    {
+        lastAppliedFilterId = filter.Id;
+
+        // Apply the loaded filter to the page state
+        if (!string.IsNullOrEmpty(filter.SelectedConfiguration) && 
+            availableConfigurations.Contains(filter.SelectedConfiguration))
+        {
+            selectedConfiguration = filter.SelectedConfiguration;
+        }
+
+        if (filter.NumberOfBuilds.HasValue)
+        {
+            numberOfBuilds = filter.NumberOfBuilds.Value;
+        }
+
+        if (filter.Features != null && filter.Features.Any())
+        {
+            selectedFeatureNames = filter.Features.ToHashSet();
+        }
+        else
+        {
+            selectedFeatureNames.Clear();
+        }
+
+        if (filter.OnlyFailures.HasValue)
+        {
+            showOnlyFailed = filter.OnlyFailures.Value;
+        }
+
+        // Reload data with the new filter settings
+        await RefreshData();
+    }
+
+    private async Task<bool> ApplyFilterFromUrlAsync()
+    {
+        if (!FilterIdFromUrl.HasValue)
+        {
+            return false;
+        }
+
+        var filter = await UserDataService.LoadFilterAsync(FilterIdFromUrl.Value, currentUsername);
+        if (filter == null)
+        {
+            Snackbar.Add($"Saved filter {FilterIdFromUrl.Value} not found", Severity.Warning);
+            return false;
+        }
+
+        lastAppliedFilterId = FilterIdFromUrl.Value;
+        await ApplyFilter(filter);
+        return true;
+    }
+
+    private async Task CopyFilterLink(int filterId)
+    {
+        var targetId = filterId > 0 ? filterId : lastAppliedFilterId;
+        if (!targetId.HasValue)
+        {
+            return;
+        }
+
+        var baseUri = NavigationManager.BaseUri.TrimEnd('/') + "/configuration-history";
+        var url = $"{baseUri}?filterId={targetId.Value}";
+
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", url);
+            Snackbar.Add("Link copied to clipboard", Severity.Success);
+        }
+        catch
+        {
+            Snackbar.Add("Failed to copy link", Severity.Error);
+        }
     }
 }
 

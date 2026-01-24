@@ -441,9 +441,10 @@ public interface IAppConfiguration
 public interface IFilterState
 {
     // Active filters
-    TestFilterCriteria CurrentFilters { get; set; }
-    
-    // Events for filter changes
+        Task<SavedFilterConfiguration> CreateFilterAsync(SavedFilterConfiguration filter, string username);
+        Task<SavedFilterConfiguration?> GetFilterByIdAsync(int id, string username);
+        Task<List<SavedFilterConfiguration>> GetFiltersByUserAsync(string username);
+        Task UpdateFilterAsync(SavedFilterConfiguration filter, string username);
     event EventHandler? FiltersChanged;
     
     // Apply filters

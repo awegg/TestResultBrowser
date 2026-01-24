@@ -57,3 +57,4 @@ TestResults/
 Thumbs.db
 src/TestResultBrowser.Web/bin/
 src/TestResultBrowser.Web/userdata/settings.db
+src/TestResultBrowser.Web/userdata.db
