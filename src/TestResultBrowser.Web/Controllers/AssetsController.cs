@@ -50,6 +50,14 @@ public class AssetsController : ControllerBase
             else
             {
                 reportDirectory = Uri.UnescapeDataString(reportDirectory);
+                
+                // Validate reportPath for path traversal and unsafe patterns
+                if (reportDirectory.Contains("..") || Path.IsPathRooted(reportDirectory))
+                {
+                    _logger.LogWarning("Invalid report path (path traversal or absolute): {ReportPath}", reportPath);
+                    return BadRequest(new { error = "Invalid report path" });
+                }
+                
                 // CRITICAL: Validate reportPath is under the allowed base directory
                 var allowedBaseDir = Path.GetFullPath(_options.FileSharePath);
                 var resolvedReportPath = Path.GetFullPath(Path.Combine(allowedBaseDir, reportDirectory));
