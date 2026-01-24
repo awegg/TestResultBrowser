@@ -11,13 +11,13 @@ using TestResultBrowser.Web.Models;
 public class ConfigurationHistoryService : IConfigurationHistoryService
 {
     private readonly ITestDataService _testDataService;
-    private readonly IWorkItemLinkService _workItemLinkService;
+    private readonly IPolarionLinkService _polarionLinkService;
     private readonly ILogger<ConfigurationHistoryService> _logger;
 
-    public ConfigurationHistoryService(ITestDataService testDataService, IWorkItemLinkService workItemLinkService, ILogger<ConfigurationHistoryService> logger)
+    public ConfigurationHistoryService(ITestDataService testDataService, IPolarionLinkService polarionLinkService, ILogger<ConfigurationHistoryService> logger)
     {
         _testDataService = testDataService;
-        _workItemLinkService = workItemLinkService;
+        _polarionLinkService = polarionLinkService;
         _logger = logger;
     }
 
@@ -254,7 +254,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                         IndentLevel = 2,
                         IsExpanded = false,
                         ReportDirectoryPath = test.ReportDirectoryPath,
-                        WorkItemReferences = _workItemLinkService.GetTicketReferences(test.WorkItemIds),
+                        PolarionTickets = _polarionLinkService.GetTicketReferences(test.PolarionTickets),
                         // Error fields will be populated from the latest build's result (see below)
                         ErrorMessage = null,
                         StackTrace = null

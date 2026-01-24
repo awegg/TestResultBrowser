@@ -55,12 +55,12 @@ else
                 <MudText Typo="Typo.body2" style="flex: 1; display: flex; align-items: center; gap: 6px;">
                     @Node.Name
 
-                    @if (Node.NodeType == HierarchyNodeType.Test && Node.WorkItemReferences.Any())
+                    @if (Node.NodeType == HierarchyNodeType.Test && Node.PolarionTickets.Any())
                     {
-                        <div class="workitem-link-group">
-                            @foreach (var ticket in Node.WorkItemReferences)
+                        <div class="polarion-link-group">
+                            @foreach (var ticket in Node.PolarionTickets)
                             {
-                                <WorkItemLink Ticket="ticket" />
+                                <PolarionLink Ticket="ticket" />
                             }
                         </div>
                     }
@@ -265,7 +265,7 @@ else
         opacity: 0.8;
     }
 
-    .workitem-link-group {
+    .polarion-link-group {
         display: inline-flex;
         flex-wrap: wrap;
         gap: 4px;

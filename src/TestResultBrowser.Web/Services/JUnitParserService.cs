@@ -123,8 +123,8 @@ public class JUnitParserService : IJUnitParserService
                 status = TestStatus.Pass;
             }
 
-            // Extract work item IDs from multiple sources: properties, classname, method name
-            var workItemIds = new List<string>();
+            // Extract Polarion ticket IDs from multiple sources: properties, classname, method name
+            var polarionTickets = new List<string>();
             var ticketSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             // 1. Try to extract from <property name="Polarion">
@@ -139,7 +139,7 @@ public class JUnitParserService : IJUnitParserService
                     if (name == "Polarion" && !string.IsNullOrEmpty(value))
                     {
                         // Extract PEXC-xxxxx pattern using constant from TestResultConstants
-                        var matches = System.Text.RegularExpressions.Regex.Matches(value, TestResultConstants.RegexPatterns.WorkItemId);
+                        var matches = System.Text.RegularExpressions.Regex.Matches(value, TestResultConstants.RegexPatterns.PolarionTicketId);
                         foreach (System.Text.RegularExpressions.Match match in matches)
                         {
                             ticketSet.Add(match.Value);
@@ -151,7 +151,7 @@ public class JUnitParserService : IJUnitParserService
             // 2. Extract from classname (e.g., "PEXC-3471 - The current time is displayed...")
             if (!string.IsNullOrEmpty(classNameAttr))
             {
-                var classMatches = System.Text.RegularExpressions.Regex.Matches(classNameAttr, TestResultConstants.RegexPatterns.WorkItemId);
+                var classMatches = System.Text.RegularExpressions.Regex.Matches(classNameAttr, TestResultConstants.RegexPatterns.PolarionTicketId);
                 foreach (System.Text.RegularExpressions.Match match in classMatches)
                 {
                     ticketSet.Add(match.Value);
@@ -161,7 +161,7 @@ public class JUnitParserService : IJUnitParserService
             // 3. Extract from method name (test case name)
             if (!string.IsNullOrEmpty(methodNameAttr))
             {
-                var methodMatches = System.Text.RegularExpressions.Regex.Matches(methodNameAttr, TestResultConstants.RegexPatterns.WorkItemId);
+                var methodMatches = System.Text.RegularExpressions.Regex.Matches(methodNameAttr, TestResultConstants.RegexPatterns.PolarionTicketId);
                 foreach (System.Text.RegularExpressions.Match match in methodMatches)
                 {
                     ticketSet.Add(match.Value);
@@ -169,7 +169,7 @@ public class JUnitParserService : IJUnitParserService
             }
 
             // Convert set to list for deduplication
-            workItemIds = ticketSet.ToList();
+            polarionTickets = ticketSet.ToList();
 
             // Map version (always returns non-null string per IVersionMapperService contract)
             var version = _versionMapper.MapVersion(parsedPath.VersionRaw);
@@ -236,7 +236,7 @@ public class JUnitParserService : IJUnitParserService
                 BuildNumber = parsedPath.BuildNumber,
                 Machine = os ?? parsedPath.NamedConfig,
                 Feature = featureDirectoryName,
-                WorkItemIds = workItemIds,
+                PolarionTickets = polarionTickets,
                 ReportDirectoryPath = reportDirectory
             };
 
