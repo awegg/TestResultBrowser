@@ -13,6 +13,12 @@ public class UserDataService : IUserDataService
     private const string FiltersCollection = "savedfilters";
     private const string DashboardCollection = "dashboards";
 
+    /// <summary>
+    /// Initializes a new instance of <see cref="UserDataService"/>, configures the database file path, ensures its directory exists, and logs initialization.
+    /// </summary>
+    /// <remarks>
+    /// Reads the configuration key "UserDataDatabasePath" to determine the database path; uses "userdata.db" if the key is not present. Creates the directory for the database file when necessary and logs the selected path.
+    /// </remarks>
     public UserDataService(ILogger<UserDataService> logger, IConfiguration configuration)
     {
         _logger = logger;
@@ -28,7 +34,11 @@ public class UserDataService : IUserDataService
         _logger.LogInformation("UserDataService initialized with database: {DatabasePath}", _databasePath);
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Persists the provided SavedFilterConfiguration to the user data database and updates its saved timestamp.
+    /// </summary>
+    /// <param name="filter">The filter to save; its <see cref="SavedFilterConfiguration.SavedDate"/> will be set to UTC now and an Id will be assigned on insert.</param>
+    /// <returns>The saved <see cref="SavedFilterConfiguration"/> instance with an updated SavedDate and assigned Id.</returns>
     public async Task<SavedFilterConfiguration> SaveFilterAsync(SavedFilterConfiguration filter)
     {
         return await Task.Run(() =>
@@ -108,7 +118,10 @@ public class UserDataService : IUserDataService
         });
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Deletes a saved filter with the specified identifier.
+    /// </summary>
+    /// <returns>`true` if the filter was deleted, `false` if no filter with the given ID was found.</returns>
     public async Task<bool> DeleteFilterAsync(int filterId)
     {
         return await Task.Run(() =>
@@ -138,7 +151,11 @@ public class UserDataService : IUserDataService
         });
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Updates an existing saved filter record in the user data store.
+    /// </summary>
+    /// <param name="filter">The filter to update; the filter's Id is used to locate the existing record.</param>
+    /// <returns>`true` if the filter was updated, `false` if no matching record was found.</returns>
     public async Task<bool> UpdateFilterAsync(SavedFilterConfiguration filter)
     {
         return await Task.Run(() =>
@@ -196,7 +213,11 @@ public class UserDataService : IUserDataService
         });
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Creates or updates the dashboard configuration for the specified user and sets its LastUpdated timestamp to the current UTC time.
+    /// </summary>
+    /// <param name="config">The dashboard configuration to create or update; its Username identifies the owner. On update the existing Id is preserved.</param>
+    /// <returns>The saved DashboardConfiguration with an assigned Id and updated LastUpdated timestamp.</returns>
     public async Task<DashboardConfiguration> SaveDashboardConfigAsync(DashboardConfiguration config)
     {
         return await Task.Run(() =>
