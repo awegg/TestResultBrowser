@@ -63,6 +63,11 @@
             @* Quick Actions *@
             <MudPaper Class="mb-4 pa-2">
                 <div class="d-flex gap-2">
+                    <LoadFilterDropdown @ref="loadFilterDropdown" Username="@currentUsername" OnFilterLoaded="ApplyFilter" />
+                    <MudButton Variant="Variant.Outlined" Color="Color.Info" OnClick="OpenSaveFilterDialog" Disabled="@(historyResult == null)">
+                        <MudIcon Icon="@Icons.Material.Filled.Save" Class="mr-1" /> Save Filter
+                    </MudButton>
+                    <MudSpacer />
                     <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ExpandAll">Expand All</MudButton>
                     <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="CollapseAll">Collapse All</MudButton>
                     <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="OpenFeatureDialog" Disabled="@(historyResult == null)">Select Features</MudButton>
@@ -412,7 +417,12 @@
     </div>
 }
 
-
+@* Save Filter Dialog *@
+<SaveFilterDialog IsOpen="@showSaveFilterDialog" 
+                  IsOpenChanged="@((bool value) => showSaveFilterDialog = value)"
+                  CurrentFilter="@GetCurrentFilterState()"
+                  OnFilterSaved="OnFilterSaved"
+                  DefaultUsername="@currentUsername" />
 
 @code {
     [SupplyParameterFromQuery(Name = "config")]
@@ -436,6 +446,9 @@
     private bool showTestDetailsDialog = false;  // Controls test details modal
     private Dictionary<string, List<string>> featureGroups = new();  // Groups of features
     private HashSet<string> selectedFeatureNames = new();  // Currently selected features
+    private bool showSaveFilterDialog = false;  // Controls save filter dialog
+    private LoadFilterDropdown? loadFilterDropdown;  // Reference to load filter dropdown
+    private string currentUsername = "DefaultUser";  // Current user (can be from auth later)
 
     protected override async Task OnInitializedAsync()
     {
@@ -945,6 +958,70 @@
 
         // Only include this node if it has children after filtering
         return filteredNode.Children.Count > 0 ? filteredNode : null;
+    }
+
+    private void OpenSaveFilterDialog()
+    {
+        showSaveFilterDialog = true;
+    }
+
+    private SavedFilterConfiguration GetCurrentFilterState()
+    {
+        return new SavedFilterConfiguration
+        {
+            Name = string.Empty,  // Will be filled by dialog
+            SavedBy = currentUsername,
+            SavedDate = DateTime.UtcNow,
+            SelectedConfiguration = selectedConfiguration,
+            NumberOfBuilds = numberOfBuilds,
+            Features = selectedFeatureNames.ToList(),
+            Domains = new List<string>(),  // Can be extended later
+            Versions = new List<string>(),
+            NamedConfigs = new List<string>(),
+            Machines = new List<string>(),
+            OnlyFailures = showOnlyFailed
+        };
+    }
+
+    private async Task OnFilterSaved(SavedFilterConfiguration savedFilter)
+    {
+        // Refresh the load filter dropdown to show the newly saved filter
+        if (loadFilterDropdown != null)
+        {
+            await loadFilterDropdown.Refresh();
+        }
+    }
+
+    private async Task ApplyFilter(SavedFilterConfiguration filter)
+    {
+        // Apply the loaded filter to the page state
+        if (!string.IsNullOrEmpty(filter.SelectedConfiguration) && 
+            availableConfigurations.Contains(filter.SelectedConfiguration))
+        {
+            selectedConfiguration = filter.SelectedConfiguration;
+        }
+
+        if (filter.NumberOfBuilds.HasValue)
+        {
+            numberOfBuilds = filter.NumberOfBuilds.Value;
+        }
+
+        if (filter.Features != null && filter.Features.Any())
+        {
+            selectedFeatureNames = filter.Features.ToHashSet();
+        }
+        else
+        {
+            selectedFeatureNames.Clear();
+        }
+
+        if (filter.OnlyFailures.HasValue)
+        {
+            showOnlyFailed = filter.OnlyFailures.Value;
+        }
+
+        // Reload data with the new filter settings
+        await RefreshData();
     }
 }
 

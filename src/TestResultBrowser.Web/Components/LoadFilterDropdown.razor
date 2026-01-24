@@ -1,0 +1,158 @@
+@using TestResultBrowser.Web.Models
+@using TestResultBrowser.Web.Services
+@using MudBlazor
+@inject IUserDataService UserDataService
+@inject ISnackbar Snackbar
+
+<MudMenu Icon="@Icons.Material.Filled.FilterList" 
+         Variant="Variant.Outlined" 
+         Color="Color.Primary"
+         Dense="true"
+         Label="@GetMenuLabel()"
+         AnchorOrigin="Origin.BottomLeft"
+         TransformOrigin="Origin.TopLeft"
+         Class="@Class">
+    
+    @if (savedFilters == null)
+    {
+        <MudMenuItem Disabled="true">
+            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+            <span class="ml-2">Loading filters...</span>
+        </MudMenuItem>
+    }
+    else if (!savedFilters.Any())
+    {
+        <MudMenuItem Disabled="true">No saved filters</MudMenuItem>
+    }
+    else
+    {
+        @foreach (var filter in savedFilters)
+        {
+            <MudMenuItem OnClick="@(() => LoadFilter(filter))">
+                <div class="filter-menu-item">
+                    <div>
+                        <MudText Typo="Typo.body2"><strong>@filter.Name</strong></MudText>
+                        @if (!string.IsNullOrWhiteSpace(filter.Description))
+                        {
+                            <MudText Typo="Typo.caption" Class="text-muted">@filter.Description</MudText>
+                        }
+                        <MudText Typo="Typo.caption" Class="text-muted">
+                            Saved: @filter.SavedDate.ToLocalTime().ToString("MM/dd/yyyy HH:mm")
+                        </MudText>
+                    </div>
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" 
+                                   Size="Size.Small" 
+                                   Color="Color.Error"
+                                   OnClick="@(() => DeleteFilter(filter.Id))"
+                                   title="Delete this filter" />
+                </div>
+            </MudMenuItem>
+        }
+    }
+    
+    <MudDivider />
+    
+    <MudMenuItem OnClick="RefreshFilters">
+        <MudIcon Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" Class="mr-2" />
+        Refresh
+    </MudMenuItem>
+</MudMenu>
+
+@code {
+    [Parameter]
+    public string Username { get; set; } = "DefaultUser";
+
+    [Parameter]
+    public EventCallback<SavedFilterConfiguration> OnFilterLoaded { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    private List<SavedFilterConfiguration>? savedFilters;
+    private SavedFilterConfiguration? currentFilter;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshFilters();
+    }
+
+    private async Task RefreshFilters()
+    {
+        try
+        {
+            savedFilters = await UserDataService.GetAllFiltersAsync(Username);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading filters: {ex.Message}", Severity.Error);
+            savedFilters = new List<SavedFilterConfiguration>();
+        }
+    }
+
+    private async Task LoadFilter(SavedFilterConfiguration filter)
+    {
+        try
+        {
+            currentFilter = filter;
+            await OnFilterLoaded.InvokeAsync(filter);
+            Snackbar.Add($"Loaded filter: {filter.Name}", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading filter: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteFilter(int filterId)
+    {
+        try
+        {
+            var deleted = await UserDataService.DeleteFilterAsync(filterId);
+            if (deleted)
+            {
+                Snackbar.Add("Filter deleted successfully", Severity.Success);
+                await RefreshFilters();
+            }
+            else
+            {
+                Snackbar.Add("Filter not found", Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error deleting filter: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private string GetMenuLabel()
+    {
+        if (currentFilter != null)
+        {
+            return $"Filter: {currentFilter.Name}";
+        }
+        return "Load Filter";
+    }
+
+    /// <summary>
+    /// Public method to refresh the filter list (called when a new filter is saved)
+    /// </summary>
+    public async Task Refresh()
+    {
+        await RefreshFilters();
+        StateHasChanged();
+    }
+}
+
+<style>
+    .filter-menu-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        min-width: 300px;
+    }
+
+    .text-muted {
+        color: #6c757d;
+    }
+</style>
