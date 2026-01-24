@@ -165,7 +165,7 @@ public class TestDataService : ITestDataService
     public void Clear()
     {
         _testResults.Clear();
-        
+
         lock (_indexLock)
         {
             _byDomain.Clear();
@@ -275,13 +275,13 @@ public class TestDataService : ITestDataService
             {
                 // Snapshot the IDs to avoid concurrent modification issues
                 var resultIdSnapshot = resultIds.ToList();
-                
+
                 // Get minimum timestamp (earliest) deterministically
                 var timestamps = resultIdSnapshot
                     .Select(id => _testResults.TryGetValue(id, out var result) ? result.Timestamp : (DateTime?)null)
                     .Where(t => t.HasValue)
                     .Select(t => t!.Value);
-                
+
                 return timestamps.Any() ? timestamps.Min() : (DateTime?)null;
             }
             return null;

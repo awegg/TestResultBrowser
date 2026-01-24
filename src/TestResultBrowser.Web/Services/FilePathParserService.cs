@@ -29,6 +29,9 @@ public partial class FilePathParserService : IFilePathParserService
             return CreateDefaultParsedPath(filePath ?? string.Empty);
         }
 
+        // Normalize path separators for cross-platform compatibility
+        var normalizedPath = filePath.Replace('/', '\\');
+
         // Try Pattern 1 first (preferred format)
         var match1 = FilePathPattern1().Match(filePath);
         if (match1.Success)
@@ -54,7 +57,7 @@ public partial class FilePathParserService : IFilePathParserService
         }
 
         // Try Pattern 2 (alternative format)
-        var match2 = FilePathPattern2().Match(filePath);
+        var match2 = FilePathPattern2().Match(normalizedPath);
         if (match2.Success)
         {
             var configRaw = match2.Groups[1].Value;  // e.g., "dev_E2E_Default1_Core"
@@ -66,12 +69,12 @@ public partial class FilePathParserService : IFilePathParserService
             // Expected format: {Version}_{TestType}_{NamedConfig}_{Domain}
             // Example: dev_E2E_Default1_Core -> Version=dev, TestType=E2E, NamedConfig=Default1, Domain=Core
             var configParts = configRaw.Split('_');
-            
+
             string versionRaw = "Unknown";
             string testType = "Unknown";
             string namedConfig = "Unknown";
             string domainId = "Unknown";
-            
+
             if (configParts.Length >= 4)
             {
                 versionRaw = configParts[0];
@@ -100,7 +103,7 @@ public partial class FilePathParserService : IFilePathParserService
     private static ParsedFilePath CreateDefaultParsedPath(string filePath)
     {
         var fileNameOnly = string.IsNullOrWhiteSpace(filePath) ? "Unknown.xml" : Path.GetFileName(filePath);
-        
+
         return new ParsedFilePath
         {
             BuildNumber = 0,

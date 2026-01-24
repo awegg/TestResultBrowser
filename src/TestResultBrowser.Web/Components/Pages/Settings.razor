@@ -1,4 +1,5 @@
 @page "/settings"
+@rendermode InteractiveServer
 @using TestResultBrowser.Web.Models
 @using TestResultBrowser.Web.Services
 
@@ -8,15 +9,13 @@
     <MudText Typo="Typo.h4" Class="mb-4">Application Settings</MudText>
     
     <MudPaper Class="pa-4 mb-4">
-        <MudForm @ref="_form" @bind-IsValid="@_formValid">
-            <MudText Typo="Typo.h6" Class="mb-3">Polling Configuration</MudText>
-            
-            <MudNumericField @bind-Value="_settings.PollingIntervalMinutes"
+        <MudForm @ref="_form">
+            <MudNumericField Value="_settings.PollingIntervalMinutes"
+                           ValueChanged="@((int v) => OnPollingIntervalChanged(v))"
                            Label="Polling Interval (minutes)"
                            HelperText="How often to scan for new test results"
                            Min="1"
                            Max="1440"
-                           Required="true"
                            Variant="Variant.Outlined"
                            Class="mb-4" />
             
@@ -29,7 +28,6 @@
                            HelperText="Number of recent builds to analyze"
                            Min="5"
                            Max="100"
-                           Required="true"
                            Variant="Variant.Outlined"
                            Class="mb-4" />
             
@@ -38,7 +36,6 @@
                            HelperText="Failure percentage to flag as flaky"
                            Min="1"
                            Max="99"
-                           Required="true"
                            Variant="Variant.Outlined"
                            Class="mb-4" />
             
@@ -47,7 +44,6 @@
                            HelperText="Number of consecutive passes to clear flaky flag"
                            Min="1"
                            Max="50"
-                           Required="true"
                            Variant="Variant.Outlined"
                            Class="mb-4" />
             
@@ -70,7 +66,6 @@
                            HelperText="Maximum memory allocation for test result cache"
                            Min="4"
                            Max="128"
-                           Required="true"
                            Variant="Variant.Outlined"
                            Class="mb-4" />
             
@@ -96,7 +91,6 @@
                 
                 <MudButton Variant="Variant.Filled"
                           Color="Color.Primary"
-                          Disabled="!_formValid || !_hasChanges"
                           OnClick="SaveSettings">
                     Save Settings
                 </MudButton>
@@ -116,10 +110,16 @@
     private NavigationManager Navigation { get; set; } = default!;
 
     private MudForm _form = default!;
-    private bool _formValid;
-    private bool _hasChanges;
     private ApplicationSettings _settings = new();
     private ApplicationSettings _originalSettings = new();
+    
+    private bool _hasChanges => 
+        _settings.PollingIntervalMinutes != _originalSettings.PollingIntervalMinutes ||
+        _settings.PolarionBaseUrl != _originalSettings.PolarionBaseUrl ||
+        _settings.MaxMemoryGB != _originalSettings.MaxMemoryGB ||
+        _settings.FlakyTestThresholds.RollingWindowSize != _originalSettings.FlakyTestThresholds.RollingWindowSize ||
+        _settings.FlakyTestThresholds.TriggerPercentage != _originalSettings.FlakyTestThresholds.TriggerPercentage ||
+        _settings.FlakyTestThresholds.ClearAfterConsecutivePasses != _originalSettings.FlakyTestThresholds.ClearAfterConsecutivePasses;
 
     protected override void OnInitialized()
     {
@@ -132,7 +132,7 @@
             PollingIntervalMinutes = _originalSettings.PollingIntervalMinutes,
             PolarionBaseUrl = _originalSettings.PolarionBaseUrl,
             MaxMemoryGB = _originalSettings.MaxMemoryGB,
-            FlakyTestThresholds = new Services.FlakyTestThresholds
+            FlakyTestThresholds = new Models.FlakyTestThresholds
             {
                 RollingWindowSize = _originalSettings.FlakyTestThresholds.RollingWindowSize,
                 TriggerPercentage = _originalSettings.FlakyTestThresholds.TriggerPercentage,
@@ -146,8 +146,8 @@
         try
         {
             await SettingsService.SaveSettingsAsync(_settings);
+            _originalSettings = SettingsService.GetSettings();
             Snackbar.Add("Settings saved successfully", Severity.Success);
-            _hasChanges = false;
             Navigation.NavigateTo("/");
         }
         catch (Exception ex)
@@ -161,8 +161,20 @@
         try
         {
             await SettingsService.ResetToDefaultsAsync();
-            _settings = SettingsService.GetSettings();
-            _hasChanges = true;
+            _originalSettings = SettingsService.GetSettings();
+            _settings = new ApplicationSettings
+            {
+                Id = _originalSettings.Id,
+                PollingIntervalMinutes = _originalSettings.PollingIntervalMinutes,
+                PolarionBaseUrl = _originalSettings.PolarionBaseUrl,
+                MaxMemoryGB = _originalSettings.MaxMemoryGB,
+                FlakyTestThresholds = new Models.FlakyTestThresholds
+                {
+                    RollingWindowSize = _originalSettings.FlakyTestThresholds.RollingWindowSize,
+                    TriggerPercentage = _originalSettings.FlakyTestThresholds.TriggerPercentage,
+                    ClearAfterConsecutivePasses = _originalSettings.FlakyTestThresholds.ClearAfterConsecutivePasses
+                }
+            };
             Snackbar.Add("Settings reset to defaults", Severity.Info);
         }
         catch (Exception ex)
@@ -174,5 +186,10 @@
     private void Cancel()
     {
         Navigation.NavigateTo("/");
+    }
+
+    private void OnPollingIntervalChanged(int newValue)
+    {
+        _settings.PollingIntervalMinutes = newValue;
     }
 }

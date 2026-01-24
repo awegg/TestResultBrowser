@@ -73,9 +73,13 @@ Write-Host ""
 
 # Change to script directory to find docker-compose.yml
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location $scriptDir
-
-docker-compose up -d
+$originalDir = Get-Location
+try {
+    Set-Location $scriptDir
+    docker-compose up -d
+} finally {
+    Set-Location $originalDir
+}
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host ""

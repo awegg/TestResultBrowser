@@ -127,10 +127,9 @@
     private IEnumerable<string> SelectedBuilds { get; set; } = new HashSet<string>();
     private IEnumerable<string> SelectedStatuses { get; set; } = new HashSet<string> { "Pass", "Fail", "Skip" };
     
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
         LoadAvailableOptions();
-        await Task.CompletedTask;
     }
     
     private void LoadAvailableOptions()

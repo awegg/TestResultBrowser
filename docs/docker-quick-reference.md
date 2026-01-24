@@ -344,7 +344,8 @@ docker-compose run -e ASPNETCORE_ENVIRONMENT=Development testresultbrowser
 
 ### Production
 
-```bash (from docker directory)
+```bash
+# From docker directory
 cd docker
 # Use production data
 export TEST_RESULTS_PATH=/mnt/production/testresults

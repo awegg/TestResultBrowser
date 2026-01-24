@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using TestResultBrowser.Web.Security;
 using TestResultBrowser.Web.Services;
 
 namespace TestResultBrowser.Web.Controllers;
@@ -14,8 +15,8 @@ public class AssetsController : ControllerBase
 
     public AssetsController(ILogger<AssetsController> logger, IOptions<TestResultBrowserOptions> options)
     {
-        _logger = logger;
-        _options = options.Value;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
     }
 
     /// <summary>
@@ -30,13 +31,13 @@ public class AssetsController : ControllerBase
     /// Serves assets (images, CSS, JS) from the test report directory
     /// </summary>
     [HttpGet("{**assetPath}")]
-    public IActionResult GetAsset(string assetPath, [FromQuery] string? reportPath)
+    public async Task<IActionResult> GetAsset(string assetPath, [FromQuery] string? reportPath)
     {
         try
         {
             // Get report directory from query parameter or request context (fallback)
             string? reportDirectory = reportPath;
-            
+
             if (string.IsNullOrEmpty(reportDirectory))
             {
                 if (!HttpContext.Items.TryGetValue(ReportDirectoryKey, out var reportDirObj) || reportDirObj is not string contextDirectory)
@@ -49,13 +50,25 @@ public class AssetsController : ControllerBase
             else
             {
                 reportDirectory = Uri.UnescapeDataString(reportDirectory);
+                // CRITICAL: Validate reportPath is under the allowed base directory
+                var allowedBaseDir = Path.GetFullPath(_options.FileSharePath);
+                var resolvedReportPath = Path.GetFullPath(Path.Combine(allowedBaseDir, reportDirectory));
+
+                if (!resolvedReportPath.StartsWith(allowedBaseDir, StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogWarning("Report path outside allowed base directory: {ReportPath}", reportPath);
+                    return BadRequest(new { error = "Invalid report path" });
+                }
+
+                // Use the resolved report path for subsequent operations
+                reportDirectory = resolvedReportPath;
             }
 
-            // Validate assetPath to prevent path traversal attacks
-            if (string.IsNullOrEmpty(assetPath) || assetPath.Contains("..") || Path.IsPathRooted(assetPath))
+            // Validate assetPath to prevent path traversal attacks and invalid characters
+            if (!PathValidator.IsPathSafe(assetPath))
             {
                 _logger.LogWarning("Invalid asset path requested: {AssetPath}", assetPath);
-                return BadRequest("Invalid asset path");
+                return BadRequest(new { error = "Invalid asset path" });
             }
 
             // Combine the report directory with the asset path and resolve to absolute path
@@ -67,7 +80,7 @@ public class AssetsController : ControllerBase
             if (!resolvedPath.StartsWith(resolvedReportDir, StringComparison.OrdinalIgnoreCase))
             {
                 _logger.LogWarning("Path traversal attempt detected: {AssetPath}", assetPath);
-                return BadRequest("Invalid asset path");
+                return BadRequest(new { error = "Invalid asset path" });
             }
 
             if (!System.IO.File.Exists(resolvedPath))
@@ -83,6 +96,8 @@ public class AssetsController : ControllerBase
                 ".png" => "image/png",
                 ".jpg" or ".jpeg" => "image/jpeg",
                 ".gif" => "image/gif",
+                ".bmp" => "image/bmp",
+                ".webp" => "image/webp",
                 ".svg" => "image/svg+xml",
                 ".css" => "text/css",
                 ".js" => "application/javascript",
@@ -92,7 +107,7 @@ public class AssetsController : ControllerBase
             };
 
             // Read and return the file
-            var fileBytes = System.IO.File.ReadAllBytes(resolvedPath);
+            var fileBytes = await System.IO.File.ReadAllBytesAsync(resolvedPath);
             return File(fileBytes, contentType);
         }
         catch (Exception ex)

@@ -1,5 +1,3 @@
-using TestResultBrowser.Web.Services;
-
 namespace TestResultBrowser.Web.Models;
 
 /// <summary>

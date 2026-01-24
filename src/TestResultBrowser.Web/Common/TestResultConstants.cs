@@ -29,12 +29,12 @@ public static class TestResultConstants
         /// Pattern for extracting Polarion ticket IDs (e.g., PEXC-28044)
         /// </summary>
         public const string PolarionTicketId = @"PEXC-\d+";
-        
+
         /// <summary>
         /// Pattern for parsing version codes (e.g., PXrel114 = 1.14.0)
         /// </summary>
         public const string VersionCode = @"PXrel(\d+)";
-        
+
         /// <summary>
         /// Pattern for extracting build number from folder name
         /// </summary>

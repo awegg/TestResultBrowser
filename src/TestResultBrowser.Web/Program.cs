@@ -34,10 +34,10 @@ builder.Services.AddSingleton<ConfigurationValidator>();
 
 // Register background services
 builder.Services.AddHostedService<FileWatcherService>();
-builder.Services.AddSingleton<IFileWatcherService>(sp => 
+builder.Services.AddSingleton<IFileWatcherService>(sp =>
     sp.GetServices<IHostedService>()
       .OfType<FileWatcherService>()
-      .First());
+      .FirstOrDefault() ?? throw new InvalidOperationException("FileWatcherService not registered"));
 
 var app = builder.Build();
 
@@ -75,4 +75,13 @@ app.MapRazorComponents<App>()
 
 app.MapHub<TestDataHub>("/hubs/testdata");
 
-app.Run();
+try
+{
+    app.Run();
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"FATAL ERROR: {ex.Message}");
+    Console.WriteLine($"Stack trace: {ex.StackTrace}");
+    throw;
+}

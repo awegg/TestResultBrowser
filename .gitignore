@@ -1,6 +1,4 @@
 sample_data
-src/TestResultBrowser.Web/bin
-src/TestResultBrowser.Web/obj
 .roo
 
 # Build results
@@ -53,9 +51,9 @@ TestResults/
 # Environment files
 .env
 .env.local
-launchSettings.json
 
 # OS
 .DS_Store
 Thumbs.db
 src/TestResultBrowser.Web/bin/
+src/TestResultBrowser.Web/userdata/settings.db

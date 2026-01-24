@@ -23,7 +23,7 @@ public class SettingsService : ISettingsService
     {
         _options = options.Value;
         _logger = logger;
-        
+
         // Get userdata path from configuration or use default
         _userDataPath = !string.IsNullOrEmpty(_options.UserDataPath)
             ? _options.UserDataPath
@@ -40,22 +40,16 @@ public class SettingsService : ISettingsService
     {
         lock (_lock)
         {
-            // Return cached settings if available
-            if (_cachedSettings != null)
-            {
-                return _cachedSettings;
-            }
-
-            // Load from database
+            // Always reload from database to ensure fresh data
             var dbPath = Path.Combine(_userDataPath, "settings.db");
-            
+
             try
             {
                 using var db = new LiteDatabase(dbPath);
                 var collection = db.GetCollection<ApplicationSettings>("settings");
-                
+
                 var settings = collection.FindById("default");
-                
+
                 if (settings == null)
                 {
                     // No saved settings, create defaults with values from appsettings.json/env vars
@@ -72,19 +66,31 @@ public class SettingsService : ISettingsService
                             ClearAfterConsecutivePasses = _options.FlakyTestThresholds.ClearAfterConsecutivePasses
                         }
                     };
-                    
+
                     // Save defaults to database
                     collection.Upsert(settings);
                     _logger.LogInformation("Created default settings from configuration");
                 }
-                
+
                 _cachedSettings = settings;
                 return settings;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error loading settings from database, using defaults");
-                return new ApplicationSettings();
+                return new ApplicationSettings
+                {
+                    Id = "default",
+                    PollingIntervalMinutes = _options.PollingIntervalMinutes,
+                    PolarionBaseUrl = _options.PolarionBaseUrl,
+                    MaxMemoryGB = _options.MaxMemoryGB,
+                    FlakyTestThresholds = new FlakyTestThresholds
+                    {
+                        RollingWindowSize = _options.FlakyTestThresholds.RollingWindowSize,
+                        TriggerPercentage = _options.FlakyTestThresholds.TriggerPercentage,
+                        ClearAfterConsecutivePasses = _options.FlakyTestThresholds.ClearAfterConsecutivePasses
+                    }
+                };
             }
         }
     }
@@ -95,28 +101,38 @@ public class SettingsService : ISettingsService
         lock (_lock)
         {
             var dbPath = Path.Combine(_userDataPath, "settings.db");
-            
+
             try
             {
                 settings.Id = "default"; // Ensure consistent ID
-                
-                using var db = new LiteDatabase(dbPath);
-                var collection = db.GetCollection<ApplicationSettings>("settings");
-                collection.Upsert(settings);
-                
+
+                using (var db = new LiteDatabase(dbPath))
+                {
+                    var collection = db.GetCollection<ApplicationSettings>("settings");
+
+                    // Delete existing record to ensure clean upsert
+                    collection.DeleteMany(x => x.Id == "default");
+
+                    // Insert fresh record
+                    collection.Insert(settings);
+
+
+                }
+
+                // Update cache after successful save
                 _cachedSettings = settings;
-                _logger.LogInformation("Settings saved successfully");
-                
+                _logger.LogInformation("Settings persisted to {DbPath}", dbPath);
+
                 // Raise event
                 SettingsChanged?.Invoke(this, EventArgs.Empty);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error saving settings to database");
+                _logger.LogError(ex, "Error saving settings to database at {DbPath}", dbPath);
                 throw;
             }
         }
-        
+
         return Task.CompletedTask;
     }
 
@@ -125,9 +141,18 @@ public class SettingsService : ISettingsService
     {
         var defaults = new ApplicationSettings
         {
-            Id = "default"
+            Id = "default",
+            PollingIntervalMinutes = _options.PollingIntervalMinutes,
+            PolarionBaseUrl = _options.PolarionBaseUrl,
+            MaxMemoryGB = _options.MaxMemoryGB,
+            FlakyTestThresholds = new FlakyTestThresholds
+            {
+                RollingWindowSize = _options.FlakyTestThresholds.RollingWindowSize,
+                TriggerPercentage = _options.FlakyTestThresholds.TriggerPercentage,
+                ClearAfterConsecutivePasses = _options.FlakyTestThresholds.ClearAfterConsecutivePasses
+            }
         };
-        
+
         return SaveSettingsAsync(defaults);
     }
 }

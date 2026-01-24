@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.SignalR;
 using TestResultBrowser.Web.Hubs;
+using TestResultBrowser.Web.Models;
 
 namespace TestResultBrowser.Web.Services;
 
@@ -50,39 +51,6 @@ public class TestResultBrowserOptions
 }
 
 /// <summary>
-/// Flaky test detection threshold configuration
-/// </summary>
-public class FlakyTestThresholds
-{
-    /// <summary>
-    /// Number of recent runs to analyze for flaky detection
-    /// Default: 20
-    /// </summary>
-    public int RollingWindowSize { get; set; } = 20;
-
-    /// <summary>
-    /// Percentage of failures in rolling window to trigger flaky status (0-100)
-    /// Default: 30
-    /// </summary>
-    public int FlakinessTriggerPercentage { get; set; } = 30;
-
-    /// <summary>
-    /// Alias for FlakinessTriggerPercentage (for consistency with UI settings)
-    /// </summary>
-    public int TriggerPercentage
-    {
-        get => FlakinessTriggerPercentage;
-        set => FlakinessTriggerPercentage = value;
-    }
-
-    /// <summary>
-    /// Number of consecutive passes required to clear flaky status
-    /// Default: 10
-    /// </summary>
-    public int ClearAfterConsecutivePasses { get; set; } = 10;
-}
-
-/// <summary>
 /// Cache configuration settings
 /// </summary>
 public class CacheSettings
@@ -117,6 +85,7 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
     private readonly TestResultBrowserOptions _options;
     private readonly IHubContext<TestDataHub> _hubContext;
     private readonly ISettingsService _settingsService;
+    private readonly SemaphoreSlim _scanLock = new(1, 1);
     private Timer? _timer;
 
     public DateTime? LastScanTime { get; private set; }
@@ -135,7 +104,7 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
         _options = options.Value;
         _hubContext = hubContext;
         _settingsService = settingsService;
-        
+
         // Subscribe to settings changes to update polling interval
         _settingsService.SettingsChanged += OnSettingsChanged;
     }
@@ -145,9 +114,9 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
         // Recreate timer with new polling interval
         var settings = _settingsService.GetSettings();
         var newInterval = TimeSpan.FromMinutes(settings.PollingIntervalMinutes);
-        
+
         _logger.LogInformation("Polling interval changed to {Interval} minutes, recreating timer", settings.PollingIntervalMinutes);
-        
+
         _timer?.Dispose();
         _timer = new Timer(
             callback: async _ => await ScanNowAsync(),
@@ -178,7 +147,8 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
 
     public async Task ScanNowAsync()
     {
-        if (IsScanningInProgress)
+        // Use semaphore for concurrency control
+        if (!await _scanLock.WaitAsync(0))
         {
             _logger.LogWarning("Scan already in progress, skipping requested scan");
             return;
@@ -227,7 +197,7 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
                     {
                         // Parse file path
                         var parsedPath = filePathParser.ParseFilePath(xmlFile);
-                        
+
                         // Log warning if using default values (both patterns failed)
                         if (parsedPath.DomainId == "Uncategorized")
                         {
@@ -256,7 +226,7 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
                 // Batch update test data service
                 testDataService.AddOrUpdateTestResults(allResults);
 
-                _logger.LogInformation("Processed batch {Current}/{Total} files", 
+                _logger.LogInformation("Processed batch {Current}/{Total} files",
                     Math.Min(i + batchSize, xmlFiles.Length), xmlFiles.Length);
             }
 
@@ -283,6 +253,7 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
         finally
         {
             IsScanningInProgress = false;
+            _scanLock.Release();
         }
     }
 
@@ -302,7 +273,7 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
             {
                 attempt++;
                 var delayMs = (int)Math.Pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
-                _logger.LogWarning(ex, "{OperationName} failed (attempt {Attempt}/{Max}), retrying in {DelayMs}ms", 
+                _logger.LogWarning(ex, "{OperationName} failed (attempt {Attempt}/{Max}), retrying in {DelayMs}ms",
                     operationName, attempt, maxRetries, delayMs);
                 await Task.Delay(delayMs);
             }
@@ -315,6 +286,7 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
     public override void Dispose()
     {
         _timer?.Dispose();
+        _scanLock?.Dispose();
         base.Dispose();
     }
 }

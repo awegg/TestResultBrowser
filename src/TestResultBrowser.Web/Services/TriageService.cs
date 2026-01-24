@@ -40,8 +40,8 @@ public class TriageService : ITriageService
 
     /// <inheritdoc/>
     public async Task<MorningTriageResult?> GetMorningTriageAsync(
-        string todayBuildId, 
-        string yesterdayBuildId, 
+        string todayBuildId,
+        string yesterdayBuildId,
         List<string>? selectedDomains = null)
     {
         return await Task.Run(() =>
@@ -70,7 +70,7 @@ public class TriageService : ITriageService
             var todayByTestName = todayTests
                 .GroupBy(t => t.TestFullName)
                 .ToDictionary(g => g.Key, g => g.ToList());
-            
+
             var yesterdayByTestName = yesterdayTests
                 .GroupBy(t => t.TestFullName)
                 .ToDictionary(g => g.Key, g => g.ToList());
@@ -88,7 +88,7 @@ public class TriageService : ITriageService
                 // Check if any configuration failed today that passed yesterday
                 foreach (var todayResult in todayResults.Where(t => t.Status == TestStatus.Fail))
                 {
-                    var yesterdayResult = yesterdayResults.FirstOrDefault(y => 
+                    var yesterdayResult = yesterdayResults.FirstOrDefault(y =>
                         y.ConfigurationId == todayResult.ConfigurationId);
 
                     if (yesterdayResult != null && yesterdayResult.Status == TestStatus.Pass)
@@ -132,7 +132,7 @@ public class TriageService : ITriageService
                 // Check if any configuration passed today that failed yesterday
                 foreach (var todayResult in todayResults.Where(t => t.Status == TestStatus.Pass))
                 {
-                    var yesterdayResult = yesterdayResults.FirstOrDefault(y => 
+                    var yesterdayResult = yesterdayResults.FirstOrDefault(y =>
                         y.ConfigurationId == todayResult.ConfigurationId);
 
                     if (yesterdayResult != null && yesterdayResult.Status == TestStatus.Fail)
@@ -172,7 +172,7 @@ public class TriageService : ITriageService
 
                 foreach (var todayResult in todayResults.Where(t => t.Status == TestStatus.Fail))
                 {
-                    var yesterdayResult = yesterdayResults.FirstOrDefault(y => 
+                    var yesterdayResult = yesterdayResults.FirstOrDefault(y =>
                         y.ConfigurationId == todayResult.ConfigurationId);
 
                     if (yesterdayResult != null && yesterdayResult.Status == TestStatus.Fail)
@@ -251,7 +251,7 @@ public class TriageService : ITriageService
             {
                 var (version, namedConfig) = kvp.Key;
                 var configIds = kvp.Value;
-                
+
                 var resultsForCell = currentResults.Where(r => configIds.Contains(r.ConfigurationId)).ToList();
                 var total = resultsForCell.Count(r => r.Status != Models.TestStatus.Skip);
                 var passed = resultsForCell.Count(r => r.Status == Models.TestStatus.Pass);

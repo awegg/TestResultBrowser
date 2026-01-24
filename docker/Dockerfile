@@ -22,6 +22,7 @@ WORKDIR /app
 # Install dependencies for file system access and networking
 RUN apt-get update && apt-get install -y \
     cifs-utils \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Create directories for data

@@ -26,4 +26,10 @@ public interface IConfigurationHistoryService
     /// </summary>
     /// <returns>Sorted list of build IDs</returns>
     Task<List<string>> GetAvailableBuildsAsync();
+
+    /// <summary>
+    /// Get list of configurations with their metadata including last update time
+    /// </summary>
+    /// <returns>List of configuration metadata with last update timestamp</returns>
+    Task<List<ConfigurationMetadata>> GetConfigurationsWithMetadataAsync();
 }

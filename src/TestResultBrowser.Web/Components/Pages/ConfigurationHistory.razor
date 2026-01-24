@@ -6,7 +6,6 @@
 @inject IConfigurationHistoryService ConfigHistoryService
 @inject ISnackbar Snackbar
 @inject NavigationManager NavigationManager
-@rendermode InteractiveServer
 
 <PageTitle>Configuration History</PageTitle>
 
@@ -145,7 +144,7 @@
                                 {
                                     <HierarchyTreeView Node="filtered" 
                                                        HistoryColumns="historyResult.HistoryColumns"
-                                                       OnTestSelected="SelectTest" />
+                                                       OnTestSelected="@((testInfo) => SelectTest(testInfo))" />
                                 }
                             }
                         </div>
@@ -165,98 +164,254 @@
         </MudItem>
     </MudGrid>
 </MudContainer>
-@* Configuration Dialog using MudDialog *@
-<MudDialog @bind-IsVisible="showConfigurationDialog" MaxWidth="MaxWidth.Small" FullWidth="true">
-    <TitleContent>
-        <MudText Typo="Typo.h6">Select Configuration (@availableConfigurations.Count available)</MudText>
-    </TitleContent>
-    <DialogContent>
-        <MudTextField @bind-Value="searchText" 
-                     Placeholder="Search configurations..." 
-                     Adornment="Adornment.Start"
-                     AdornmentIcon="@Icons.Material.Filled.Search"
-                     Variant="Variant.Outlined"
-                     Immediate="true"
-                     Dense="true"
-                     FullWidth="true"
-                     AutoFocus="true"
-                     Class="mb-3" />
-        
-        <MudList T="string" Clickable="true" Dense="true" Style="max-height: 400px; overflow-y: auto;">
-            @foreach (var config in GetFilteredConfigurations())
-            {
-                <MudListItem T="string" OnClick="@(() => SelectConfigurationFromDialog(config))"
-                            Style="@(config == selectedConfiguration ? "background-color: #e3f2fd;" : "")">
-                    <div class="d-flex align-center justify-space-between" Style="width: 100%;">
-                        <MudText>@config</MudText>
-                        @if (config == selectedConfiguration)
-                        {
-                            <MudIcon Icon="@Icons.Material.Filled.Check" Color="Color.Primary" Size="Size.Small" />
-                        }
-                    </div>
-                </MudListItem>
-            }
-        </MudList>
-    </DialogContent>
-    <DialogActions>
-        <MudButton Variant="Variant.Text" OnClick="@(() => { showConfigurationDialog = false; })">Cancel</MudButton>
-    </DialogActions>
-</MudDialog>
 
-@* Test Details Dialog using MudDialog *@
-<MudDialog @bind-IsVisible="showDetailsDialog" MaxWidth="MaxWidth.Large" FullWidth="true">
-    <DialogContent>
-        @if (selectedTestNode != null)
-        {
-            <TestDetailsSidePanel SelectedNode="selectedTestNode" OnClose="@(() => ClearSelectedTest())" />
-        }
-    </DialogContent>
-</MudDialog>
-
-@* Feature Selection Dialog using MudDialog *@
-<MudDialog @bind-IsVisible="showFeatureDialog" MaxWidth="MaxWidth.Small" FullWidth="true">
-    <TitleContent>
-        <MudText Typo="Typo.h6">Select Features</MudText>
-    </TitleContent>
-    <DialogContent>
-        @if (featureGroups.Count == 0)
-        {
-            <MudText>No features available</MudText>
-        }
-        else
-        {
-            @foreach (var group in featureGroups)
-            {
-                var groupKey = group.Key;
-                var groupFeatures = group.Value;
-                var countInGroup = groupFeatures.Count(f => selectedFeatureNames.Contains(f));
-                <div style="margin-bottom: 16px;">
-                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                        <MudCheckBox T="bool?" TriState="true" 
-                                     Checked="@(countInGroup == groupFeatures.Count ? true : countInGroup > 0 ? (bool?)null : false)"
-                                     CheckedChanged="@((bool? value) => ToggleGroup(groupKey, value))" />
-                        <MudText Typo="Typo.subtitle2">@groupKey</MudText>
-                    </div>
-                    <div style="padding-left: 32px;">
-                        @foreach (var feature in groupFeatures)
+@if (showConfigurationDialog)
+{
+    <div class="modal-backdrop fade show" style="display: block; z-index: 9998;"></div>
+    <div class="modal fade show" style="display: block; z-index: 9999;" role="dialog">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Select Configuration (@configurationMetadata.Count available)</h5>
+                    <button type="button" class="btn-close" @onclick="() => showConfigurationDialog = false"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="text" class="form-control mb-3" placeholder="Search configurations..." 
+                           @bind="searchText" @bind:event="oninput" />
+                    
+                    <div style="max-height: 500px; overflow-y: auto;">
+                        @foreach (var configMeta in GetFilteredConfigurations())
                         {
-                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-                                <MudCheckBox T="bool" Checked="@selectedFeatureNames.Contains(feature)"
-                                                     CheckedChanged="@((bool value) => ToggleFeature(feature, value))" />
-                                <MudText>@feature</MudText>
+                            <div style="padding: 12px; cursor: pointer; background-color: @(configMeta.Id == selectedConfiguration ? "#e3f2fd" : "transparent"); border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;"
+                                 @onclick="@(() => SelectConfigurationFromDialog(configMeta.Id))">
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 500;">@configMeta.Id</div>
+                                    <div style="font-size: 0.85rem; color: #666; margin-top: 2px;">Last updated: @configMeta.LastUpdateDisplay</div>
+                                </div>
+                                @if (configMeta.Id == selectedConfiguration)
+                                {
+                                    <span style="color: #1976d2; font-size: 1.2rem;">✓</span>
+                                }
                             </div>
                         }
                     </div>
                 </div>
-            }
-        }
-    </DialogContent>
-    <DialogActions>
-        <MudButton Variant="Variant.Outlined" Color="Color.Info" OnClick="@ClearAllFeatures">Clear All</MudButton>
-        <MudButton Variant="Variant.Text" OnClick="@(() => { showFeatureDialog = false; })">Cancel</MudButton>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@ApplyFeatureSelection">Apply</MudButton>
-    </DialogActions>
-</MudDialog>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => showConfigurationDialog = false">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showFeatureDialog)
+{
+    <div class="modal-backdrop fade show" style="display: block; z-index: 9998;"></div>
+    <div class="modal fade show" style="display: block; z-index: 9999;" role="dialog">
+        <div class="modal-dialog modal-xl" style="max-width: 80vw;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Select Features</h5>
+                    <button type="button" class="btn-close" @onclick="() => showFeatureDialog = false"></button>
+                </div>
+                <div class="modal-body" style="max-height: 600px; overflow-y: auto;">
+                    <input type="text" class="form-control mb-3" placeholder="Search features..." 
+                           @bind="featureSearchText" @bind:event="oninput" />
+                    
+                    @if (featureGroups.Count == 0)
+                    {
+                        <p>No features available</p>
+                    }
+                    else if (GetFilteredFeatureGroups().Count == 0)
+                    {
+                        <p>No features match your search.</p>
+                    }
+                    else
+                    {
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;">
+                        @foreach (var group in GetFilteredFeatureGroups().OrderBy(g => g.Key))
+                        {
+                            var groupKey = group.Key;
+                            var groupFeatures = group.Value;
+                            var countInGroup = groupFeatures.Count(f => selectedFeatureNames.Contains(f));
+                            <div>
+                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                                    <input type="checkbox" 
+                                           @onchange="@((ChangeEventArgs e) => {
+                                               if (e.Value is bool value)
+                                               {
+                                                   if (value)
+                                                   {
+                                                       foreach (var f in groupFeatures) selectedFeatureNames.Add(f);
+                                                   }
+                                                   else
+                                                   {
+                                                       foreach (var f in groupFeatures) selectedFeatureNames.Remove(f);
+                                                   }
+                                                   StateHasChanged();
+                                               }
+                                           })"
+                                           checked="@(countInGroup == groupFeatures.Count)" />
+                                    <strong style="font-size: 0.95rem;">@groupKey</strong>
+                                </div>
+                                <div style="padding-left: 28px;">
+                                    @foreach (var feature in groupFeatures)
+                                    {
+                                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 5px; font-size: 0.85rem;">
+                                            <input type="checkbox" style="min-width: 16px;"
+                                                   checked="@selectedFeatureNames.Contains(feature)"
+                                                   @onchange="@((ChangeEventArgs e) => {
+                                                       if (e.Value is bool value)
+                                                       {
+                                                           if (value)
+                                                               selectedFeatureNames.Add(feature);
+                                                           else
+                                                               selectedFeatureNames.Remove(feature);
+                                                           StateHasChanged();
+                                                       }
+                                                   })" />
+                                            <span>@feature</span>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-info" @onclick="@ClearAllFeatures">Clear All</button>
+                    <button type="button" class="btn btn-secondary" @onclick="() => { featureSearchText = string.Empty; showFeatureDialog = false; }">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="@ApplyFeatureSelection">Apply</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showTestDetailsDialog && selectedTestInfo?.TestNode != null)
+{
+    <div class="modal-backdrop fade show" style="display: block; z-index: 9998;"></div>
+    <div class="modal fade show" style="display: block; z-index: 9999;" role="dialog">
+        <div class="modal-dialog modal-lg" style="max-height: 90vh; display: flex; flex-direction: column;">
+            <div class="modal-content" style="display: flex; flex-direction: column; max-height: 90vh;">
+                <div class="modal-header">
+                    <h5 class="modal-title">Test Details</h5>
+                    <button type="button" class="btn-close" @onclick="ClearSelectedTest"></button>
+                </div>
+                <div class="modal-body" style="overflow-y: auto; flex: 1; max-height: calc(90vh - 120px);">
+                    @{
+                        var testNode = selectedTestInfo.TestNode;
+                        var columnIndex = selectedTestInfo.ColumnIndex;
+                        var historyCell = columnIndex < testNode.HistoryCells.Count ? testNode.HistoryCells[columnIndex] : null;
+                        var sourceTestResult = historyCell?.SourceTestResult;
+                        var buildId = columnIndex < historyResult?.HistoryColumns.Count ? historyResult.HistoryColumns[columnIndex].BuildId : "Unknown";
+                    }
+
+                    <div class="mb-3">
+                        <h6>Build</h6>
+                        <p><strong>@buildId</strong></p>
+                    </div>
+
+                    <div class="mb-3">
+                        <h6>Test Name</h6>
+                        <p>@testNode.TestFullName</p>
+                    </div>
+
+                    @if (sourceTestResult != null && !string.IsNullOrEmpty(sourceTestResult.ErrorMessage))
+                    {
+                        <div class="mb-3">
+                            <h6>Error Message</h6>
+                            <div style="background-color: #fff3cd; padding: 10px; border-radius: 4px; border-left: 4px solid #ff6b6b;">
+                                <p style="margin: 0; white-space: pre-wrap; word-break: break-word;">@sourceTestResult.ErrorMessage</p>
+                            </div>
+                        </div>
+                    }
+
+                    @if (sourceTestResult != null && !string.IsNullOrEmpty(sourceTestResult.StackTrace))
+                    {
+                        <div class="mb-3">
+                            <h6>Stack Trace</h6>
+                            <div style="background-color: #f8f9fa; padding: 10px; border-radius: 4px; max-height: 300px; overflow-y: auto;">
+                                <pre style="margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 0.85rem;">@sourceTestResult.StackTrace</pre>
+                            </div>
+                        </div>
+                    }
+
+                    <div class="mb-3">
+                        <h6>Test History</h6>
+                        <table class="table table-sm table-striped" style="font-size: 0.85rem;">
+                            <thead>
+                                <tr>
+                                    <th>Build</th>
+                                    <th>Date</th>
+                                    <th>Status</th>
+                                    <th>Error Message</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (historyResult?.HistoryColumns != null && testNode.HistoryCells.Count > 0)
+                                {
+                                    @foreach (var (column, idx) in historyResult.HistoryColumns.Select((c, i) => (c, i)))
+                                    {
+                                        var cell = idx < testNode.HistoryCells.Count ? testNode.HistoryCells[idx] : null;
+                                        var isCurrent = idx == columnIndex;
+                                        var bgColor = isCurrent ? "#e3f2fd" : "transparent";
+                                        <tr style="background-color: @bgColor;">
+                                            <td style="width: 120px;"><strong>@column.BuildId</strong></td>
+                                            <td style="width: 140px;">@column.DisplayDate</td>
+                                            <td style="width: 80px;">
+                                                @if (cell?.Status == HistoryCellStatus.HasFailures)
+                                                {
+                                                    <span style="color: #dc3545;">Failed</span>
+                                                }
+                                                else if (cell?.Status == HistoryCellStatus.AllPassed)
+                                                {
+                                                    <span style="color: #28a745;">Passed</span>
+                                                }
+                                                else if (cell?.Status == HistoryCellStatus.AllSkipped)
+                                                {
+                                                    <span style="color: #6c757d;">Skipped</span>
+                                                }
+                                                else
+                                                {
+                                                    <span style="color: #6c757d;">-</span>
+                                                }
+                                            </td>
+                                            <td style="word-break: break-word;">
+                                                @if (cell?.SourceTestResult?.ErrorMessage != null)
+                                                {
+                                                    <details style="cursor: pointer;">
+                                                        <summary style="color: #666; font-size: 0.9rem;">
+                                                            @(cell.SourceTestResult.ErrorMessage.Length > 80 
+                                                                ? cell.SourceTestResult.ErrorMessage.Substring(0, 80) + "..." 
+                                                                : cell.SourceTestResult.ErrorMessage)
+                                                        </summary>
+                                                        <div style="margin-top: 8px; padding: 8px; background-color: #f8f9fa; border-radius: 4px; white-space: pre-wrap; word-break: break-word; font-size: 0.8rem;">
+                                                            @cell.SourceTestResult.ErrorMessage
+                                                        </div>
+                                                    </details>
+                                                }
+                                                else
+                                                {
+                                                    <span style="color: #999;">-</span>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="ClearSelectedTest">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 
 
 @code {
@@ -267,16 +422,18 @@
     public int? BuildsFromUrl { get; set; }
     
     private List<string> availableConfigurations = new();
+    private List<ConfigurationMetadata> configurationMetadata = new();
     private string selectedConfiguration = string.Empty;
     private ConfigurationHistoryResult? historyResult;
     private int numberOfBuilds = 5;
     private bool isLoading = false;
     private string searchText = string.Empty;
+    private string featureSearchText = string.Empty;
     private bool showConfigurationDialog = false;
     private bool showOnlyFailed = false;
-    private HierarchyNode? selectedTestNode;  // Track selected test for side panel
-    private bool showDetailsDialog = false;   // Controls visibility of test details popup
+    private SelectedTestInfo? selectedTestInfo = null;  // Track selected test with column info
     private bool showFeatureDialog = false;   // Controls feature selection dialog
+    private bool showTestDetailsDialog = false;  // Controls test details modal
     private Dictionary<string, List<string>> featureGroups = new();  // Groups of features
     private HashSet<string> selectedFeatureNames = new();  // Currently selected features
 
@@ -311,13 +468,26 @@
     protected override async Task OnParametersSetAsync()
     {
         // Handle URL changes (browser back/forward)
+        bool needsRefresh = false;
+        
         if (!string.IsNullOrEmpty(ConfigFromUrl) && ConfigFromUrl != selectedConfiguration)
         {
             if (availableConfigurations.Contains(ConfigFromUrl))
             {
                 selectedConfiguration = ConfigFromUrl;
-                await RefreshData();
+                needsRefresh = true;
             }
+        }
+        
+        if (BuildsFromUrl.HasValue && BuildsFromUrl.Value != numberOfBuilds)
+        {
+            numberOfBuilds = BuildsFromUrl.Value;
+            needsRefresh = true;
+        }
+        
+        if (needsRefresh)
+        {
+            await RefreshData();
         }
     }
 
@@ -325,7 +495,8 @@
     {
         try
         {
-            availableConfigurations = await ConfigHistoryService.GetAvailableConfigurationsAsync();
+            configurationMetadata = await ConfigHistoryService.GetConfigurationsWithMetadataAsync();
+            availableConfigurations = configurationMetadata.Select(c => c.Id).ToList();
             // Don't set default here - let OnInitializedAsync handle it to respect URL params
         }
         catch (Exception ex)
@@ -336,13 +507,13 @@
 
 
 
-    private IEnumerable<string> GetFilteredConfigurations()
+    private IEnumerable<ConfigurationMetadata> GetFilteredConfigurations()
     {
         if (string.IsNullOrEmpty(searchText))
-            return availableConfigurations;
+            return configurationMetadata;
         
-        return availableConfigurations
-            .Where(x => x.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+        return configurationMetadata
+            .Where(x => x.Id.Contains(searchText, StringComparison.OrdinalIgnoreCase))
             .ToList();
     }
 
@@ -447,16 +618,16 @@
         showOnlyFailed = !showOnlyFailed;
     }
 
-    private void SelectTest(HierarchyNode testNode)
+    private void SelectTest(SelectedTestInfo testInfo)
     {
-        selectedTestNode = testNode;
-        showDetailsDialog = true;
+        selectedTestInfo = testInfo;
+        showTestDetailsDialog = true;
     }
 
     private void ClearSelectedTest()
     {
-        selectedTestNode = null;
-        showDetailsDialog = false;
+        selectedTestInfo = null;
+        showTestDetailsDialog = false;
     }
 
     private void OpenFeatureDialog()
@@ -471,39 +642,93 @@
         if (historyResult?.HierarchyNodes == null || historyResult.HierarchyNodes.Count == 0)
             return;
 
-        void Traverse(HierarchyNode node, string parentGroupName = "")
+        // Collect all feature names
+        var allFeatures = new List<string>();
+        void CollectFeatures(HierarchyNode node)
         {
             if (node.NodeType == HierarchyNodeType.Feature)
             {
-                // Use parent domain/feature as group name, or "Other" if no parent
-                string group = !string.IsNullOrEmpty(parentGroupName) ? parentGroupName : "Other";
-                if (!featureGroups.TryGetValue(group, out var list))
+                if (!allFeatures.Contains(node.Name))
                 {
-                    list = new List<string>();
-                    featureGroups[group] = list;
-                }
-                if (!list.Contains(node.Name))
-                {
-                    list.Add(node.Name);
+                    allFeatures.Add(node.Name);
                 }
             }
             foreach (var child in node.Children)
             {
-                // Pass current node name as group for its children if it's a domain/namespace
-                string childGroup = node.NodeType == HierarchyNodeType.Domain ? node.Name : parentGroupName;
-                Traverse(child, childGroup);
+                CollectFeatures(child);
             }
         }
 
         foreach (var root in historyResult.HierarchyNodes)
         {
-            Traverse(root);
+            CollectFeatures(root);
         }
 
+        // Group features by parsing their names
+        foreach (var feature in allFeatures.OrderBy(f => f))
+        {
+            string group = ExtractGroupFromFeatureName(feature);
+            if (!featureGroups.TryGetValue(group, out var list))
+            {
+                list = new List<string>();
+                featureGroups[group] = list;
+            }
+            if (!list.Contains(feature))
+            {
+                list.Add(feature);
+            }
+        }
+
+        // Sort features within each group
         foreach (var key in featureGroups.Keys.ToList())
         {
             featureGroups[key] = featureGroups[key].OrderBy(n => n).ToList();
         }
+    }
+
+    private string ExtractGroupFromFeatureName(string featureName)
+    {
+        // Feature names can be:
+        // "Px Core - Alarm Dashboard" -> "PX Core"
+        // "Px Core - Alarm Manager" -> "PX Core"
+        // "Px Feature LogHandler Regression" -> "PX Feature LogHandler"
+        // "Px Feature LogHandler Smoke" -> "PX Feature LogHandler"
+        // "Px Feature Identity Server" -> "PX Feature Identity Server"
+        
+        if (string.IsNullOrEmpty(featureName))
+            return "Other";
+
+        var name = featureName.Trim();
+        string groupName = name;
+
+        // First, split by " - " to get the prefix (for names like "Px Core - Alarm Dashboard")
+        var dashParts = name.Split(" - ");
+        if (dashParts.Length > 1)
+        {
+            groupName = dashParts[0].Trim();
+        }
+        else
+        {
+            // For names without " - ", check for and remove test type suffixes
+            var suffixes = new[] { "Regression", "Smoke", "Archive Viewer", "Public API" };
+            foreach (var suffix in suffixes)
+            {
+                if (name.EndsWith(" " + suffix, StringComparison.OrdinalIgnoreCase))
+                {
+                    groupName = name.Substring(0, name.Length - (" " + suffix).Length).Trim();
+                    break;
+                }
+            }
+        }
+
+        // Normalize: "Px Core" -> "PX Core", "Px Feature Loghandler" -> "PX Feature Loghandler"
+        if (groupName.StartsWith("Px ", StringComparison.OrdinalIgnoreCase))
+        {
+            var withoutPx = groupName.Substring(3).Trim();
+            return "PX " + withoutPx;
+        }
+
+        return "Other";
     }
 
     private void ToggleFeature(string feature, bool value)
@@ -554,6 +779,33 @@
         showFeatureDialog = false;
         Snackbar.Add($"Applied {selectedFeatureNames.Count} feature(s)", Severity.Info);
         StateHasChanged();
+    }
+
+    private Dictionary<string, List<string>> GetFilteredFeatureGroups()
+    {
+        if (string.IsNullOrEmpty(featureSearchText))
+        {
+            return featureGroups;
+        }
+
+        var searchLower = featureSearchText.ToLower();
+        var filtered = new Dictionary<string, List<string>>();
+
+        foreach (var group in featureGroups)
+        {
+            // Filter features that match the search text
+            var matchingFeatures = group.Value
+                .Where(f => f.Contains(featureSearchText, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            // Also include the group if the group name matches
+            if (group.Key.Contains(featureSearchText, StringComparison.OrdinalIgnoreCase) || matchingFeatures.Count > 0)
+            {
+                filtered[group.Key] = matchingFeatures.Count > 0 ? matchingFeatures : group.Value;
+            }
+        }
+
+        return filtered;
     }
 
     private HierarchyNode? GetFilteredNode(HierarchyNode node)
@@ -730,5 +982,154 @@
 
     .slim-card .mud-typography-caption {
         font-size: 0.82rem;
+    }
+
+    /* Bootstrap modal styling */
+    .modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        z-index: 1050;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        outline: 0;
+    }
+
+    .modal-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        z-index: 1040;
+        width: 100vw;
+        height: 100vh;
+        background-color: #000;
+        opacity: 0.5;
+    }
+
+    .modal-dialog {
+        position: relative;
+        width: auto;
+        margin: 1.75rem auto;
+    }
+
+    .modal-dialog-sm {
+        max-width: 300px;
+    }
+
+    .modal-content {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        pointer-events: auto;
+        background-color: #fff;
+        background-clip: padding-box;
+        border: 1px solid rgba(0, 0, 0, 0.2);
+        border-radius: 0.3rem;
+        outline: 0;
+    }
+
+    .modal-header {
+        display: flex;
+        flex-shrink: 0;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .modal-title {
+        margin-bottom: 0;
+        line-height: 1.5;
+        font-size: 1.25rem;
+        font-weight: 500;
+    }
+
+    .modal-body {
+        position: relative;
+        flex: 1 1 auto;
+        padding: 1rem;
+    }
+
+    .modal-footer {
+        display: flex;
+        flex-wrap: wrap;
+        flex-shrink: 0;
+        align-items: center;
+        justify-content: flex-end;
+        padding: 0.75rem;
+        border-top: 1px solid #dee2e6;
+        border-bottom-right-radius: calc(0.3rem - 1px);
+        border-bottom-left-radius: calc(0.3rem - 1px);
+    }
+
+    .btn-close {
+        box-sizing: content-box;
+        width: 1em;
+        height: 1em;
+        padding: 0.25em 0.25em;
+        color: #000;
+        background: transparent url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23000'%3e%3cpath d='M.293.293a1 1 0 0 1 1.414 0L8 6.586 14.293.293a1 1 0 1 1 1.414 1.414L9.414 8l6.293 6.293a1 1 0 0 1-1.414 1.414L8 9.414l-6.293 6.293a1 1 0 0 1-1.414-1.414L6.586 8 .293 1.707a1 1 0 0 1 0-1.414z'/%3e%3c/svg%3e") center / 1em auto no-repeat;
+        border: 0;
+        border-radius: 0.25rem;
+        cursor: pointer;
+        opacity: 0.5;
+    }
+
+    .btn-close:hover {
+        opacity: 0.75;
+    }
+
+    .btn {
+        display: inline-block;
+        font-weight: 400;
+        text-align: center;
+        white-space: nowrap;
+        vertical-align: middle;
+        user-select: none;
+        border: 1px solid transparent;
+        padding: 0.375rem 0.75rem;
+        font-size: 1rem;
+        line-height: 1.5;
+        border-radius: 0.25rem;
+        transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+        cursor: pointer;
+    }
+
+    .btn-primary {
+        color: #fff;
+        background-color: #007bff;
+        border-color: #007bff;
+    }
+
+    .btn-primary:hover {
+        color: #fff;
+        background-color: #0056b3;
+        border-color: #004085;
+    }
+
+    .btn-secondary {
+        color: #fff;
+        background-color: #6c757d;
+        border-color: #6c757d;
+    }
+
+    .btn-secondary:hover {
+        color: #fff;
+        background-color: #545b62;
+        border-color: #4e555b;
+    }
+
+    .btn-info {
+        color: #fff;
+        background-color: #17a2b8;
+        border-color: #17a2b8;
+    }
+
+    .btn-info:hover {
+        color: #fff;
+        background-color: #138496;
+        border-color: #117a8b;
     }
 </style>

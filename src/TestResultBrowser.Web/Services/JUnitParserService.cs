@@ -15,15 +15,15 @@ public class JUnitParserService : IJUnitParserService
 
     public JUnitParserService(IVersionMapperService versionMapper, ILogger<JUnitParserService> logger)
     {
-        _versionMapper = versionMapper;
-        _logger = logger;
+        _versionMapper = versionMapper ?? throw new ArgumentNullException(nameof(versionMapper));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     /// <inheritdoc/>
     public async Task<List<TestResult>> ParseJUnitXmlAsync(string xmlFilePath, ParsedFilePath parsedPath)
     {
         var results = new List<TestResult>();
-        
+
         // Load XML document
         XDocument xml;
         try
@@ -35,12 +35,12 @@ public class JUnitParserService : IJUnitParserService
             _logger.LogError(ex, "Failed to parse JUnit XML file: {FilePath}", xmlFilePath);
             return results;
         }
-        
+
         // Get all testsuite elements (handle both <testsuite> root and <testsuites><testsuite> nested)
-        var testSuites = xml.Root?.Name.LocalName == "testsuite" 
+        var testSuites = xml.Root?.Name.LocalName == "testsuite"
             ? new[] { xml.Root }
             : xml.Descendants("testsuite");
-            
+
         if (testSuites == null || !testSuites.Any())
         {
             return results;
@@ -60,7 +60,7 @@ public class JUnitParserService : IJUnitParserService
         var testSuiteName = testSuite.Attribute("name")?.Value ?? Path.GetFileNameWithoutExtension(xmlFilePath);
         var timestamp = testSuite.Attribute("timestamp")?.Value;
         DateTime testTimestamp = DateTime.UtcNow;
-        
+
         if (!string.IsNullOrEmpty(timestamp) && DateTime.TryParse(timestamp, out var parsed))
         {
             testTimestamp = parsed.ToUniversalTime();
@@ -87,7 +87,7 @@ public class JUnitParserService : IJUnitParserService
                 methodName = "<unknown>";
                 _logger.LogWarning("Test case missing 'name' attribute in file {File}. Using '<unknown>'", xmlFilePath);
             }
-            
+
             if (!double.TryParse(timeStr, System.Globalization.CultureInfo.InvariantCulture, out var executionTime))
             {
                 executionTime = 0;
@@ -97,7 +97,7 @@ public class JUnitParserService : IJUnitParserService
             var failure = testCase.Element("failure");
             var error = testCase.Element("error");
             var skipped = testCase.Element("skipped");
-            
+
             TestStatus status;
             string? errorMessage = null;
             string? stackTrace = null;
@@ -132,7 +132,7 @@ public class JUnitParserService : IJUnitParserService
                 {
                     var name = property.Attribute("name")?.Value;
                     var value = property.Attribute("value")?.Value;
-                    
+
                     if (name == "Polarion" && !string.IsNullOrEmpty(value))
                     {
                         // Extract PEXC-xxxxx pattern using constant from TestResultConstants
@@ -156,7 +156,7 @@ public class JUnitParserService : IJUnitParserService
             // Extract OS and DB from NamedConfig (e.g., Win2019SQLServer2022)
             string? os = null;
             string? db = null;
-            
+
             if (parsedPath.NamedConfig.Contains("Win"))
             {
                 var osMatch = System.Text.RegularExpressions.Regex.Match(parsedPath.NamedConfig, @"Win\d+").Value;
@@ -170,7 +170,7 @@ public class JUnitParserService : IJUnitParserService
             {
                 os = "<unknown>";
             }
-            
+
             if (parsedPath.NamedConfig.Contains("SQL"))
             {
                 var dbMatch = System.Text.RegularExpressions.Regex.Match(parsedPath.NamedConfig, @"SQLServer\d+").Value;

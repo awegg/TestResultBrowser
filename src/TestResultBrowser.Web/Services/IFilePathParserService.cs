@@ -8,25 +8,25 @@ public record ParsedFilePath
 {
     /// <summary>Build number extracted from Release-{BuildNumber}</summary>
     public required int BuildNumber { get; init; }
-    
+
     /// <summary>Build ID, e.g., "Release-252"</summary>
     public required string BuildId { get; init; }
-    
+
     /// <summary>Raw version string from path, e.g., "PXrel114", "dev"</summary>
     public required string VersionRaw { get; init; }
-    
+
     /// <summary>Test type, e.g., "Regular", "Performance", "Smoke"</summary>
     public required string TestType { get; init; }
-    
+
     /// <summary>Named configuration, e.g., "Win2019SQLServer2022"</summary>
     public required string NamedConfig { get; init; }
-    
+
     /// <summary>Domain ID, e.g., "Core", "TnT_Prod"</summary>
     public required string DomainId { get; init; }
-    
+
     /// <summary>Full file path</summary>
     public required string FilePath { get; init; }
-    
+
     /// <summary>XML file name</summary>
     public required string FileName { get; init; }
 }

@@ -13,7 +13,7 @@ public interface ITriageService
     /// <param name="selectedDomains">Optional domain filter (null = all domains)</param>
     /// <returns>Triage result with new failures, fixed tests, and metrics</returns>
     Task<MorningTriageResult?> GetMorningTriageAsync(List<string>? selectedDomains = null);
-    
+
     /// <summary>
     /// Performs morning triage analysis for specific builds
     /// </summary>
@@ -22,8 +22,8 @@ public interface ITriageService
     /// <param name="selectedDomains">Optional domain filter</param>
     /// <returns>Triage result comparing the two builds</returns>
     Task<MorningTriageResult?> GetMorningTriageAsync(
-        string todayBuildId, 
-        string yesterdayBuildId, 
+        string todayBuildId,
+        string yesterdayBuildId,
         List<string>? selectedDomains = null);
 
     /// <summary>

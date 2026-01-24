@@ -67,10 +67,10 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
 
             // Get all test results for this configuration across all selected builds
             var testResults = _testDataService.GetAllTestResults()
-                .Where(t => t.ConfigurationId == configurationId && selectedBuilds.Contains(t.BuildId))
+                .Where(t => t.ConfigurationId.Equals(configurationId, StringComparison.OrdinalIgnoreCase) && selectedBuilds.Contains(t.BuildId))
                 .ToList();
 
-            _logger.LogInformation("Retrieved {TestCount} test results for {ConfigurationId} across {BuildCount} builds", 
+            _logger.LogInformation("Retrieved {TestCount} test results for {ConfigurationId} across {BuildCount} builds",
                 testResults.Count, configurationId, selectedBuilds.Count);
 
             if (!testResults.Any())
@@ -138,6 +138,34 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
         }
     }
 
+    /// <inheritdoc/>
+    public Task<List<ConfigurationMetadata>> GetConfigurationsWithMetadataAsync()
+    {
+        try
+        {
+            var testResults = _testDataService.GetAllTestResults();
+
+            // Group by configuration and find latest timestamp for each
+            var configMetadata = testResults
+                .GroupBy(t => t.ConfigurationId)
+                .Select(g => new ConfigurationMetadata
+                {
+                    Id = g.Key,
+                    LastUpdateTime = g.Max(t => t.Timestamp)
+                })
+                .OrderByDescending(c => c.LastUpdateTime)
+                .ToList();
+
+            _logger.LogInformation("Found {ConfigCount} configurations with metadata", configMetadata.Count);
+            return Task.FromResult(configMetadata);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving configurations with metadata");
+            return Task.FromResult(new List<ConfigurationMetadata>());
+        }
+    }
+
     /// <summary>
     /// Build the hierarchical tree: Domain → Feature → Suite → Test
     /// </summary>
@@ -193,13 +221,13 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                     {
                         // Get all results from the latest build for this test
                         var latestBuildResults = g.Where(t => t.BuildId == latestBuild).ToList();
-                        
+
                         // If test exists in latest build, take the LATEST result by timestamp
                         if (latestBuildResults.Any())
                         {
                             return latestBuildResults.OrderByDescending(t => t.Timestamp).First();
                         }
-                        
+
                         // Fallback: if test doesn't exist in latest build, take most recent from any build
                         return g.OrderByDescending(t => BuildNumberExtractor.ExtractBuildNumber(t.BuildId))
                                 .ThenByDescending(t => t.Timestamp)
@@ -230,7 +258,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
 
                     // Build history cells for this test
                     testNode.HistoryCells = BuildHistoryCells(test, selectedBuilds, historyColumns, testResults);
-                    
+
                     // Extract error information from the latest build's HistoryCellData
                     // This ensures error messages match the result that determines the cell color
                     if (testNode.HistoryCells.Any())
@@ -244,7 +272,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                             testNode.FirstErrorMessage = latestBuildCell.SourceTestResult.ErrorMessage;
                         }
                     }
-                    
+
                     // Latest stats - use the test object which is already from the latest build
                     testNode.LatestStats = new TestNodeStats
                     {
@@ -294,7 +322,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
     {
         // Build cells using selectedBuilds to maintain consistent order with parent nodes
         var cells = selectedBuilds
-            .Select(buildId => 
+            .Select(buildId =>
             {
                 // Get all results for this test in this build
                 var buildResults = allResults
@@ -315,7 +343,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                 // Log if there were multiple results (indicates retries/reruns)
                 if (buildResults.Count > 1)
                 {
-                    _logger.LogDebug("Test '{TestName}' had {Count} runs in {BuildId}. Using latest: {LatestStatus}. All statuses: {Statuses}", 
+                    _logger.LogDebug("Test '{TestName}' had {Count} runs in {BuildId}. Using latest: {LatestStatus}. All statuses: {Statuses}",
                         test.TestFullName, buildResults.Count, buildId, latestResult?.Status,
                         string.Join(",", buildResults.OrderBy(r => r.Timestamp).Select(r => r.Status)));
                 }
@@ -363,7 +391,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
 
         // History cells - deduplicate by TestFullName per build, selecting latest by timestamp
         node.HistoryCells = selectedBuilds
-            .Select(buildId => 
+            .Select(buildId =>
             {
                 var buildTests = allResults
                     .Where(r => r.BuildId == buildId && allTestFullNames.Contains(r.TestFullName))
@@ -405,9 +433,9 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
         if (node.NodeType != HierarchyNodeType.Test)
         {
             var firstFailedTest = allResults
-                .Where(r => selectedBuilds.Contains(r.BuildId) 
-                    && allTestFullNames.Contains(r.TestFullName) 
-                    && r.Status == TestStatus.Fail 
+                .Where(r => selectedBuilds.Contains(r.BuildId)
+                    && allTestFullNames.Contains(r.TestFullName)
+                    && r.Status == TestStatus.Fail
                     && !string.IsNullOrEmpty(r.ErrorMessage))
                 .OrderByDescending(r => BuildNumberExtractor.ExtractBuildNumber(r.BuildId))
                 .ThenByDescending(r => r.Timestamp)  // For same build, get latest timestamp

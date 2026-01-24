@@ -124,7 +124,7 @@ TestResultBrowser__MaxMemoryGB=16
 
 ## Project Structure
 
-```
+```text
 src/
 └── TestResultBrowser.Web/          # Blazor Server web application
     ├── Pages/                      # Blazor pages (MorningTriage, ReleaseTriage)

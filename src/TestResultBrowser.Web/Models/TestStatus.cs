@@ -7,10 +7,10 @@ public enum TestStatus
 {
     /// <summary>Test passed successfully</summary>
     Pass,
-    
+
     /// <summary>Test failed with an error or assertion failure</summary>
     Fail,
-    
+
     /// <summary>Test was skipped or ignored</summary>
     Skip
 }
