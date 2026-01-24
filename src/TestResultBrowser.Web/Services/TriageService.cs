@@ -1,3 +1,4 @@
+using TestResultBrowser.Web.Common;
 using TestResultBrowser.Web.Models;
 
 namespace TestResultBrowser.Web.Services;
@@ -24,7 +25,7 @@ public class TriageService : ITriageService
         var builds = allResults
             .Select(r => r.BuildId)
             .Distinct()
-            .OrderByDescending(b => b)
+            .OrderByDescending(b => BuildNumberExtractor.ExtractBuildNumber(b))
             .Take(2)
             .ToList();
 
@@ -92,7 +93,9 @@ public class TriageService : ITriageService
                     if (yesterdayResult != null && yesterdayResult.Status == TestStatus.Pass)
                     {
                         // Found a new failure
-                        var existing = newFailures.FirstOrDefault(f => f.TestFullName == testName);
+                        var existing = newFailures.FirstOrDefault(f => f.TestFullName == testName &&
+                                                                     f.DomainId == todayResult.DomainId &&
+                                                                     f.FeatureId == todayResult.FeatureId);
                         if (existing != null)
                         {
                             // Add config to existing entry
@@ -134,7 +137,9 @@ public class TriageService : ITriageService
                     if (yesterdayResult != null && yesterdayResult.Status == TestStatus.Fail)
                     {
                         // Found a fixed test
-                        var existing = fixedTests.FirstOrDefault(f => f.TestFullName == testName);
+                        var existing = fixedTests.FirstOrDefault(f => f.TestFullName == testName &&
+                                                                     f.DomainId == todayResult.DomainId &&
+                                                                     f.FeatureId == todayResult.FeatureId);
                         if (existing != null)
                         {
                             existing.FixedInConfigs.Add(todayResult.ConfigurationId);
@@ -201,7 +206,7 @@ public class TriageService : ITriageService
                 TotalTestsToday = todayTotal,
                 TotalTestsYesterday = yesterdayTotal
             };
-        });
+        }).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -345,6 +350,6 @@ public class TriageService : ITriageService
                 FeaturePassRates = featurePassRates,
                 ComparisonToPrevious = comparison
             };
-        });
+        }).ConfigureAwait(false);
     }
 }

@@ -160,17 +160,20 @@ else
         // Auto-refresh when new data is imported
         hubConnection.On<object>("TestDataUpdated", async (updateInfo) =>
         {
-            await LoadData();
-            
-            // Show toast notification to user
-            Snackbar.Add("✅ New test results imported - Triage updated!", Severity.Success, config =>
+            await InvokeAsync(async () =>
             {
-                config.VisibleStateDuration = 4000;
-                config.HideTransitionDuration = 400;
-                config.ShowTransitionDuration = 400;
+                await LoadData();
+                
+                // Show toast notification to user
+                Snackbar.Add("✅ New test results imported - Triage updated!", Severity.Success, config =>
+                {
+                    config.VisibleStateDuration = 4000;
+                    config.HideTransitionDuration = 400;
+                    config.ShowTransitionDuration = 400;
+                });
+                
+                StateHasChanged();
             });
-            
-            await InvokeAsync(StateHasChanged);
         });
 
         await hubConnection.StartAsync();
@@ -178,17 +181,26 @@ else
 
     private async Task LoadData()
     {
-        isLoading = true;
-        
-        // Get available domains
-        var allResults = TestDataService.GetAllTestResults();
-        availableDomains = allResults.Select(r => r.DomainId).Distinct().OrderBy(d => d).ToList();
-        
-        // Load triage data
-        var domains = selectedDomains.Any() ? selectedDomains.ToList() : null;
-        triageResult = await TriageService.GetMorningTriageAsync(domains);
-        
-        isLoading = false;
+        try
+        {
+            isLoading = true;
+            
+            // Get available domains
+            var allResults = TestDataService.GetAllTestResults();
+            availableDomains = allResults.Select(r => r.DomainId).Distinct().OrderBy(d => d).ToList();
+            
+            // Load triage data
+            var domains = selectedDomains.Any() ? selectedDomains.ToList() : null;
+            triageResult = await TriageService.GetMorningTriageAsync(domains);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading triage data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isLoading = false;
+        }
     }
 
     private async Task RefreshTriage()

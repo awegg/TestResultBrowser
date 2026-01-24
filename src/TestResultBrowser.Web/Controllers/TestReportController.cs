@@ -26,28 +26,48 @@ public class TestReportController : ControllerBase
                 return BadRequest("Path parameter is required");
             }
 
-            // Store the report directory for asset resolution
-            AssetsController.SetReportDirectory(path);
-
-            // Combine with index.html
-            var reportPath = Path.Combine(path, "index.html");
-
-            if (!System.IO.File.Exists(reportPath))
+            // Validate path to prevent traversal attacks
+            if (path.Contains("..") || Path.IsPathRooted(path))
             {
-                _logger.LogWarning("Report file not found: {Path}", reportPath);
-                return NotFound($"Report file not found: {reportPath}");
+                _logger.LogWarning("Invalid path requested: {Path}", path);
+                return BadRequest("Invalid path");
             }
 
+            // Resolve the path to absolute and validate it exists and is safe
+            var resolvedPath = Path.GetFullPath(path);
+
+            // Combine with index.html
+            var reportPath = Path.Combine(resolvedPath, "index.html");
+            var resolvedReportPath = Path.GetFullPath(reportPath);
+
+            // Verify the report file is under the requested directory
+            if (!resolvedReportPath.StartsWith(resolvedPath, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("Path traversal attempt detected: {Path}", path);
+                return BadRequest("Invalid path");
+            }
+
+            if (!System.IO.File.Exists(resolvedReportPath))
+            {
+                _logger.LogWarning("Report file not found: {Path}", resolvedReportPath);
+                return NotFound("Report file not found");
+            }
+
+            // Store the report directory in request context for asset resolution
+            var assetsLogger = HttpContext.RequestServices.GetRequiredService<ILogger<AssetsController>>();
+            var assetsController = new AssetsController(assetsLogger);
+            assetsController.SetReportDirectory(resolvedPath);
+
             // Read the HTML file
-            var htmlContent = System.IO.File.ReadAllText(reportPath);
+            var htmlContent = System.IO.File.ReadAllText(resolvedReportPath);
 
             // Return as HTML
             return Content(htmlContent, "text/html");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error serving test report from {Path}", path);
-            return StatusCode(500, $"Error loading report: {ex.Message}");
+            _logger.LogError(ex, "Error serving test report");
+            return StatusCode(500, "Error loading report");
         }
     }
 }

@@ -1,3 +1,5 @@
+using TestResultBrowser.Web.Common;
+
 namespace TestResultBrowser.Web.Services;
 
 using TestResultBrowser.Web.Models;
@@ -31,7 +33,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
 
             // Get all builds sorted descending (latest first)
             var allBuilds = _testDataService.GetAllBuildIds()
-                .OrderByDescending(b => ExtractBuildNumber(b))
+                .OrderByDescending(b => BuildNumberExtractor.ExtractBuildNumber(b))
                 .ToList();
 
             if (!allBuilds.Any())
@@ -41,11 +43,11 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
             }
 
             // Take last N builds
-            var selectedBuilds = allBuilds.Take(numberOfBuilds).OrderByDescending(b => ExtractBuildNumber(b)).ToList();
+            var selectedBuilds = allBuilds.Take(numberOfBuilds).OrderByDescending(b => BuildNumberExtractor.ExtractBuildNumber(b)).ToList();
 
             // Build history columns (newest first for display)
             result.HistoryColumns = selectedBuilds
-                .OrderByDescending(b => ExtractBuildNumber(b))
+                .OrderByDescending(b => BuildNumberExtractor.ExtractBuildNumber(b))
                 .Select((buildId, index) => new HistoryColumn
                 {
                     BuildId = buildId,
@@ -121,7 +123,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
         try
         {
             var builds = _testDataService.GetAllBuildIds()
-                .OrderByDescending(b => ExtractBuildNumber(b))
+                .OrderByDescending(b => BuildNumberExtractor.ExtractBuildNumber(b))
                 .ToList();
 
             _logger.LogInformation("Found {BuildCount} available builds", builds.Count);
@@ -181,7 +183,8 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
 
                 // Individual tests under suite - deduplicate by TestFullName
                 // Take the LATEST result from the LATEST build (by timestamp)
-                var latestBuild = selectedBuilds.Last();
+                // Note: selectedBuilds is sorted descending, so First() is the latest
+                var latestBuild = selectedBuilds.First();
                 var tests = suiteGroup
                     .GroupBy(t => t.TestFullName)
                     .Select(g =>
@@ -196,7 +199,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                         }
                         
                         // Fallback: if test doesn't exist in latest build, take most recent from any build
-                        return g.OrderByDescending(t => ExtractBuildNumber(t.BuildId))
+                        return g.OrderByDescending(t => BuildNumberExtractor.ExtractBuildNumber(t.BuildId))
                                 .ThenByDescending(t => t.Timestamp)
                                 .First();
                     })
@@ -230,7 +233,8 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                     // This ensures error messages match the result that determines the cell color
                     if (testNode.HistoryCells.Any())
                     {
-                        var latestBuildCell = testNode.HistoryCells.Last(); // Last = latest build (selectedBuilds is ordered)
+                        // First = latest build (selectedBuilds is sorted descending, so HistoryCells[0] is latest)
+                        var latestBuildCell = testNode.HistoryCells.First();
                         if (latestBuildCell.SourceTestResult != null)
                         {
                             testNode.ErrorMessage = latestBuildCell.SourceTestResult.ErrorMessage;
@@ -340,7 +344,8 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
         var allTestFullNames = GetAllTestFullNamesUnderNode(node);
 
         // Latest build stats - deduplicate by TestFullName, selecting latest by timestamp
-        var latestBuild = selectedBuilds.Last();
+        // Note: selectedBuilds is sorted descending, so First() is the latest
+        var latestBuild = selectedBuilds.First();
         var latestTests = allResults
             .Where(r => r.BuildId == latestBuild && allTestFullNames.Contains(r.TestFullName))
             .GroupBy(r => r.TestFullName)
@@ -385,7 +390,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
         // Use the first available report path from descendants so parent rows can link to report
         var firstReportPath = allResults
             .Where(r => selectedBuilds.Contains(r.BuildId) && allTestFullNames.Contains(r.TestFullName))
-            .OrderByDescending(r => ExtractBuildNumber(r.BuildId))
+            .OrderByDescending(r => BuildNumberExtractor.ExtractBuildNumber(r.BuildId))
             .Select(r => r.ReportDirectoryPath)
             .FirstOrDefault(path => !string.IsNullOrEmpty(path));
 
@@ -402,7 +407,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                     && allTestFullNames.Contains(r.TestFullName) 
                     && r.Status == TestStatus.Fail 
                     && !string.IsNullOrEmpty(r.ErrorMessage))
-                .OrderByDescending(r => ExtractBuildNumber(r.BuildId))
+                .OrderByDescending(r => BuildNumberExtractor.ExtractBuildNumber(r.BuildId))
                 .ThenByDescending(r => r.Timestamp)  // For same build, get latest timestamp
                 .FirstOrDefault();
 
@@ -454,19 +459,6 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
         }
 
         return testFullNames;
-    }
-
-    /// <summary>
-    /// Extract build number from build ID (Release-252 → 252)
-    /// </summary>
-    private int ExtractBuildNumber(string buildId)
-    {
-        var parts = buildId.Split('-');
-        if (parts.Length > 1 && int.TryParse(parts[^1], out var number))
-        {
-            return number;
-        }
-        return 0;
     }
 
     /// <summary>

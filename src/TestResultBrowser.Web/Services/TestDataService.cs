@@ -33,14 +33,16 @@ public class TestDataService : ITestDataService
     /// <inheritdoc/>
     public void AddOrUpdateTestResults(IEnumerable<TestResult> testResults)
     {
-        foreach (var testResult in testResults)
+        var resultsList = testResults.ToList();
+
+        foreach (var testResult in resultsList)
         {
             _testResults[testResult.Id] = testResult;
         }
 
         lock (_indexLock)
         {
-            foreach (var testResult in testResults)
+            foreach (var testResult in resultsList)
             {
                 UpdateIndicesUnsafe(testResult);
             }
@@ -58,8 +60,14 @@ public class TestDataService : ITestDataService
     {
         if (_byDomain.TryGetValue(domainId, out var ids))
         {
-            return ids.Select(id => _testResults.TryGetValue(id, out var result) ? result : null)
-                     .Where(r => r != null)!;
+            List<string> idSnapshot;
+            lock (_indexLock)
+            {
+                idSnapshot = new List<string>(ids);
+            }
+
+            return idSnapshot.Select(id => _testResults.TryGetValue(id, out var result) ? result : null)
+                              .Where(r => r != null)!;
         }
         return Enumerable.Empty<TestResult>();
     }
@@ -69,8 +77,14 @@ public class TestDataService : ITestDataService
     {
         if (_byFeature.TryGetValue(featureId, out var ids))
         {
-            return ids.Select(id => _testResults.TryGetValue(id, out var result) ? result : null)
-                     .Where(r => r != null)!;
+            List<string> idSnapshot;
+            lock (_indexLock)
+            {
+                idSnapshot = new List<string>(ids);
+            }
+
+            return idSnapshot.Select(id => _testResults.TryGetValue(id, out var result) ? result : null)
+                              .Where(r => r != null)!;
         }
         return Enumerable.Empty<TestResult>();
     }
@@ -80,8 +94,14 @@ public class TestDataService : ITestDataService
     {
         if (_byConfiguration.TryGetValue(configurationId, out var ids))
         {
-            return ids.Select(id => _testResults.TryGetValue(id, out var result) ? result : null)
-                     .Where(r => r != null)!;
+            List<string> idSnapshot;
+            lock (_indexLock)
+            {
+                idSnapshot = new List<string>(ids);
+            }
+
+            return idSnapshot.Select(id => _testResults.TryGetValue(id, out var result) ? result : null)
+                              .Where(r => r != null)!;
         }
         return Enumerable.Empty<TestResult>();
     }
@@ -91,8 +111,14 @@ public class TestDataService : ITestDataService
     {
         if (_byBuild.TryGetValue(buildId, out var ids))
         {
-            return ids.Select(id => _testResults.TryGetValue(id, out var result) ? result : null)
-                     .Where(r => r != null)!;
+            List<string> idSnapshot;
+            lock (_indexLock)
+            {
+                idSnapshot = new List<string>(ids);
+            }
+
+            return idSnapshot.Select(id => _testResults.TryGetValue(id, out var result) ? result : null)
+                              .Where(r => r != null)!;
         }
         return Enumerable.Empty<TestResult>();
     }
@@ -102,8 +128,14 @@ public class TestDataService : ITestDataService
     {
         if (_byTestName.TryGetValue(testFullName, out var ids))
         {
-            return ids.Select(id => _testResults.TryGetValue(id, out var result) ? result : null)
-                     .Where(r => r != null)!;
+            List<string> idSnapshot;
+            lock (_indexLock)
+            {
+                idSnapshot = new List<string>(ids);
+            }
+
+            return idSnapshot.Select(id => _testResults.TryGetValue(id, out var result) ? result : null)
+                              .Where(r => r != null)!;
         }
         return Enumerable.Empty<TestResult>();
     }

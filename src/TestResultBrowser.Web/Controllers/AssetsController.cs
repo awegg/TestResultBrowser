@@ -7,7 +7,7 @@ namespace TestResultBrowser.Web.Controllers;
 public class AssetsController : ControllerBase
 {
     private readonly ILogger<AssetsController> _logger;
-    private static string? _lastReportDirectory;
+    private const string ReportDirectoryKey = "ReportDirectory";
 
     public AssetsController(ILogger<AssetsController> logger)
     {
@@ -15,11 +15,11 @@ public class AssetsController : ControllerBase
     }
 
     /// <summary>
-    /// Stores the last accessed report directory for asset resolution
+    /// Stores the report directory in request context for asset resolution (request-scoped)
     /// </summary>
-    public static void SetReportDirectory(string directory)
+    public void SetReportDirectory(string directory)
     {
-        _lastReportDirectory = directory;
+        HttpContext.Items[ReportDirectoryKey] = directory;
     }
 
     /// <summary>
@@ -30,23 +30,39 @@ public class AssetsController : ControllerBase
     {
         try
         {
-            if (string.IsNullOrEmpty(_lastReportDirectory))
+            if (!HttpContext.Items.TryGetValue(ReportDirectoryKey, out var reportDirObj) || reportDirObj is not string reportDirectory)
             {
                 _logger.LogWarning("No report directory set for asset: {AssetPath}", assetPath);
                 return NotFound("Report directory not set");
             }
 
-            // Combine the report directory with the asset path
-            var fullPath = Path.Combine(_lastReportDirectory, assetPath);
-
-            if (!System.IO.File.Exists(fullPath))
+            // Validate assetPath to prevent path traversal attacks
+            if (string.IsNullOrEmpty(assetPath) || assetPath.Contains("..") || Path.IsPathRooted(assetPath))
             {
-                _logger.LogWarning("Asset file not found: {Path}", fullPath);
+                _logger.LogWarning("Invalid asset path requested: {AssetPath}", assetPath);
+                return BadRequest("Invalid asset path");
+            }
+
+            // Combine the report directory with the asset path and resolve to absolute path
+            var fullPath = Path.Combine(reportDirectory, assetPath);
+            var resolvedPath = Path.GetFullPath(fullPath);
+            var resolvedReportDir = Path.GetFullPath(reportDirectory);
+
+            // Ensure the resolved path is under the report directory
+            if (!resolvedPath.StartsWith(resolvedReportDir, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("Path traversal attempt detected: {AssetPath}", assetPath);
+                return BadRequest("Invalid asset path");
+            }
+
+            if (!System.IO.File.Exists(resolvedPath))
+            {
+                _logger.LogWarning("Asset file not found: {Path}", resolvedPath);
                 return NotFound($"Asset not found: {assetPath}");
             }
 
             // Determine content type based on file extension
-            var extension = Path.GetExtension(fullPath).ToLowerInvariant();
+            var extension = Path.GetExtension(resolvedPath).ToLowerInvariant();
             var contentType = extension switch
             {
                 ".png" => "image/png",
@@ -61,13 +77,13 @@ public class AssetsController : ControllerBase
             };
 
             // Read and return the file
-            var fileBytes = System.IO.File.ReadAllBytes(fullPath);
+            var fileBytes = System.IO.File.ReadAllBytes(resolvedPath);
             return File(fileBytes, contentType);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error serving asset: {AssetPath}", assetPath);
-            return StatusCode(500, $"Error loading asset: {ex.Message}");
+            return StatusCode(500, "Error loading asset");
         }
     }
 }

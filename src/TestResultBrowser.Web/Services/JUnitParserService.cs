@@ -24,7 +24,16 @@ public class JUnitParserService : IJUnitParserService
         var results = new List<TestResult>();
         
         // Load XML document
-        var xml = await Task.Run(() => XDocument.Load(xmlFilePath));
+        XDocument xml;
+        try
+        {
+            xml = await Task.Run(() => XDocument.Load(xmlFilePath));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to parse JUnit XML file: {FilePath}", xmlFilePath);
+            return results;
+        }
         
         // Get all testsuite elements (handle both <testsuite> root and <testsuites><testsuite> nested)
         var testSuites = xml.Root?.Name.LocalName == "testsuite" 
@@ -56,8 +65,8 @@ public class JUnitParserService : IJUnitParserService
             testTimestamp = parsed.ToUniversalTime();
         }
 
-        // Parse each testcase
-        foreach (var testCase in testSuite.Descendants("testcase"))
+        // Parse each testcase (direct children only to avoid duplicate parsing from nested suites)
+        foreach (var testCase in testSuite.Elements("testcase"))
         {
             var classNameAttr = testCase.Attribute("classname")?.Value;
             var methodNameAttr = testCase.Attribute("name")?.Value;

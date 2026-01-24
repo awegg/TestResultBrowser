@@ -66,6 +66,7 @@
                 <div class="d-flex gap-2">
                     <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ExpandAll">Expand All</MudButton>
                     <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="CollapseAll">Collapse All</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="OpenFeatureDialog" Disabled="@(historyResult == null)">Select Features</MudButton>
                 </div>
             </MudPaper>
 
@@ -129,13 +130,23 @@
                     }
                     else
                     {
+                        @if (selectedFeatureNames.Any())
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Info">
+                                Filter active: @string.Join(", ", selectedFeatureNames)
+                            </MudText>
+                        }
                         <div class="table-container" style="overflow-x: auto;">
-                            @* Render hierarchy tree *@
+                            @* Render hierarchy tree with filtering *@
                             @foreach (var domainNode in historyResult.HierarchyNodes)
                             {
-                                <HierarchyTreeView Node="GetFilteredNode(domainNode)" 
-                                                   HistoryColumns="historyResult.HistoryColumns"
-                                                   OnTestSelected="SelectTest" />
+                                var filtered = GetFilteredNode(domainNode);
+                                @if (filtered != null)
+                                {
+                                    <HierarchyTreeView Node="filtered" 
+                                                       HistoryColumns="historyResult.HistoryColumns"
+                                                       OnTestSelected="SelectTest" />
+                                }
                             }
                         </div>
                     }
@@ -205,6 +216,56 @@
     </div>
 }
 
+@* Feature Selection Dialog *@
+@if (showFeatureDialog)
+{
+    <div class="modal-overlay" @onclick="@(() => { showFeatureDialog = false; })" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1450; display: flex; align-items: center; justify-content: center;">
+        <div @onclick:stopPropagation="true" style="background: white; border-radius: 4px; max-width: 600px; width: 90%; max-height: 600px; display: flex; flex-direction: column;">
+            <div style="padding: 16px; border-bottom: 1px solid #e0e0e0;">
+                <MudText Typo="Typo.h6">Select Features</MudText>
+            </div>
+            <div style="padding: 16px; flex: 1; overflow: auto;">
+                @if (featureGroups.Count == 0)
+                {
+                    <MudText>No features available</MudText>
+                }
+                else
+                {
+                    @foreach (var group in featureGroups)
+                    {
+                        var groupKey = group.Key;
+                        var groupFeatures = group.Value;
+                        var countInGroup = groupFeatures.Count(f => selectedFeatureNames.Contains(f));
+                        <div style="margin-bottom: 16px;">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                <MudCheckBox T="bool?" TriState="true" 
+                                             Checked="@(countInGroup == groupFeatures.Count ? true : countInGroup > 0 ? (bool?)null : false)"
+                                             CheckedChanged="@((bool? value) => ToggleGroup(groupKey, value))" />
+                                <MudText Typo="Typo.subtitle2">@groupKey</MudText>
+                            </div>
+                            <div style="padding-left: 32px;">
+                                @foreach (var feature in groupFeatures)
+                                {
+                                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                                        <MudCheckBox T="bool" Checked="@selectedFeatureNames.Contains(feature)"
+                                                     CheckedChanged="@((bool value) => ToggleFeature(feature, value))" />
+                                        <MudText>@feature</MudText>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+            <div style="padding: 16px; border-top: 1px solid #e0e0e0; display: flex; justify-content: flex-end; gap: 8px;">
+                <MudButton Variant="Variant.Outlined" Color="Color.Info" OnClick="@ClearAllFeatures">Clear All</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="@(() => { showFeatureDialog = false; })">Cancel</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@ApplyFeatureSelection">Apply</MudButton>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [SupplyParameterFromQuery(Name = "config")]
     public string? ConfigFromUrl { get; set; }
@@ -222,6 +283,9 @@
     private bool showOnlyFailed = false;
     private HierarchyNode? selectedTestNode;  // Track selected test for side panel
     private bool showDetailsDialog = false;   // Controls visibility of test details popup
+    private bool showFeatureDialog = false;   // Controls feature selection dialog
+    private Dictionary<string, List<string>> featureGroups = new();  // Groups of features
+    private HashSet<string> selectedFeatureNames = new();  // Currently selected features
 
     protected override async Task OnInitializedAsync()
     {
@@ -406,15 +470,146 @@
         showDetailsDialog = false;
     }
 
-    private HierarchyNode GetFilteredNode(HierarchyNode node)
+    private void OpenFeatureDialog()
     {
+        BuildFeatureGroups();
+        showFeatureDialog = true;
+    }
+
+    private void BuildFeatureGroups()
+    {
+        featureGroups.Clear();
+        if (historyResult?.HierarchyNodes == null || historyResult.HierarchyNodes.Count == 0)
+            return;
+
+        void Traverse(HierarchyNode node)
+        {
+            if (node.NodeType == HierarchyNodeType.Feature)
+            {
+                const string group = "Core";
+                if (!featureGroups.TryGetValue(group, out var list))
+                {
+                    list = new List<string>();
+                    featureGroups[group] = list;
+                }
+                if (!list.Contains(node.Name))
+                {
+                    list.Add(node.Name);
+                }
+            }
+            foreach (var child in node.Children)
+            {
+                Traverse(child);
+            }
+        }
+
+        foreach (var root in historyResult.HierarchyNodes)
+        {
+            Traverse(root);
+        }
+
+        foreach (var key in featureGroups.Keys.ToList())
+        {
+            featureGroups[key] = featureGroups[key].OrderBy(n => n).ToList();
+        }
+    }
+
+    private void ToggleFeature(string feature, bool value)
+    {
+        if (value)
+        {
+            selectedFeatureNames.Add(feature);
+        }
+        else
+        {
+            selectedFeatureNames.Remove(feature);
+        }
+        StateHasChanged();
+    }
+
+    private void ToggleGroup(string groupName, bool? value)
+    {
+        if (!featureGroups.TryGetValue(groupName, out var features))
+            return;
+
+        if (value == true)
+        {
+            // Select all features in this group
+            foreach (var f in features)
+            {
+                selectedFeatureNames.Add(f);
+            }
+        }
+        else if (value == false)
+        {
+            // Deselect all features in this group
+            foreach (var f in features)
+            {
+                selectedFeatureNames.Remove(f);
+            }
+        }
+        StateHasChanged();
+    }
+
+    private void ClearAllFeatures()
+    {
+        selectedFeatureNames.Clear();
+        StateHasChanged();
+    }
+
+    private void ApplyFeatureSelection()
+    {
+        showFeatureDialog = false;
+        Snackbar.Add($"Applied {selectedFeatureNames.Count} feature(s)", Severity.Info);
+        StateHasChanged();
+    }
+
+    private HierarchyNode? GetFilteredNode(HierarchyNode node)
+    {
+        // If feature filtering is active, drop entire feature branches that are not selected
+        if (selectedFeatureNames.Any() && node.NodeType == HierarchyNodeType.Feature && !selectedFeatureNames.Contains(node.Name))
+        {
+            return null;
+        }
+
         if (!showOnlyFailed)
         {
-            return node;
+            // Start with a shallow copy
+            var filteredNode = new HierarchyNode
+            {
+                Name = node.Name,
+                NodeType = node.NodeType,
+                NodeId = node.NodeId,
+                IndentLevel = node.IndentLevel,
+                IsExpanded = node.IsExpanded,
+                ReportDirectoryPath = node.ReportDirectoryPath,
+                TestFullName = node.TestFullName,
+                HistoryCells = node.HistoryCells,
+                LatestStats = node.LatestStats,
+                Children = new()
+            };
+
+            // Filter children based on feature selection
+            foreach (var child in node.Children)
+            {
+                var filtered = GetFilteredNode(child);
+                if (filtered != null)
+                {
+                    filteredNode.Children.Add(filtered);
+                }
+            }
+
+            // Drop empty non-test nodes
+            if (filteredNode.NodeType != HierarchyNodeType.Test && filteredNode.Children.Count == 0)
+            {
+                return null;
+            }
+
+            return filteredNode;
         }
 
         // Create a filtered copy that only shows failed tests
-        var filteredNode = new HierarchyNode
+        var failureFilteredNode = new HierarchyNode
         {
             Name = node.Name,
             NodeType = node.NodeType,
@@ -433,15 +628,21 @@
             var filtered = FilterNodeForFailures(child);
             if (filtered != null)
             {
-                filteredNode.Children.Add(filtered);
+                failureFilteredNode.Children.Add(filtered);
             }
         }
 
-        return filteredNode;
+        return failureFilteredNode;
     }
 
     private HierarchyNode? FilterNodeForFailures(HierarchyNode node)
     {
+        // Respect feature selection
+        if (selectedFeatureNames.Any() && node.NodeType == HierarchyNodeType.Feature && !selectedFeatureNames.Contains(node.Name))
+        {
+            return null;
+        }
+
         // If it's a test node, check if it has any failures
         if (node.NodeType == HierarchyNodeType.Test)
         {

@@ -147,7 +147,21 @@
             .ToList();
             
         AvailableConfigurations = allResults.Select(r => r.ConfigurationId).Distinct().OrderBy(c => c).ToList();
-        AvailableBuilds = allResults.Select(r => r.BuildId).Distinct().OrderByDescending(b => b).ToList();
+        
+        // Sort builds numerically by extracting the build number (e.g., "Release-252_181639" -> 252)
+        AvailableBuilds = allResults
+            .Select(r => r.BuildId)
+            .Distinct()
+            .OrderByDescending(b => 
+            {
+                var parts = b.Split('-');
+                if (parts.Length > 1 && int.TryParse(parts[1].Split('_')[0], out var buildNum))
+                {
+                    return buildNum;
+                }
+                return 0;
+            })
+            .ToList();
         
         // Default to all selected EXCEPT builds - default to latest build only
         SelectedDomains = AvailableDomains;
