@@ -54,7 +54,7 @@ public class UserDataService : IUserDataService
     }
 
     /// <inheritdoc/>
-    public Task<SavedFilterConfiguration?> LoadFilterAsync(int filterId)
+    public Task<SavedFilterConfiguration?> LoadFilterAsync(int filterId, string username)
     {
         try
         {
@@ -62,16 +62,20 @@ public class UserDataService : IUserDataService
             var collection = db.GetCollection<SavedFilterConfiguration>(FiltersCollection);
             var filter = collection.FindById(filterId);
             
-            if (filter != null)
-            {
-                _logger.LogInformation("Loaded filter ID {FilterId}: '{FilterName}'", filterId, filter.Name);
-            }
-            else
+            if (filter == null)
             {
                 _logger.LogWarning("Filter ID {FilterId} not found", filterId);
+                return Task.FromResult<SavedFilterConfiguration?>(null);
             }
-            
-            return Task.FromResult(filter);
+
+            if (!string.Equals(filter.SavedBy, username, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("Unauthorized load attempt for filter ID {FilterId} by user '{Username}'", filterId, username);
+                return Task.FromResult<SavedFilterConfiguration?>(null);
+            }
+
+            _logger.LogInformation("Loaded filter ID {FilterId}: '{FilterName}' for user '{Username}'", filterId, filter.Name, username);
+            return Task.FromResult<SavedFilterConfiguration?>(filter);
         }
         catch (Exception ex)
         {
@@ -128,16 +132,30 @@ public class UserDataService : IUserDataService
     }
 
     /// <inheritdoc/>
-    public Task<bool> UpdateFilterAsync(SavedFilterConfiguration filter)
+    public Task<bool> UpdateFilterAsync(SavedFilterConfiguration filter, string username)
     {
         try
         {
             using var db = new LiteDatabase(_databasePath);
             var collection = db.GetCollection<SavedFilterConfiguration>(FiltersCollection);
-            
+
+            var existing = collection.FindById(filter.Id);
+            if (existing == null)
+            {
+                _logger.LogWarning("Filter ID {FilterId} not found for update", filter.Id);
+                return Task.FromResult(false);
+            }
+
+            if (!string.Equals(existing.SavedBy, username, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("Unauthorized update attempt for filter ID {FilterId} by user '{Username}'", filter.Id, username);
+                return Task.FromResult(false);
+            }
+
+            filter.SavedBy = existing.SavedBy;
             filter.SavedDate = DateTime.UtcNow;
             var updated = collection.Update(filter);
-            
+
             if (updated)
             {
                 _logger.LogInformation("Updated filter ID {FilterId}: '{FilterName}'", filter.Id, filter.Name);
@@ -146,7 +164,7 @@ public class UserDataService : IUserDataService
             {
                 _logger.LogWarning("Filter ID {FilterId} not found for update", filter.Id);
             }
-            
+
             return Task.FromResult(updated);
         }
         catch (Exception ex)

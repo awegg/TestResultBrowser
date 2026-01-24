@@ -66,12 +66,9 @@
             @* Quick Actions *@
             <MudPaper Class="mb-4 pa-2">
                 <div class="d-flex gap-2">
-                    <LoadFilterDropdown @ref="loadFilterDropdown" Username="@currentUsername" OnFilterLoaded="ApplyFilter" />
+                    <LoadFilterDropdown @ref="loadFilterDropdown" Username="@currentUsername" OnFilterLoaded="ApplyFilter" OnCopyLinkRequested="CopyFilterLink" />
                     <MudButton Variant="Variant.Outlined" Color="Color.Info" OnClick="OpenSaveFilterDialog" Disabled="@(historyResult == null)">
                         <MudIcon Icon="@Icons.Material.Filled.Save" Class="mr-1" /> Save Filter
-                    </MudButton>
-                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Disabled="@(!lastAppliedFilterId.HasValue)" OnClick="CopyFilterLink">
-                        <MudIcon Icon="@Icons.Material.Filled.Link" Class="mr-1" /> Copy Link
                     </MudButton>
                     <MudSpacer />
                     <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ExpandAll">Expand All</MudButton>
@@ -1049,7 +1046,7 @@
             return false;
         }
 
-        var filter = await UserDataService.LoadFilterAsync(FilterIdFromUrl.Value);
+        var filter = await UserDataService.LoadFilterAsync(FilterIdFromUrl.Value, currentUsername);
         if (filter == null)
         {
             Snackbar.Add($"Saved filter {FilterIdFromUrl.Value} not found", Severity.Warning);
@@ -1061,15 +1058,16 @@
         return true;
     }
 
-    private async Task CopyFilterLink()
+    private async Task CopyFilterLink(int filterId)
     {
-        if (!lastAppliedFilterId.HasValue)
+        var targetId = filterId > 0 ? filterId : lastAppliedFilterId;
+        if (!targetId.HasValue)
         {
             return;
         }
 
         var baseUri = NavigationManager.BaseUri.TrimEnd('/') + "/configuration-history";
-        var url = $"{baseUri}?filterId={lastAppliedFilterId.Value}";
+        var url = $"{baseUri}?filterId={targetId.Value}";
 
         try
         {

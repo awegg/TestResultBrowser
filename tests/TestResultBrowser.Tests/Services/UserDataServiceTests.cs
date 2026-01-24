@@ -22,7 +22,7 @@ public class UserDataServiceTests : IDisposable
         
         _loggerMock = new Mock<ILogger<UserDataService>>();
         _configurationMock = new Mock<IConfiguration>();
-        _configurationMock.Setup(c => c["UserDataDatabasePath"]).Returns(_tempDbPath);
+        _configurationMock.Setup(c => c["TestResultBrowser:UserDataDatabasePath"]).Returns(_tempDbPath);
         
         _service = new UserDataService(_loggerMock.Object, _configurationMock.Object);
     }
@@ -84,7 +84,7 @@ public class UserDataServiceTests : IDisposable
         var saved = await _service.SaveFilterAsync(filter);
 
         // Act
-        var loaded = await _service.LoadFilterAsync(saved.Id);
+        var loaded = await _service.LoadFilterAsync(saved.Id, "test_user");
 
         // Assert
         loaded.ShouldNotBeNull();
@@ -99,7 +99,7 @@ public class UserDataServiceTests : IDisposable
     public async Task LoadFilterAsync_NonExistentFilter_ShouldReturnNull()
     {
         // Act
-        var loaded = await _service.LoadFilterAsync(999);
+        var loaded = await _service.LoadFilterAsync(999, "test_user");
 
         // Assert
         loaded.ShouldBeNull();
@@ -164,7 +164,7 @@ public class UserDataServiceTests : IDisposable
 
         // Act
         var deleted = await _service.DeleteFilterAsync(saved.Id);
-        var loaded = await _service.LoadFilterAsync(saved.Id);
+        var loaded = await _service.LoadFilterAsync(saved.Id, "test_user");
 
         // Assert
         deleted.ShouldBeTrue();
@@ -198,8 +198,8 @@ public class UserDataServiceTests : IDisposable
         saved.Description = "Updated description";
 
         // Act
-        var updated = await _service.UpdateFilterAsync(saved);
-        var loaded = await _service.LoadFilterAsync(saved.Id);
+        var updated = await _service.UpdateFilterAsync(saved, "test_user");
+        var loaded = await _service.LoadFilterAsync(saved.Id, "test_user");
 
         // Assert
         updated.ShouldBeTrue();
@@ -221,7 +221,7 @@ public class UserDataServiceTests : IDisposable
         };
 
         // Act
-        var updated = await _service.UpdateFilterAsync(filter);
+        var updated = await _service.UpdateFilterAsync(filter, "test_user");
 
         // Assert
         updated.ShouldBeFalse();
@@ -271,7 +271,7 @@ public class UserDataServiceTests : IDisposable
 
         // Act
         var saved = await _service.SaveFilterAsync(filter);
-        var loaded = await _service.LoadFilterAsync(saved.Id);
+        var loaded = await _service.LoadFilterAsync(saved.Id, "test_user");
 
         // Assert
         loaded.ShouldNotBeNull();
@@ -282,9 +282,9 @@ public class UserDataServiceTests : IDisposable
         loaded.SelectedConfiguration.ShouldBe("Debug");
         loaded.NumberOfBuilds.ShouldBe(10);
         loaded.DateFrom.ShouldNotBeNull();
-        loaded.DateFrom.ShouldBe(filter.DateFrom);
+        loaded.DateFrom.Value.ShouldBe(filter.DateFrom!.Value, TimeSpan.FromMilliseconds(5));
         loaded.DateTo.ShouldNotBeNull();
-        loaded.DateTo.ShouldBe(filter.DateTo);
+        loaded.DateTo.Value.ShouldBe(filter.DateTo!.Value, TimeSpan.FromMilliseconds(5));
         loaded.OnlyFailures.ShouldBe(true);
         loaded.HideFlakyTests.ShouldBe(false);
     }

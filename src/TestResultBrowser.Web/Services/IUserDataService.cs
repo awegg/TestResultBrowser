@@ -15,7 +15,7 @@ public interface IUserDataService
     /// <summary>
     /// Load a filter configuration by ID
     /// </summary>
-    Task<SavedFilterConfiguration?> LoadFilterAsync(int filterId);
+    Task<SavedFilterConfiguration?> LoadFilterAsync(int filterId, string username);
 
     /// <summary>
     /// Get all saved filters for a user
@@ -30,7 +30,7 @@ public interface IUserDataService
     /// <summary>
     /// Update an existing filter configuration
     /// </summary>
-    Task<bool> UpdateFilterAsync(SavedFilterConfiguration filter);
+    Task<bool> UpdateFilterAsync(SavedFilterConfiguration filter, string username);
 
     /// <summary>
     /// Get dashboard configuration for a user
