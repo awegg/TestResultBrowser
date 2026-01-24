@@ -30,7 +30,11 @@ Build a web-based JUnit test results browser that polls a shared file system for
   - bUnit (Blazor component testing)
   - Integration tests (file watcher, XML parsing with sample_data)
   
-**Target Platform**: Windows Server (IIS or Kestrel self-hosted) on internal network
+**Target Platform**: 
+  - **Primary**: Docker container (Linux/Windows containers) on internal network
+  - **Alternative**: Windows Server (IIS or Kestrel self-hosted)
+  - **Containerization**: Docker Compose for single-server deployment
+  
 **Project Type**: Web application (Blazor Server with backend services)
 
 **Performance Goals**:
@@ -44,7 +48,8 @@ Build a web-based JUnit test results browser that polls a shared file system for
   - 10-20GB RAM required (30M test results × ~400 bytes/result ≈ 12GB + overhead)
   - Single-server deployment (no distributed caching needed initially)
   - Read-only file system access (no write permissions required)
-  - Windows-only (file system paths, IIS hosting)
+  - **Docker deployment**: Volume mounts for test results and user data persistence
+  - **Platform compatibility**: Cross-platform .NET 8.0 (Windows/Linux containers)
   
 **Scale/Scope**:
   - 50+ configuration combinations (Version × TestType × NamedConfig × Domain)

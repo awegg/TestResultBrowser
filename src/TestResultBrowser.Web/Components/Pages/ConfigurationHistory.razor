@@ -608,6 +608,7 @@
         // Create a filtered copy that only shows failed tests
         var failureFilteredNode = new HierarchyNode
         {
+            NodeId = node.NodeId,
             Name = node.Name,
             NodeType = node.NodeType,
             IndentLevel = node.IndentLevel,
@@ -632,6 +633,12 @@
             {
                 failureFilteredNode.Children.Add(filtered);
             }
+        }
+
+        // Prune empty non-test nodes
+        if (failureFilteredNode.NodeType != HierarchyNodeType.Test && failureFilteredNode.Children.Count == 0)
+        {
+            return null;
         }
 
         return failureFilteredNode;

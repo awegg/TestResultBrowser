@@ -15,9 +15,10 @@ public partial class FilePathParserService : IFilePathParserService
     [GeneratedRegex(@"Release-(\d+)\\([^_]+)_([^_]+)_([^_]+)_([^\\]+)\\(.+\.xml)$", RegexOptions.IgnoreCase)]
     private static partial Regex FilePathPattern1();
 
-    // Pattern 2 (Alternative): {Version}_{TestType}_{NamedConfig}_{Domain}\Release-{BuildNumber}\{Feature}\*.xml
-    // Example: dev_E2E_Default1_Core\Release-193_176691\Px Core - Alarm Dashboard\tests-xxx.xml
-    [GeneratedRegex(@"([^\\]+?)_([^\\]+?)_([^\\]+?)_([^\\]+?)\\Release-(\d+)(?:_\d+)?\\([^\\]+)\\(.+\.xml)$", RegexOptions.IgnoreCase)]
+    // Pattern 2 (Alternative): {Config}\Release-{BuildNumber}\{Feature}\*.xml
+    // Example: dev_E2E_Default1_Core\Release-227_180127\Px Core - Alarm Manager\tests-xxx.xml
+    // Captures entire config as single group (allows spaces and underscores in feature names)
+    [GeneratedRegex(@"([^\\]+)\\Release-(\d+)(?:_\d+)?\\([^\\]+)\\(.+\.xml)$", RegexOptions.IgnoreCase)]
     private static partial Regex FilePathPattern2();
 
     /// <inheritdoc/>
@@ -56,13 +57,28 @@ public partial class FilePathParserService : IFilePathParserService
         var match2 = FilePathPattern2().Match(filePath);
         if (match2.Success)
         {
-            var versionRaw = match2.Groups[1].Value;
-            var testType = match2.Groups[2].Value; // E2E, etc.
-            var namedConfig = match2.Groups[3].Value;
-            var domainId = match2.Groups[4].Value;
-            var buildNumber = int.Parse(match2.Groups[5].Value);
-            var featureName = match2.Groups[6].Value; // "Px Core - Alarm Manager"
-            var fileName = match2.Groups[7].Value;
+            var configRaw = match2.Groups[1].Value;  // e.g., "dev_E2E_Default1_Core"
+            var buildNumber = int.Parse(match2.Groups[2].Value);
+            var featureName = match2.Groups[3].Value; // "Px Core - Alarm Manager"
+            var fileName = match2.Groups[4].Value;
+
+            // Parse the config string to extract components
+            // Expected format: {Version}_{TestType}_{NamedConfig}_{Domain}
+            // Example: dev_E2E_Default1_Core -> Version=dev, TestType=E2E, NamedConfig=Default1, Domain=Core
+            var configParts = configRaw.Split('_');
+            
+            string versionRaw = "Unknown";
+            string testType = "Unknown";
+            string namedConfig = "Unknown";
+            string domainId = "Unknown";
+            
+            if (configParts.Length >= 4)
+            {
+                versionRaw = configParts[0];
+                testType = configParts[1];
+                namedConfig = configParts[2];
+                domainId = string.Join("_", configParts.Skip(3)); // Handle multi-part domains like "TnT_Prod"
+            }
 
             return new ParsedFilePath
             {

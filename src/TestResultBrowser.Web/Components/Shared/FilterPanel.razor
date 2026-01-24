@@ -129,10 +129,11 @@
     
     protected override async Task OnInitializedAsync()
     {
-        await LoadAvailableOptionsAsync();
+        LoadAvailableOptions();
+        await Task.CompletedTask;
     }
     
-    private Task LoadAvailableOptionsAsync()
+    private void LoadAvailableOptions()
     {
         var allResults = TestDataService.GetAllTestResults();
         
@@ -141,6 +142,7 @@
         
         // Extract versions from ConfigurationId (format: {Version}_{TestType}_{NamedConfig}_{Domain})
         AvailableVersions = allResults
+            .Where(r => !string.IsNullOrEmpty(r.ConfigurationId))
             .Select(r => r.ConfigurationId.Split('_')[0])
             .Distinct()
             .OrderBy(v => v)
@@ -169,9 +171,7 @@
         SelectedVersions = AvailableVersions;
         SelectedConfigurations = AvailableConfigurations;
         // Default to only the most recent build to avoid confusion between current and historical results
-        SelectedBuilds = AvailableBuilds.Take(1).ToList();
-        
-        return Task.CompletedTask;
+        SelectedBuilds = AvailableBuilds.Take(1).ToHashSet();
     }
     
     private async Task ApplyFilters()

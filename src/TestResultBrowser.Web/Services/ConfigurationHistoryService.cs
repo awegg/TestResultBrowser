@@ -42,8 +42,11 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                 return Task.FromResult(result);
             }
 
+            // Clamp numberOfBuilds to at least 1
+            var buildCount = Math.Max(1, numberOfBuilds);
+
             // Take last N builds (already sorted descending)
-            var selectedBuilds = allBuilds.Take(numberOfBuilds).ToList();
+            var selectedBuilds = allBuilds.Take(buildCount).ToList();
 
             // Build history columns (selectedBuilds is already sorted newest first for display)
             result.HistoryColumns = selectedBuilds

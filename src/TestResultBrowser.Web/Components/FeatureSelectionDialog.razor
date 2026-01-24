@@ -80,19 +80,22 @@
     private HashSet<string> tempSelected = new();
     private Dictionary<string, bool> expanded = new();
     private bool isInitialized = false;
+    private IEnumerable<string>? previousSelectedFeatures = null;
 
     protected override void OnInitialized()
     {
         SyncSelections();
         isInitialized = true;
+        previousSelectedFeatures = SelectedFeatures;
     }
 
     protected override void OnParametersSet()
     {
-        // Only reset selections on first initialization to avoid losing user changes if parent re-renders
-        if (!isInitialized)
+        // Only reset selections on first initialization or if parent intentionally changed SelectedFeatures reference
+        if (!isInitialized || !ReferenceEquals(previousSelectedFeatures, SelectedFeatures))
         {
             SyncSelections();
+            previousSelectedFeatures = SelectedFeatures;
         }
     }
 
@@ -175,8 +178,15 @@
             .Select(kv => new KeyValuePair<string, List<string>>(kv.Key, kv.Value.OrderBy(v => v).ToList()));
         if (string.IsNullOrEmpty(q)) return groups;
         return groups
-            // Include group if group name matches OR if any feature matches
-            .Select(kv => new KeyValuePair<string, List<string>>(kv.Key, kv.Value.Where(v => v.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList()))
-            .Where(kv => kv.Key.Contains(q, StringComparison.OrdinalIgnoreCase) || kv.Value.Any());
+            .Select(kv =>
+            {
+                // If group name matches, include all features; otherwise filter features
+                var groupMatches = kv.Key.Contains(q, StringComparison.OrdinalIgnoreCase);
+                var filteredFeatures = groupMatches 
+                    ? kv.Value 
+                    : kv.Value.Where(v => v.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+                return new KeyValuePair<string, List<string>>(kv.Key, filteredFeatures);
+            })
+            .Where(kv => kv.Value.Any());
     }
 }

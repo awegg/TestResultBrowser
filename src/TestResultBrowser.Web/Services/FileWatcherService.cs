@@ -32,6 +32,18 @@ public class TestResultBrowserOptions
     public string PolarionBaseUrl { get; set; } = string.Empty;
 
     /// <summary>
+    /// Path to user data directory for LiteDB databases
+    /// Default: ./userdata
+    /// </summary>
+    public string UserDataPath { get; set; } = "./userdata";
+
+    /// <summary>
+    /// Maximum memory to use in GB
+    /// Default: 16
+    /// </summary>
+    public int MaxMemoryGB { get; set; } = 16;
+
+    /// <summary>
     /// Cache configuration settings
     /// </summary>
     public CacheSettings Cache { get; set; } = new();
@@ -53,6 +65,15 @@ public class FlakyTestThresholds
     /// Default: 30
     /// </summary>
     public int FlakinessTriggerPercentage { get; set; } = 30;
+
+    /// <summary>
+    /// Alias for FlakinessTriggerPercentage (for consistency with UI settings)
+    /// </summary>
+    public int TriggerPercentage
+    {
+        get => FlakinessTriggerPercentage;
+        set => FlakinessTriggerPercentage = value;
+    }
 
     /// <summary>
     /// Number of consecutive passes required to clear flaky status
@@ -95,6 +116,7 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
     private readonly IServiceProvider _serviceProvider;
     private readonly TestResultBrowserOptions _options;
     private readonly IHubContext<TestDataHub> _hubContext;
+    private readonly ISettingsService _settingsService;
     private Timer? _timer;
 
     public DateTime? LastScanTime { get; private set; }
@@ -105,23 +127,45 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
         ILogger<FileWatcherService> logger,
         IServiceProvider serviceProvider,
         IOptions<TestResultBrowserOptions> options,
-        IHubContext<TestDataHub> hubContext)
+        IHubContext<TestDataHub> hubContext,
+        ISettingsService settingsService)
     {
         _logger = logger;
         _serviceProvider = serviceProvider;
         _options = options.Value;
         _hubContext = hubContext;
+        _settingsService = settingsService;
+        
+        // Subscribe to settings changes to update polling interval
+        _settingsService.SettingsChanged += OnSettingsChanged;
+    }
+
+    private void OnSettingsChanged(object? sender, EventArgs e)
+    {
+        // Recreate timer with new polling interval
+        var settings = _settingsService.GetSettings();
+        var newInterval = TimeSpan.FromMinutes(settings.PollingIntervalMinutes);
+        
+        _logger.LogInformation("Polling interval changed to {Interval} minutes, recreating timer", settings.PollingIntervalMinutes);
+        
+        _timer?.Dispose();
+        _timer = new Timer(
+            callback: async _ => await ScanNowAsync(),
+            state: null,
+            dueTime: newInterval,
+            period: newInterval);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("FileWatcherService starting. Polling interval: {Interval} minutes", _options.PollingIntervalMinutes);
+        var settings = _settingsService.GetSettings();
+        _logger.LogInformation("FileWatcherService starting. Polling interval: {Interval} minutes", settings.PollingIntervalMinutes);
 
         // Perform initial scan immediately
         await ScanNowAsync();
 
         // Setup timer for periodic scans
-        var interval = TimeSpan.FromMinutes(_options.PollingIntervalMinutes);
+        var interval = TimeSpan.FromMinutes(settings.PollingIntervalMinutes);
         _timer = new Timer(
             callback: async _ => await ScanNowAsync(),
             state: null,

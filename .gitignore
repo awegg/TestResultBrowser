@@ -1,6 +1,7 @@
 sample_data
 src/TestResultBrowser.Web/bin
 src/TestResultBrowser.Web/obj
+.roo
 
 # Build results
 [Dd]ebug/

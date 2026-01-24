@@ -29,9 +29,9 @@ Based on plan.md project structure:
 
 ## Phase 1: Setup (Shared Infrastructure)
 
-**Purpose**: Project initialization and basic structure
+**Purpose**: Project initialization, basic structure, and Docker containerization
 
-**Effort**: 2-3 hours | **Status**: ✅ COMPLETE
+**Effort**: 3-4 hours | **Status**: ✅ COMPLETE
 
 - [x] T001 Create solution structure: src/TestResultBrowser.Web/ (Blazor Server project, .NET 8.0)
 - [x] T002 Initialize Blazor Server project with Program.cs and required NuGet packages (MudBlazor, LiteDB, System.Xml.Linq)
@@ -39,6 +39,12 @@ Based on plan.md project structure:
 - [x] T004 [P] Create directory structure: Pages/, Components/, Services/, Models/, Parsers/ under src/TestResultBrowser.Web/
 - [x] T005 [P] Setup MudBlazor in Program.cs (AddMudServices) and _Imports.razor
 - [x] T006 [P] Create sample_data validation script to test file path parsing logic
+- [x] T006a [P] Create Dockerfile in repository root for multi-stage build (SDK → runtime)
+- [x] T006b [P] Create docker-compose.yml with volume mounts for test results and user data
+- [x] T006c [P] Create .dockerignore to exclude unnecessary files from Docker context
+- [x] T006d [P] Create docs/docker-deployment.md with deployment guide and troubleshooting
+- [x] T006e [P] Add /health endpoint in Program.cs for Docker health checks
+- [x] T006f [P] Configure environment variable support for all appsettings.json values
 
 ---
 

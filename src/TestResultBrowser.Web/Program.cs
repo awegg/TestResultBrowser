@@ -23,6 +23,7 @@ builder.Services.AddMudServices();
 builder.Services.AddSignalR();
 
 // Register application services
+builder.Services.AddSingleton<ISettingsService, SettingsService>();
 builder.Services.AddSingleton<IVersionMapperService, VersionMapperService>();
 builder.Services.AddSingleton<IFilePathParserService, FilePathParserService>();
 builder.Services.AddSingleton<IJUnitParserService, JUnitParserService>();
@@ -65,6 +66,9 @@ app.UseAntiforgery();
 
 // Map API controllers
 app.MapControllers();
+
+// Add health check endpoint for Docker
+app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

@@ -267,16 +267,24 @@ public class TestDataService : ITestDataService
     /// <inheritdoc/>
     public DateTime? GetBuildTimestamp(string buildId)
     {
-        // Return the timestamp of the first (earliest) test result for this build
-        // This avoids fetching all results when we only need the build timestamp
-        if (_byBuild.TryGetValue(buildId, out var resultIds))
+        // Return the earliest timestamp for this build
+        // Use lock to ensure thread-safe snapshot of result IDs
+        lock (_indexLock)
         {
-            var timestamp = resultIds
-                .Select(id => _testResults.TryGetValue(id, out var result) ? result.Timestamp : (DateTime?)null)
-                .Where(t => t.HasValue)
-                .FirstOrDefault();
-            return timestamp;
+            if (_byBuild.TryGetValue(buildId, out var resultIds))
+            {
+                // Snapshot the IDs to avoid concurrent modification issues
+                var resultIdSnapshot = resultIds.ToList();
+                
+                // Get minimum timestamp (earliest) deterministically
+                var timestamps = resultIdSnapshot
+                    .Select(id => _testResults.TryGetValue(id, out var result) ? result.Timestamp : (DateTime?)null)
+                    .Where(t => t.HasValue)
+                    .Select(t => t!.Value);
+                
+                return timestamps.Any() ? timestamps.Min() : (DateTime?)null;
+            }
+            return null;
         }
-        return null;
     }
 }

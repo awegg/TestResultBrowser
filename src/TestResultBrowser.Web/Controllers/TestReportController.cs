@@ -67,12 +67,16 @@ public class TestReportController : ControllerBase
                     var attrName = match.Groups[1].Value;
                     var assetUrl = match.Groups[2].Value;
                     
-                    // Only rewrite relative paths (not absolute URLs)
-                    if (!assetUrl.StartsWith("http") && !assetUrl.StartsWith("/"))
+                    // Skip fragments, absolute URLs, and root-relative paths
+                    if (assetUrl.StartsWith("#") || assetUrl.StartsWith("http") || assetUrl.StartsWith("/"))
                     {
-                        return $"{attrName}=\"/api/assets/{assetUrl}?reportPath={reportPathParam}\"";
+                        return match.Value;
                     }
-                    return match.Value;
+                    
+                    // Only rewrite relative paths (asset files)
+                    // Preserve existing query string and fragment
+                    var separator = assetUrl.Contains("?") ? "&" : "?";
+                    return $"{attrName}=\"/api/assets/{assetUrl}{separator}reportPath={reportPathParam}\"";
                 });
 
             // Return as HTML

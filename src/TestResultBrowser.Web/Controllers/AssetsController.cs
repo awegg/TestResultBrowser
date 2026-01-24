@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using TestResultBrowser.Web.Services;
 
 namespace TestResultBrowser.Web.Controllers;
 
@@ -7,11 +9,13 @@ namespace TestResultBrowser.Web.Controllers;
 public class AssetsController : ControllerBase
 {
     private readonly ILogger<AssetsController> _logger;
+    private readonly TestResultBrowserOptions _options;
     private const string ReportDirectoryKey = "ReportDirectory";
 
-    public AssetsController(ILogger<AssetsController> logger)
+    public AssetsController(ILogger<AssetsController> logger, IOptions<TestResultBrowserOptions> options)
     {
         _logger = logger;
+        _options = options.Value;
     }
 
     /// <summary>
