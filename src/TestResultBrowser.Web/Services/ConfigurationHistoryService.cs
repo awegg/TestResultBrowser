@@ -46,10 +46,11 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
             var buildCount = Math.Max(1, numberOfBuilds);
 
             // Take last N builds (already sorted descending)
-            var selectedBuilds = allBuilds.Take(buildCount).ToList();
+            var selectedBuildsList = allBuilds.Take(buildCount).ToList();
+            var selectedBuilds = selectedBuildsList.ToHashSet();
 
-            // Build history columns (selectedBuilds is already sorted newest first for display)
-            result.HistoryColumns = selectedBuilds
+            // Build history columns (selectedBuildsList is already sorted newest first for display)
+            result.HistoryColumns = selectedBuildsList
                 .Select((buildId, index) => new HistoryColumn
                 {
                     BuildId = buildId,
@@ -59,9 +60,9 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                 .ToList();
 
             // Set latest build info
-            if (selectedBuilds.Any())
+            if (selectedBuildsList.Any())
             {
-                result.LatestBuildId = selectedBuilds.First();
+                result.LatestBuildId = selectedBuildsList.First();
                 result.LatestBuildTime = GetBuildTime(result.LatestBuildId);
             }
 
@@ -71,7 +72,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                 .ToList();
 
             _logger.LogInformation("Retrieved {TestCount} test results for {ConfigurationId} across {BuildCount} builds",
-                testResults.Count, configurationId, selectedBuilds.Count);
+                testResults.Count, configurationId, selectedBuildsList.Count);
 
             if (!testResults.Any())
             {
@@ -87,7 +88,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
             result.SkippedTests = latestBuildTests.Count(t => t.Status == TestStatus.Skip);
 
             // Build hierarchical tree
-            result.HierarchyNodes = BuildHierarchyTree(testResults, selectedBuilds, result.HistoryColumns);
+            result.HierarchyNodes = BuildHierarchyTree(testResults, selectedBuildsList, result.HistoryColumns);
 
             _logger.LogInformation("Configuration history built successfully: {DomainCount} domains", result.HierarchyNodes.Count);
 
@@ -449,9 +450,6 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
     }
 
     /// <summary>
-    /// Get all test IDs under a node (recursively includes children)
-    /// </summary>
-    /// <summary>
     /// Get all unique test full names under a node (recursively includes children)
     /// This is used for proper deduplication when calculating parent stats
     /// </summary>
@@ -480,17 +478,6 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
     {
         // Use dedicated method to avoid fetching all results
         return _testDataService.GetBuildTimestamp(buildId) ?? DateTime.UtcNow;
-    }
-
-    /// <summary>
-    /// Extract readable feature name from feature ID
-    /// </summary>
-    private string ExtractFeatureName(string featureId)
-    {
-        // featureId format: "Domain_NamespacePrefix"
-        // Example: "CORE_com.example" → "com.example"
-        var parts = featureId.Split('_');
-        return parts.Length > 1 ? parts[^1] : featureId;
     }
 
     /// <summary>

@@ -25,6 +25,14 @@ jobs:
       with:
         dotnet-version: '8.0.x'
         
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+        
     - name: Restore dependencies
       run: dotnet restore
       
@@ -42,7 +50,7 @@ jobs:
         path: '**/test-results.trx'
         reporter: dotnet-trx
         fail-on-error: true
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.GITHUB_TOKEN }}
 
   docker-build:
     name: Build Docker Image

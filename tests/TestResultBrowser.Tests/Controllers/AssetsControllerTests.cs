@@ -70,7 +70,7 @@ public class AssetsControllerTests
     public async Task GetAsset_PathTraversal_ShouldReturnBadRequest(string reportPath, string assetPath)
     {
         // Act
-        var result = await _controller.GetAsset(reportPath, assetPath);
+        var result = await _controller.GetAsset(assetPath, reportPath);
 
         // Assert
         result.ShouldBeOfType<BadRequestObjectResult>();
@@ -103,7 +103,7 @@ public class AssetsControllerTests
         var absoluteAsset = @"C:\Windows\System32\image.png";
 
         // Act
-        var result = await _controller.GetAsset(reportPath, absoluteAsset);
+        var result = await _controller.GetAsset(absoluteAsset, reportPath);
 
         // Assert
         result.ShouldBeOfType<BadRequestObjectResult>();
