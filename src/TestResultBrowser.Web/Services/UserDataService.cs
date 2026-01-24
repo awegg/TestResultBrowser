@@ -16,7 +16,7 @@ public class UserDataService : IUserDataService
     public UserDataService(ILogger<UserDataService> logger, IConfiguration configuration)
     {
         _logger = logger;
-        _databasePath = configuration["UserDataDatabasePath"] ?? "userdata.db";
+        _databasePath = configuration["TestResultBrowser:UserDataDatabasePath"] ?? "userdata.db";
         
         // Ensure directory exists
         var directory = Path.GetDirectoryName(_databasePath);
@@ -25,210 +25,206 @@ public class UserDataService : IUserDataService
             Directory.CreateDirectory(directory);
         }
 
+        EnsureIndexes();
         _logger.LogInformation("UserDataService initialized with database: {DatabasePath}", _databasePath);
     }
 
     /// <inheritdoc/>
-    public async Task<SavedFilterConfiguration> SaveFilterAsync(SavedFilterConfiguration filter)
+    public Task<SavedFilterConfiguration> SaveFilterAsync(SavedFilterConfiguration filter)
     {
-        return await Task.Run(() =>
+        try
         {
-            try
-            {
-                using var db = new LiteDatabase(_databasePath);
-                var collection = db.GetCollection<SavedFilterConfiguration>(FiltersCollection);
-                
-                filter.SavedDate = DateTime.UtcNow;
-                collection.Insert(filter);
-                
-                _logger.LogInformation("Saved filter '{FilterName}' for user '{Username}' with ID {FilterId}", 
-                    filter.Name, filter.SavedBy, filter.Id);
-                
-                return filter;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error saving filter '{FilterName}' for user '{Username}'", 
-                    filter.Name, filter.SavedBy);
-                throw;
-            }
-        });
+            using var db = new LiteDatabase(_databasePath);
+            var collection = db.GetCollection<SavedFilterConfiguration>(FiltersCollection);
+            
+            filter.SavedDate = DateTime.UtcNow;
+            collection.Insert(filter);
+            
+            _logger.LogInformation("Saved filter '{FilterName}' for user '{Username}' with ID {FilterId}", 
+                filter.Name, filter.SavedBy, filter.Id);
+            
+            return Task.FromResult(filter);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error saving filter '{FilterName}' for user '{Username}'", 
+                filter.Name, filter.SavedBy);
+            throw;
+        }
     }
 
     /// <inheritdoc/>
-    public async Task<SavedFilterConfiguration?> LoadFilterAsync(int filterId)
+    public Task<SavedFilterConfiguration?> LoadFilterAsync(int filterId)
     {
-        return await Task.Run(() =>
+        try
         {
-            try
+            using var db = new LiteDatabase(_databasePath);
+            var collection = db.GetCollection<SavedFilterConfiguration>(FiltersCollection);
+            var filter = collection.FindById(filterId);
+            
+            if (filter != null)
             {
-                using var db = new LiteDatabase(_databasePath);
-                var collection = db.GetCollection<SavedFilterConfiguration>(FiltersCollection);
-                var filter = collection.FindById(filterId);
-                
-                if (filter != null)
-                {
-                    _logger.LogInformation("Loaded filter ID {FilterId}: '{FilterName}'", filterId, filter.Name);
-                }
-                else
-                {
-                    _logger.LogWarning("Filter ID {FilterId} not found", filterId);
-                }
-                
-                return filter;
+                _logger.LogInformation("Loaded filter ID {FilterId}: '{FilterName}'", filterId, filter.Name);
             }
-            catch (Exception ex)
+            else
             {
-                _logger.LogError(ex, "Error loading filter ID {FilterId}", filterId);
-                throw;
+                _logger.LogWarning("Filter ID {FilterId} not found", filterId);
             }
-        });
+            
+            return Task.FromResult(filter);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error loading filter ID {FilterId}", filterId);
+            throw;
+        }
     }
 
     /// <inheritdoc/>
-    public async Task<List<SavedFilterConfiguration>> GetAllFiltersAsync(string username)
+    public Task<List<SavedFilterConfiguration>> GetAllFiltersAsync(string username)
     {
-        return await Task.Run(() =>
+        try
         {
-            try
-            {
-                using var db = new LiteDatabase(_databasePath);
-                var collection = db.GetCollection<SavedFilterConfiguration>(FiltersCollection);
-                var filters = collection.Find(f => f.SavedBy == username).ToList();
-                
-                _logger.LogInformation("Retrieved {Count} filters for user '{Username}'", filters.Count, username);
-                
-                return filters;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error retrieving filters for user '{Username}'", username);
-                throw;
-            }
-        });
+            using var db = new LiteDatabase(_databasePath);
+            var collection = db.GetCollection<SavedFilterConfiguration>(FiltersCollection);
+            var filters = collection.Find(f => f.SavedBy == username).ToList();
+            
+            _logger.LogInformation("Retrieved {Count} filters for user '{Username}'", filters.Count, username);
+            
+            return Task.FromResult(filters);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving filters for user '{Username}'", username);
+            throw;
+        }
     }
 
     /// <inheritdoc/>
-    public async Task<bool> DeleteFilterAsync(int filterId)
+    public Task<bool> DeleteFilterAsync(int filterId)
     {
-        return await Task.Run(() =>
+        try
         {
-            try
+            using var db = new LiteDatabase(_databasePath);
+            var collection = db.GetCollection<SavedFilterConfiguration>(FiltersCollection);
+            var deleted = collection.Delete(filterId);
+            
+            if (deleted)
             {
-                using var db = new LiteDatabase(_databasePath);
-                var collection = db.GetCollection<SavedFilterConfiguration>(FiltersCollection);
-                var deleted = collection.Delete(filterId);
-                
-                if (deleted)
-                {
-                    _logger.LogInformation("Deleted filter ID {FilterId}", filterId);
-                }
-                else
-                {
-                    _logger.LogWarning("Filter ID {FilterId} not found for deletion", filterId);
-                }
-                
-                return deleted;
+                _logger.LogInformation("Deleted filter ID {FilterId}", filterId);
             }
-            catch (Exception ex)
+            else
             {
-                _logger.LogError(ex, "Error deleting filter ID {FilterId}", filterId);
-                throw;
+                _logger.LogWarning("Filter ID {FilterId} not found for deletion", filterId);
             }
-        });
+            
+            return Task.FromResult(deleted);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting filter ID {FilterId}", filterId);
+            throw;
+        }
     }
 
     /// <inheritdoc/>
-    public async Task<bool> UpdateFilterAsync(SavedFilterConfiguration filter)
+    public Task<bool> UpdateFilterAsync(SavedFilterConfiguration filter)
     {
-        return await Task.Run(() =>
+        try
         {
-            try
+            using var db = new LiteDatabase(_databasePath);
+            var collection = db.GetCollection<SavedFilterConfiguration>(FiltersCollection);
+            
+            filter.SavedDate = DateTime.UtcNow;
+            var updated = collection.Update(filter);
+            
+            if (updated)
             {
-                using var db = new LiteDatabase(_databasePath);
-                var collection = db.GetCollection<SavedFilterConfiguration>(FiltersCollection);
-                
-                filter.SavedDate = DateTime.UtcNow;
-                var updated = collection.Update(filter);
-                
-                if (updated)
-                {
-                    _logger.LogInformation("Updated filter ID {FilterId}: '{FilterName}'", filter.Id, filter.Name);
-                }
-                else
-                {
-                    _logger.LogWarning("Filter ID {FilterId} not found for update", filter.Id);
-                }
-                
-                return updated;
+                _logger.LogInformation("Updated filter ID {FilterId}: '{FilterName}'", filter.Id, filter.Name);
             }
-            catch (Exception ex)
+            else
             {
-                _logger.LogError(ex, "Error updating filter ID {FilterId}", filter.Id);
-                throw;
+                _logger.LogWarning("Filter ID {FilterId} not found for update", filter.Id);
             }
-        });
+            
+            return Task.FromResult(updated);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating filter ID {FilterId}", filter.Id);
+            throw;
+        }
     }
 
     /// <inheritdoc/>
-    public async Task<DashboardConfiguration?> GetDashboardConfigAsync(string username)
+    public Task<DashboardConfiguration?> GetDashboardConfigAsync(string username)
     {
-        return await Task.Run(() =>
+        try
         {
-            try
+            using var db = new LiteDatabase(_databasePath);
+            var collection = db.GetCollection<DashboardConfiguration>(DashboardCollection);
+            var config = collection.FindOne(d => d.Username == username);
+            
+            if (config != null)
             {
-                using var db = new LiteDatabase(_databasePath);
-                var collection = db.GetCollection<DashboardConfiguration>(DashboardCollection);
-                var config = collection.FindOne(d => d.Username == username);
-                
-                if (config != null)
-                {
-                    _logger.LogInformation("Loaded dashboard config for user '{Username}'", username);
-                }
-                
-                return config;
+                _logger.LogInformation("Loaded dashboard config for user '{Username}'", username);
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading dashboard config for user '{Username}'", username);
-                throw;
-            }
-        });
+            
+            return Task.FromResult(config);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error loading dashboard config for user '{Username}'", username);
+            throw;
+        }
     }
 
     /// <inheritdoc/>
-    public async Task<DashboardConfiguration> SaveDashboardConfigAsync(DashboardConfiguration config)
+    public Task<DashboardConfiguration> SaveDashboardConfigAsync(DashboardConfiguration config)
     {
-        return await Task.Run(() =>
+        try
         {
-            try
+            using var db = new LiteDatabase(_databasePath);
+            var collection = db.GetCollection<DashboardConfiguration>(DashboardCollection);
+            
+            config.LastUpdated = DateTime.UtcNow;
+            
+            var existing = collection.FindOne(d => d.Username == config.Username);
+            if (existing != null)
             {
-                using var db = new LiteDatabase(_databasePath);
-                var collection = db.GetCollection<DashboardConfiguration>(DashboardCollection);
-                
-                config.LastUpdated = DateTime.UtcNow;
-                
-                // Check if config exists for this user
-                var existing = collection.FindOne(d => d.Username == config.Username);
-                if (existing != null)
-                {
-                    config.Id = existing.Id;
-                    collection.Update(config);
-                    _logger.LogInformation("Updated dashboard config for user '{Username}'", config.Username);
-                }
-                else
-                {
-                    collection.Insert(config);
-                    _logger.LogInformation("Created dashboard config for user '{Username}'", config.Username);
-                }
-                
-                return config;
+                config.Id = existing.Id;
+                collection.Update(config);
+                _logger.LogInformation("Updated dashboard config for user '{Username}'", config.Username);
             }
-            catch (Exception ex)
+            else
             {
-                _logger.LogError(ex, "Error saving dashboard config for user '{Username}'", config.Username);
-                throw;
+                collection.Insert(config);
+                _logger.LogInformation("Created dashboard config for user '{Username}'", config.Username);
             }
-        });
+            
+            return Task.FromResult(config);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error saving dashboard config for user '{Username}'", config.Username);
+            throw;
+        }
+    }
+
+    private void EnsureIndexes()
+    {
+        try
+        {
+            using var db = new LiteDatabase(_databasePath);
+            var filters = db.GetCollection<SavedFilterConfiguration>(FiltersCollection);
+            filters.EnsureIndex(f => f.SavedBy);
+
+            var dashboards = db.GetCollection<DashboardConfiguration>(DashboardCollection);
+            dashboards.EnsureIndex(d => d.Username);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error ensuring LiteDB indexes (continuing without indexes)");
+        }
     }
 }

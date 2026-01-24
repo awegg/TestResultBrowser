@@ -281,6 +281,10 @@ public class UserDataServiceTests : IDisposable
         loaded.NamedConfigs.ShouldBe(filter.NamedConfigs);
         loaded.SelectedConfiguration.ShouldBe("Debug");
         loaded.NumberOfBuilds.ShouldBe(10);
+        loaded.DateFrom.ShouldNotBeNull();
+        loaded.DateFrom.ShouldBe(filter.DateFrom);
+        loaded.DateTo.ShouldNotBeNull();
+        loaded.DateTo.ShouldBe(filter.DateTo);
         loaded.OnlyFailures.ShouldBe(true);
         loaded.HideFlakyTests.ShouldBe(false);
     }

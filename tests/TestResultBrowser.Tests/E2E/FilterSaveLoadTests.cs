@@ -1,3 +1,4 @@
+using System;
 using Microsoft.Playwright;
 using Shouldly;
 using Xunit;
@@ -8,7 +9,7 @@ public class FilterSaveLoadTests : IAsyncLifetime
 {
     private IBrowser? _browser;
     private IPage? _page;
-    private const string BaseUrl = "http://localhost:5248";
+    private static readonly string BaseUrl = Environment.GetEnvironmentVariable("E2E_BASE_URL") ?? "http://localhost:5248";
 
     public async Task InitializeAsync()
     {
@@ -95,7 +96,7 @@ public class FilterSaveLoadTests : IAsyncLifetime
 
             // Wait for success notification in Snackbar
             await _page.WaitForSelectorAsync("text=saved successfully", new() { Timeout = 5000 });
-            await Task.Delay(500); // Allow dialog to close
+            await _page.WaitForSelectorAsync("text=Save Filter Configuration", new() { State = WaitForSelectorState.Detached, Timeout = 5000 });
 
             // Step 3: Clear filters (reload page)
             await _page.ReloadAsync();
@@ -112,8 +113,8 @@ public class FilterSaveLoadTests : IAsyncLifetime
                 await savedFilterItem.WaitForAsync(new() { Timeout = 10000 });
                 await savedFilterItem.ClickAsync();
 
-                // Wait for filter to be applied
-                await Task.Delay(1000);
+                await _page.WaitForSelectorAsync("text=Loaded filter", new() { Timeout = 5000 });
+                await _page.WaitForFunctionAsync("selector => document.querySelector(selector)?.value === '10'", "input[type='number']");
 
                 // Step 5: Verify state is restored
                 // Check if the number of builds is restored
@@ -172,14 +173,14 @@ public class FilterSaveLoadTests : IAsyncLifetime
             if (await loadButton.IsVisibleAsync())
             {
                 await loadButton.ClickAsync();
-                await Task.Delay(500);
+                await _page.WaitForSelectorAsync("text=Filter To Delete", new() { Timeout = 5000 });
 
                 // Step 3: Find and click delete button for the filter
                 var deleteButton = _page.Locator("button").Filter(new() { HasTextString = "Delete" }).Or(_page.Locator("button[aria-label='Delete']")).First;
                 if (await deleteButton.IsVisibleAsync())
                 {
                     await deleteButton.ClickAsync();
-                    await Task.Delay(500);
+                    await _page.WaitForSelectorAsync("text=Filter To Delete", new() { State = WaitForSelectorState.Detached, Timeout = 5000 });
 
                     // Step 4: Verify filter is removed from list
                     var filterItem = _page.Locator("text=Filter To Delete");
@@ -238,7 +239,8 @@ public class FilterSaveLoadTests : IAsyncLifetime
 
                 var dialogSaveButton = _page.Locator("button", new() { HasText = "Save" }).Last;
                 await dialogSaveButton.ClickAsync();
-                await Task.Delay(1000);
+                await _page.WaitForSelectorAsync("text=saved successfully", new() { Timeout = 5000 });
+                await _page.WaitForSelectorAsync("text=Save Filter Configuration", new() { State = WaitForSelectorState.Detached, Timeout = 5000 });
 
                 // Save Filter 2
                 await buildCountInput.FillAsync("15");
@@ -248,29 +250,32 @@ public class FilterSaveLoadTests : IAsyncLifetime
                 var filterNameInput2 = _page.Locator("input[placeholder='Enter a name for this filter']").Or(_page.Locator("input[type='text']").First);
                 await filterNameInput2.FillAsync("15 Builds Filter");
                 await dialogSaveButton.ClickAsync();
-                await Task.Delay(1000);
+                await _page.WaitForSelectorAsync("text=saved successfully", new() { Timeout = 5000 });
+                await _page.WaitForSelectorAsync("text=Save Filter Configuration", new() { State = WaitForSelectorState.Detached, Timeout = 5000 });
 
                 // Load first filter
                 var loadButton = _page.Locator("button", new() { HasText = "Load Filter" });
                 if (await loadButton.IsVisibleAsync())
                 {
                     await loadButton.ClickAsync();
-                    await Task.Delay(500);
+                    await _page.WaitForSelectorAsync("text=5 Builds Filter", new() { Timeout = 5000 });
 
                     var filter1 = _page.Locator("text=5 Builds Filter");
                     await filter1.ClickAsync();
-                    await Task.Delay(1000);
+                    await _page.WaitForSelectorAsync("text=Loaded filter", new() { Timeout = 5000 });
+                    await _page.WaitForFunctionAsync("selector => document.querySelector(selector)?.value === '5'", "input[type='number']");
 
                     var value1 = await buildCountInput.InputValueAsync();
                     value1.ShouldBe("5");
 
                     // Load second filter
                     await loadButton.ClickAsync();
-                    await Task.Delay(500);
+                    await _page.WaitForSelectorAsync("text=15 Builds Filter", new() { Timeout = 5000 });
 
                     var filter2 = _page.Locator("text=15 Builds Filter");
                     await filter2.ClickAsync();
-                    await Task.Delay(1000);
+                    await _page.WaitForSelectorAsync("text=Loaded filter", new() { Timeout = 5000 });
+                    await _page.WaitForFunctionAsync("selector => document.querySelector(selector)?.value === '15'", "input[type='number']");
 
                     var value2 = await buildCountInput.InputValueAsync();
                     value2.ShouldBe("15");
