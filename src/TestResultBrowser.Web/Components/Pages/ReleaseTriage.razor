@@ -1,0 +1,286 @@
+@page "/release-triage"
+@rendermode InteractiveServer
+@using TestResultBrowser.Web.Models
+@using TestResultBrowser.Web.Services
+@inject ITriageService TriageService
+@inject ITestDataService TestDataService
+
+<PageTitle>Release Triage - Test Results Browser</PageTitle>
+
+<MudText Typo="Typo.h6" Class="mb-1" Style="font-weight:600;">Release Triage</MudText>
+
+<MudPaper Style="padding:0.25rem;margin-bottom:0.25rem;">
+    <MudText Typo="Typo.caption" Style="font-weight:600;margin:0 0 0.25rem 0;">Select Builds</MudText>
+    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:0.5rem;align-items:center;">
+        <div>
+            <label style="font-size:0.75rem;display:block;margin-bottom:0.125rem;">Current Build</label>
+            <select @bind="selectedCurrentBuild" style="width:100%;padding:0.25rem;border:1px solid #ddd;border-radius:4px;">
+                @foreach (var b in availableBuilds)
+                {
+                    <option value="@b">@b</option>
+                }
+            </select>
+        </div>
+        <div>
+            <label style="font-size:0.75rem;display:block;margin-bottom:0.125rem;">Previous Build (optional)</label>
+            <select @bind="selectedPreviousBuild" style="width:100%;padding:0.25rem;border:1px solid #ddd;border-radius:4px;">
+                <option value="">-- None --</option>
+                @foreach (var b in availableBuilds)
+                {
+                    <option value="@b">@b</option>
+                }
+            </select>
+        </div>
+        <div style="padding-top:1.25rem;">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" OnClick="ApplyBuildSelection">Apply</MudButton>
+        </div>
+    </div>
+    @if (!string.IsNullOrWhiteSpace(selectedCurrentBuild))
+    {
+        <MudText Typo="Typo.caption" Style="margin-top:0.25rem;">Comparing <strong>@selectedCurrentBuild</strong>@(string.IsNullOrWhiteSpace(selectedPreviousBuild) ? "" : $" vs {selectedPreviousBuild}")</MudText>
+    }
+</MudPaper>
+
+@if (isLoading)
+{
+    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    <MudText>Loading release triage...</MudText>
+}
+else if (triage == null)
+{
+    <MudAlert Severity="Severity.Warning">No release triage data available.</MudAlert>
+}
+else
+{
+    <MudGrid Class="mb-0" Spacing="0">
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Style="padding:0.25rem;">
+                <MudText Typo="Typo.caption" Color="Color.Info" Style="margin:0;line-height:1.1;">Build</MudText>
+                <MudText Typo="Typo.body2" Style="font-weight:700;margin:0;line-height:1;">@triage.ReleaseBuildId</MudText>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Style="padding:0.25rem;">
+                <MudText Typo="Typo.caption" Color="Color.Success" Style="margin:0;line-height:1.1;">Passing Configs</MudText>
+                <MudText Typo="Typo.body2" Style="font-weight:700;margin:0;line-height:1;">@(totalConfigs - triage.FailingConfigurations.Count)</MudText>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Style="padding:0.25rem;">
+                <MudText Typo="Typo.caption" Color="Color.Error" Style="margin:0;line-height:1.1;">Failing Configs</MudText>
+                <MudText Typo="Typo.body2" Style="font-weight:700;margin:0;line-height:1;">@triage.FailingConfigurations.Count</MudText>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Style="padding:0.25rem;">
+                <MudText Typo="Typo.caption" Color="Color.Info" Style="margin:0;line-height:1.1;">Pass Rate Δ</MudText>
+                <MudText Typo="Typo.body2" Style="font-weight:700;margin:0;line-height:1;">@(triage.ComparisonToPrevious?.PassRateChange.ToString("F1") ?? "-")%</MudText>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+
+    <MudPaper Style="padding:0.25rem;margin-top:0.25rem;">
+        <MudText Typo="Typo.caption" Style="font-weight:600;margin:0 0 0.25rem 0;">Configuration Matrix</MudText>
+        <table class="mud-table" style="width:100%;margin-bottom:0.5rem;">
+            <thead>
+                <tr>
+                    <th>Version \ Config</th>
+                    @foreach (var nc in triage.Matrix.NamedConfigs)
+                    {
+                        <th>@nc</th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var version in triage.Matrix.Versions)
+                {
+                    <tr>
+                        <td style="font-weight:600;">@version</td>
+                        @foreach (var nc in triage.Matrix.NamedConfigs)
+                        {
+                            <td>
+                                @{ var cell = triage.Matrix.Cells.TryGetValue(version, out var map) && map.TryGetValue(nc, out var c) ? c : null; }
+                                @if (cell == null)
+                                {
+                                    <span>N/A</span>
+                                }
+                                else
+                                {
+                                    var color = cell.FailedTests > 0 ? "#d32f2f" : "#2e7d32";
+                                    <button style="color:@color;border:none;background:transparent;cursor:pointer;font-weight:600;" @onclick="(() => SelectConfigCell(cell.ConfigurationId))">@cell.PassRate.ToString("F1")%</button>
+                                }
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </MudPaper>
+
+    <MudPaper Style="padding:0.25rem;margin-top:0.25rem;">
+        <MudText Typo="Typo.caption" Style="font-weight:600;margin:0 0 0.25rem 0;">Domain Pass Rates</MudText>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+            @foreach (var kv in triage.DomainPassRates.OrderByDescending(k => k.Value))
+            {
+                var color = kv.Value >= 95 ? Color.Success : (kv.Value >= 80 ? Color.Warning : Color.Error);
+                <MudPaper Style="padding:0.125rem 0.25rem;" Class="mud-elevation-1">
+                    <MudText Color="@color">@kv.Key: @kv.Value.ToString("F1")%</MudText>
+                </MudPaper>
+            }
+        </div>
+    </MudPaper>
+
+    @if (triage.ComparisonToPrevious is not null)
+    {
+        <MudPaper Style="padding:0.25rem;margin-top:0.25rem;">
+            <MudText Typo="Typo.caption" Style="font-weight:600;margin:0 0 0.25rem 0;">Comparison to Previous Release</MudText>
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                <MudPaper Style="padding:0.125rem 0.25rem;" Class="mud-elevation-1">
+                    <MudText Color="Color.Error">Regressed: @triage.ComparisonToPrevious.TestsRegressed</MudText>
+                </MudPaper>
+                <MudPaper Style="padding:0.125rem 0.25rem;" Class="mud-elevation-1">
+                    <MudText Color="Color.Success">Improved: @triage.ComparisonToPrevious.TestsImproved</MudText>
+                </MudPaper>
+            </div>
+        </MudPaper>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(selectedConfigId))
+    {
+        <MudPaper Style="padding:0.25rem;margin-top:0.25rem;">
+            <MudText Typo="Typo.caption" Style="font-weight:600;margin:0 0 0.25rem 0;">Selected Configuration Details</MudText>
+            <MudText Typo="Typo.caption">Configuration: <strong>@selectedConfigId</strong></MudText>
+
+            <MudText Typo="Typo.caption" Style="font-weight:600;margin-top:0.25rem;">Failing Tests (@failingTests.Count)</MudText>
+            <div>
+                @if (failingTests.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Success">No failures in this configuration.</MudAlert>
+                }
+                else
+                {
+                    @foreach (var t in failingTests)
+                    {
+                        <div style="font-size:0.8rem;line-height:1.2;margin-bottom:0.125rem;">
+                            <strong>@t.TestFullName</strong> — @t.DomainId / @t.FeatureId
+                        </div>
+                    }
+                }
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(selectedPreviousBuild))
+            {
+                <MudDivider Class="my-1" />
+                <MudText Typo="Typo.caption" Style="font-weight:600;">Changes vs Previous</MudText>
+                <div style="display:flex;gap:1rem;">
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Error">Regressed (@regressed.Count)</MudText>
+                        @foreach (var t in regressed)
+                        {
+                            <div style="font-size:0.8rem;line-height:1.2;">@t</div>
+                        }
+                    </div>
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Success">Improved (@improved.Count)</MudText>
+                        @foreach (var t in improved)
+                        {
+                            <div style="font-size:0.8rem;line-height:1.2;">@t</div>
+                        }
+                    </div>
+                </div>
+            }
+        </MudPaper>
+    }
+}
+
+@code {
+    private ReleaseTriageResult? triage;
+    private bool isLoading = true;
+    private int totalConfigs;
+    private List<string> availableBuilds = new();
+    private string? selectedCurrentBuild;
+    private string? selectedPreviousBuild;
+    private string? selectedConfigId;
+    private List<TestResult> failingTests = new();
+    private List<string> regressed = new();
+    private List<string> improved = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        var builds = TestDataService.GetAllTestResults()
+            .Select(r => r.BuildId)
+            .Distinct()
+            .OrderByDescending(b => b)
+            .ToList();
+
+        availableBuilds = builds;
+
+        if (builds.Count == 0)
+        {
+            triage = null;
+        }
+        else
+        {
+            selectedCurrentBuild ??= builds[0];
+            selectedPreviousBuild = string.IsNullOrWhiteSpace(selectedPreviousBuild) && builds.Count > 1 ? builds[1] : selectedPreviousBuild;
+            triage = await TriageService.GetReleaseTriageAsync(selectedCurrentBuild!, selectedPreviousBuild);
+            totalConfigs = triage?.Matrix.Cells.SelectMany(v => v.Value.Keys).Distinct().Count() ?? 0;
+        }
+
+        isLoading = false;
+    }
+
+    private async Task ApplyBuildSelection()
+    {
+        await LoadData();
+        selectedConfigId = null;
+        failingTests.Clear();
+        regressed.Clear();
+        improved.Clear();
+    }
+
+    private void OnMatrixCellClick(string configurationId)
+    {
+        SelectConfigCell(configurationId);
+    }
+
+    private void SelectConfigCell(string configurationId)
+    {
+        selectedConfigId = configurationId;
+        if (triage == null || string.IsNullOrWhiteSpace(selectedCurrentBuild)) return;
+
+        var current = TestDataService.GetTestResultsByBuild(selectedCurrentBuild!)
+            .Where(r => r.ConfigurationId == configurationId)
+            .ToList();
+        failingTests = current.Where(r => r.Status == TestStatus.Fail).ToList();
+
+        regressed.Clear();
+        improved.Clear();
+
+        if (!string.IsNullOrWhiteSpace(selectedPreviousBuild))
+        {
+            var previous = TestDataService.GetTestResultsByBuild(selectedPreviousBuild!)
+                .Where(r => r.ConfigurationId == configurationId)
+                .ToList();
+
+            var prevByName = previous.GroupBy(r => r.TestFullName).ToDictionary(g => g.Key, g => g.Any(r => r.Status == TestStatus.Pass));
+            var currByName = current.GroupBy(r => r.TestFullName).ToDictionary(g => g.Key, g => g.Any(r => r.Status == TestStatus.Pass));
+
+            foreach (var name in currByName.Keys)
+            {
+                var currPass = currByName[name];
+                var prevPass = prevByName.TryGetValue(name, out var p) ? p : false;
+                if (!prevPass && currPass) improved.Add(name);
+                if (prevPass && !currPass) regressed.Add(name);
+            }
+        }
+        
+        StateHasChanged();
+    }
+}

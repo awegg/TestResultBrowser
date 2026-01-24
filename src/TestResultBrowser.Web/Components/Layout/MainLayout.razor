@@ -1,0 +1,48 @@
+﻿@inherits LayoutComponentBase
+@implements IDisposable
+
+<MudLayout>
+    <MudDrawer @bind-Open="@_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2">
+        <NavMenu />
+    </MudDrawer>
+    
+    <MudMainContent Class="px-4">
+        @Body
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private bool _drawerOpen = true;
+    private System.Threading.Timer? _timer;
+    
+    [Inject]
+    private IFileWatcherService? fileWatcher { get; set; }
+    
+    protected override void OnInitialized()
+    {
+        // Update UI every second to refresh the last scan time
+        _timer = new System.Threading.Timer(_ =>
+        {
+            InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+    }
+    
+    private void ToggleDrawer()
+    {
+        _drawerOpen = !_drawerOpen;
+    }
+    
+    private async Task RefreshData()
+    {
+        if (fileWatcher != null)
+        {
+            await fileWatcher.ScanNowAsync();
+            StateHasChanged(); // Force UI update after scan
+        }
+    }
+    
+    public void Dispose()
+    {
+        _timer?.Dispose();
+    }
+}

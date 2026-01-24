@@ -1,0 +1,218 @@
+@using TestResultBrowser.Web.Services
+@using MudBlazor
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudText Typo="Typo.h6" Class="mb-3">Filters</MudText>
+    
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudSelect T="string" Label="Domain" MultiSelection="true" 
+                       @bind-SelectedValues="SelectedDomains" 
+                       SelectAll="true" 
+                       SelectAllText="All Domains">
+                @foreach (var domain in AvailableDomains)
+                {
+                    <MudSelectItem T="string" Value="@domain">@domain</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        
+        <MudItem xs="12" md="6">
+            <MudSelect T="string" Label="Feature" MultiSelection="true" 
+                       @bind-SelectedValues="SelectedFeatures"
+                       SelectAll="true"
+                       SelectAllText="All Features">
+                @foreach (var feature in AvailableFeatures)
+                {
+                    <MudSelectItem T="string" Value="@feature">@feature</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        
+        <MudItem xs="12" md="6">
+            <MudSelect T="string" Label="Version" MultiSelection="true" 
+                       @bind-SelectedValues="SelectedVersions"
+                       SelectAll="true"
+                       SelectAllText="All Versions">
+                @foreach (var version in AvailableVersions)
+                {
+                    <MudSelectItem T="string" Value="@version">@version</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        
+        <MudItem xs="12" md="6">
+            <MudSelect T="string" Label="Configuration" MultiSelection="true" 
+                       @bind-SelectedValues="SelectedConfigurations"
+                       SelectAll="true"
+                       SelectAllText="All Configurations">
+                @foreach (var config in AvailableConfigurations)
+                {
+                    <MudSelectItem T="string" Value="@config">@config</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        
+        <MudItem xs="12" md="6">
+            <MudStack Spacing="1">
+                <MudSelect T="string" Label="Build Number" MultiSelection="true"
+                           @bind-SelectedValues="SelectedBuilds"
+                           SelectAll="true"
+                           SelectAllText="All Builds (Historical + Current)"
+                           HelperText="@GetBuildHelperText()">
+                    @foreach (var build in AvailableBuilds)
+                    {
+                        var isLatest = build == AvailableBuilds.FirstOrDefault();
+                        <MudSelectItem T="string" Value="@build">
+                            @if (isLatest)
+                            {
+                                <MudStack Row="true" AlignItems="AlignItems.Center">
+                                    <MudIcon Icon="@Icons.Material.Filled.FiberNew" Color="Color.Success" Size="Size.Small" />
+                                    <MudText>@build (Latest)</MudText>
+                                </MudStack>
+                            }
+                            else
+                            {
+                                <MudText Color="Color.Default">@build</MudText>
+                            }
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+                @if (SelectedBuilds.Count() > 1)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mt-1">
+                        <MudText Typo="Typo.caption">Showing results from @SelectedBuilds.Count() builds (current + historical)</MudText>
+                    </MudAlert>
+                }
+            </MudStack>
+        </MudItem>
+        
+        <MudItem xs="12" md="6">
+            <MudSelect T="string" Label="Status" MultiSelection="true" 
+                       @bind-SelectedValues="SelectedStatuses"
+                       SelectAll="true"
+                       SelectAllText="All Statuses">
+                <MudSelectItem T="string" Value="@("Pass")">Pass</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Fail")">Fail</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Skip")">Skip</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+    </MudGrid>
+    
+    <MudStack Row="true" Class="mt-4">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ApplyFilters">Apply Filters</MudButton>
+        <MudButton Variant="Variant.Outlined" OnClick="ClearFilters">Clear All</MudButton>
+    </MudStack>
+</MudPaper>
+
+@code {
+    [Inject]
+    private ITestDataService TestDataService { get; set; } = default!;
+    
+    [Parameter]
+    public EventCallback<FilterCriteria> OnFiltersChanged { get; set; }
+    
+    // Available options
+    private List<string> AvailableDomains { get; set; } = new();
+    private List<string> AvailableFeatures { get; set; } = new();
+    private List<string> AvailableVersions { get; set; } = new();
+    private List<string> AvailableConfigurations { get; set; } = new();
+    private List<string> AvailableBuilds { get; set; } = new();
+    
+    // Selected values
+    private IEnumerable<string> SelectedDomains { get; set; } = new HashSet<string>();
+    private IEnumerable<string> SelectedFeatures { get; set; } = new HashSet<string>();
+    private IEnumerable<string> SelectedVersions { get; set; } = new HashSet<string>();
+    private IEnumerable<string> SelectedConfigurations { get; set; } = new HashSet<string>();
+    private IEnumerable<string> SelectedBuilds { get; set; } = new HashSet<string>();
+    private IEnumerable<string> SelectedStatuses { get; set; } = new HashSet<string> { "Pass", "Fail", "Skip" };
+    
+    protected override void OnInitialized()
+    {
+        LoadAvailableOptions();
+    }
+    
+    private void LoadAvailableOptions()
+    {
+        var allResults = TestDataService.GetAllTestResults();
+        
+        AvailableDomains = allResults.Select(r => r.DomainId).Distinct().OrderBy(d => d).ToList();
+        AvailableFeatures = allResults.Select(r => r.FeatureId).Distinct().OrderBy(f => f).ToList();
+        
+        // Extract versions from ConfigurationId (format: {Version}_{TestType}_{NamedConfig}_{Domain})
+        AvailableVersions = allResults
+            .Where(r => !string.IsNullOrEmpty(r.ConfigurationId))
+            .Select(r => r.ConfigurationId.Split('_')[0])
+            .Distinct()
+            .OrderBy(v => v)
+            .ToList();
+            
+        AvailableConfigurations = allResults.Select(r => r.ConfigurationId).Distinct().OrderBy(c => c).ToList();
+        
+        // Sort builds numerically by extracting the build number (e.g., "Release-252_181639" -> 252)
+        AvailableBuilds = allResults
+            .Select(r => r.BuildId)
+            .Distinct()
+            .OrderByDescending(b => 
+            {
+                var parts = b.Split('-');
+                if (parts.Length > 1 && int.TryParse(parts[1].Split('_')[0], out var buildNum))
+                {
+                    return buildNum;
+                }
+                return 0;
+            })
+            .ToList();
+        
+        // Default to all selected EXCEPT builds - default to latest build only
+        SelectedDomains = AvailableDomains.ToHashSet();
+        SelectedFeatures = AvailableFeatures.ToHashSet();
+        SelectedVersions = AvailableVersions.ToHashSet();
+        SelectedConfigurations = AvailableConfigurations.ToHashSet();
+        // Default to only the most recent build to avoid confusion between current and historical results
+        SelectedBuilds = AvailableBuilds.Take(1).ToHashSet();
+    }
+    
+    private async Task ApplyFilters()
+    {
+        var criteria = new FilterCriteria
+        {
+            Domains = SelectedDomains.ToList(),
+            Features = SelectedFeatures.ToList(),
+            Versions = SelectedVersions.ToList(),
+            Configurations = SelectedConfigurations.ToList(),
+            Builds = SelectedBuilds.ToList(),
+            Statuses = SelectedStatuses.ToList()
+        };
+        
+        await OnFiltersChanged.InvokeAsync(criteria);
+    }
+    
+    private async Task ClearFilters()
+    {
+        SelectedDomains = AvailableDomains.ToHashSet();
+        SelectedFeatures = AvailableFeatures.ToHashSet();
+        SelectedVersions = AvailableVersions.ToHashSet();
+        SelectedConfigurations = AvailableConfigurations.ToHashSet();
+        // Restore default: only latest build selected (avoid confusion between current and historical)
+        SelectedBuilds = AvailableBuilds.Take(1).ToHashSet();
+        SelectedStatuses = new HashSet<string> { "Pass", "Fail", "Skip" };
+
+        await ApplyFilters();
+    }
+
+    private string GetBuildHelperText()
+    {
+        if (!SelectedBuilds.Any())
+            return "No builds selected";
+        
+        if (SelectedBuilds.Count() == 1)
+        {
+            var selectedBuild = SelectedBuilds.First();
+            var isLatest = selectedBuild == AvailableBuilds.FirstOrDefault();
+            return isLatest ? "Showing only the latest build" : $"Showing historical build: {selectedBuild}";
+        }
+        
+        return $"Showing {SelectedBuilds.Count()} builds (includes historical data)";
+    }
+}

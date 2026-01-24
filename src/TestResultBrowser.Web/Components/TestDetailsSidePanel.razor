@@ -1,0 +1,258 @@
+@using TestResultBrowser.Web.Models
+
+<MudPaper Elevation="1" Class="test-details-panel">
+    <div class="panel-header">
+        <MudText Typo="Typo.h6">Test Details</MudText>
+        <MudIconButton Icon="@Icons.Material.Filled.Close" 
+                      Size="Size.Small" 
+                      OnClick="@OnClose" 
+                      Class="close-button" />
+    </div>
+
+    @if (SelectedNode == null)
+    {
+        <div class="panel-content">
+            <MudText Typo="Typo.body2" Color="Color.Tertiary">
+                Click on a failed test (red cell) to view details
+            </MudText>
+        </div>
+    }
+    else
+    {
+        <div class="panel-content">
+            <!-- Test Identity Section -->
+            <div class="section">
+                <MudText Typo="Typo.subtitle2" Class="section-title">Test Information</MudText>
+                <div class="info-row">
+                    <span class="info-label">Name:</span>
+                    <span class="info-value">@SelectedNode.Name</span>
+                </div>
+                @if (!string.IsNullOrEmpty(SelectedNode.TestFullName))
+                {
+                    <div class="info-row">
+                        <span class="info-label">Full Name:</span>
+                        <MudText Typo="Typo.caption" Class="info-value" style="word-break: break-all;">@SelectedNode.TestFullName</MudText>
+                    </div>
+                }
+                <div class="info-row">
+                    <span class="info-label">Status:</span>
+                    <span class="info-value">
+                        @{
+                            var statusColor = GetStatusColor();
+                            var statusText = GetStatusText();
+                        }
+                        <MudChip T="string" Color="@statusColor" Variant="Variant.Text" Size="Size.Small">
+                            @statusText
+                        </MudChip>
+                    </span>
+                </div>
+            </div>
+
+            <!-- Error Message Section (always visible when present) -->
+            @if (!string.IsNullOrEmpty(SelectedNode.ErrorMessage))
+            {
+                <div class="section">
+                    <div class="d-flex align-center" style="gap:8px;">
+                        <MudIcon Icon="@Icons.Material.Filled.Error" Color="Color.Error" />
+                        <MudText Typo="Typo.subtitle2" Class="section-title">Error Message</MudText>
+                    </div>
+                    <MudText Typo="Typo.body2" Class="error-text">
+                        @SelectedNode.ErrorMessage
+                    </MudText>
+                </div>
+            }
+            else if (SelectedNode.NodeType == HierarchyNodeType.Test)
+            {
+                <div class="section" style="padding: 8px; background-color: #e8f5e9; border-radius: 4px;">
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Class="mr-2" />
+                    <MudText Typo="Typo.body2" Color="Color.Success">
+                        Test passed - no error message
+                    </MudText>
+                </div>
+            }
+
+            <!-- Stack Trace Section -->
+            @if (!string.IsNullOrEmpty(SelectedNode.StackTrace))
+            {
+                <MudExpansionPanel Dense="true" Class="expansion-panel">
+                    <TitleContent>
+                        <MudIcon Icon="@Icons.Material.Filled.BugReport" Color="Color.Warning" Class="mr-2" />
+                        <MudText Typo="Typo.subtitle2">Stack Trace</MudText>
+                    </TitleContent>
+                    <ChildContent>
+                        <MudText Typo="Typo.caption" Class="stack-trace">
+                            @SelectedNode.StackTrace
+                        </MudText>
+                    </ChildContent>
+                </MudExpansionPanel>
+            }
+
+            <!-- First Error Message for Parent Nodes -->
+            @if (SelectedNode.NodeType != HierarchyNodeType.Test && !string.IsNullOrEmpty(SelectedNode.FirstErrorMessage))
+            {
+                <MudExpansionPanel Dense="true" Class="expansion-panel">
+                    <TitleContent>
+                        <MudIcon Icon="@Icons.Material.Filled.Info" Color="Color.Info" Class="mr-2" />
+                        <MudText Typo="Typo.subtitle2">First Failed Test Error</MudText>
+                    </TitleContent>
+                    <ChildContent>
+                        <MudText Typo="Typo.body2" Class="error-text">
+                            @SelectedNode.FirstErrorMessage
+                        </MudText>
+                    </ChildContent>
+                </MudExpansionPanel>
+            }
+
+            <!-- Error History across selected builds -->
+            @if (SelectedNode?.HistoryCells != null && SelectedNode.HistoryCells.Any(c => c.SourceTestResult != null && !string.IsNullOrEmpty(c.SourceTestResult.ErrorMessage)))
+            {
+                <div class="section">
+                    <MudText Typo="Typo.subtitle2" Class="section-title">Error History</MudText>
+                    <MudList T="string" Dense="true">
+                        @foreach (var cell in SelectedNode.HistoryCells)
+                        {
+                            if (cell.SourceTestResult != null && !string.IsNullOrEmpty(cell.SourceTestResult.ErrorMessage))
+                            {
+                                <MudListItem T="string">
+                                    <div style="display:flex; flex-direction:column; gap:4px; width:100%;">
+                                        <MudText Typo="Typo.caption" Color="Color.Default">
+                                            @cell.SourceTestResult.BuildId (@cell.SourceTestResult.Timestamp.ToString("MM/dd/yyyy HH:mm"))
+                                        </MudText>
+                                        <MudText Typo="Typo.body2" Class="error-text">
+                                            @cell.SourceTestResult.ErrorMessage
+                                        </MudText>
+                                        @if (!string.IsNullOrEmpty(cell.SourceTestResult.StackTrace))
+                                        {
+                                            <MudText Typo="Typo.caption" Class="stack-trace">@cell.SourceTestResult.StackTrace</MudText>
+                                        }
+                                    </div>
+                                </MudListItem>
+                            }
+                        }
+                    </MudList>
+                </div>
+            }
+        </div>
+    }
+</MudPaper>
+
+@code {
+    [Parameter]
+    public HierarchyNode? SelectedNode { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    private Color GetStatusColor()
+    {
+        if (SelectedNode?.NodeType == HierarchyNodeType.Test)
+        {
+            // For test nodes, check LatestStats
+            if (SelectedNode.LatestStats.Failed > 0)
+                return Color.Error;
+            if (SelectedNode.LatestStats.Passed > 0)
+                return Color.Success;
+            if (SelectedNode.LatestStats.Skipped > 0)
+                return Color.Warning;
+        }
+        return Color.Default;
+    }
+
+    private string GetStatusText()
+    {
+        if (SelectedNode?.NodeType == HierarchyNodeType.Test)
+        {
+            if (SelectedNode.LatestStats.Failed > 0)
+                return "Failed";
+            if (SelectedNode.LatestStats.Passed > 0)
+                return "Passed";
+            if (SelectedNode.LatestStats.Skipped > 0)
+                return "Skipped";
+        }
+        return "Unknown";
+    }
+}
+
+<style>
+    .test-details-panel {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px;
+        border-bottom: 1px solid #e0e0e0;
+        background-color: #fafafa;
+        flex-shrink: 0;
+    }
+
+    .close-button {
+        margin-right: -8px;
+    }
+
+    .panel-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px;
+    }
+
+    .section {
+        margin-bottom: 16px;
+    }
+
+    .section-title {
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: #212121;
+    }
+
+    .info-row {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 8px;
+        font-size: 0.875rem;
+    }
+
+    .info-label {
+        font-weight: 600;
+        color: #666;
+        min-width: 80px;
+    }
+
+    .info-value {
+        flex: 1;
+        color: #212121;
+        word-break: break-word;
+    }
+
+    .expansion-panel {
+        margin-bottom: 12px;
+    }
+
+    .error-text {
+        font-family: 'Courier New', monospace;
+        white-space: pre-wrap;
+        word-break: break-word;
+        background-color: #fff5f5;
+        padding: 8px;
+        border-radius: 4px;
+        line-height: 1.4;
+    }
+
+    .stack-trace {
+        font-family: 'Courier New', monospace;
+        white-space: pre-wrap;
+        word-break: break-word;
+        background-color: #f5f5f5;
+        padding: 8px;
+        border-radius: 4px;
+        display: block;
+        line-height: 1.4;
+        color: #666;
+    }
+</style>

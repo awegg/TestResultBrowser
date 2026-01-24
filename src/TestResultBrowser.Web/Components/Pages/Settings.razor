@@ -1,0 +1,195 @@
+@page "/settings"
+@rendermode InteractiveServer
+@using TestResultBrowser.Web.Models
+@using TestResultBrowser.Web.Services
+
+<PageTitle>Settings</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">Application Settings</MudText>
+    
+    <MudPaper Class="pa-4 mb-4">
+        <MudForm @ref="_form">
+            <MudNumericField Value="_settings.PollingIntervalMinutes"
+                           ValueChanged="@((int v) => OnPollingIntervalChanged(v))"
+                           Label="Polling Interval (minutes)"
+                           HelperText="How often to scan for new test results"
+                           Min="1"
+                           Max="1440"
+                           Variant="Variant.Outlined"
+                           Class="mb-4" />
+            
+            <MudDivider Class="my-4" />
+            
+            <MudText Typo="Typo.h6" Class="mb-3">Flaky Test Detection</MudText>
+            
+            <MudNumericField @bind-Value="_settings.FlakyTestThresholds.RollingWindowSize"
+                           Label="Rolling Window Size (builds)"
+                           HelperText="Number of recent builds to analyze"
+                           Min="5"
+                           Max="100"
+                           Variant="Variant.Outlined"
+                           Class="mb-4" />
+            
+            <MudNumericField @bind-Value="_settings.FlakyTestThresholds.TriggerPercentage"
+                           Label="Trigger Percentage (%)"
+                           HelperText="Failure percentage to flag as flaky"
+                           Min="1"
+                           Max="99"
+                           Variant="Variant.Outlined"
+                           Class="mb-4" />
+            
+            <MudNumericField @bind-Value="_settings.FlakyTestThresholds.ClearAfterConsecutivePasses"
+                           Label="Clear After Consecutive Passes"
+                           HelperText="Number of consecutive passes to clear flaky flag"
+                           Min="1"
+                           Max="50"
+                           Variant="Variant.Outlined"
+                           Class="mb-4" />
+            
+            <MudDivider Class="my-4" />
+            
+            <MudText Typo="Typo.h6" Class="mb-3">Polarion Integration</MudText>
+            
+            <MudTextField @bind-Value="_settings.PolarionBaseUrl"
+                        Label="Polarion Base URL"
+                        HelperText="Base URL for Polarion integration (optional)"
+                        Variant="Variant.Outlined"
+                        Class="mb-4" />
+            
+            <MudDivider Class="my-4" />
+            
+            <MudText Typo="Typo.h6" Class="mb-3">Performance</MudText>
+            
+            <MudNumericField @bind-Value="_settings.MaxMemoryGB"
+                           Label="Maximum Memory (GB)"
+                           HelperText="Maximum memory allocation for test result cache"
+                           Min="4"
+                           Max="128"
+                           Variant="Variant.Outlined"
+                           Class="mb-4" />
+            
+            <MudAlert Severity="Severity.Info" Class="mb-4">
+                Changes to memory limits require an application restart to take effect.
+            </MudAlert>
+        </MudForm>
+    </MudPaper>
+    
+    <MudPaper Class="pa-4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween">
+            <MudButton Variant="Variant.Outlined"
+                      Color="Color.Secondary"
+                      OnClick="ResetToDefaults">
+                Reset to Defaults
+            </MudButton>
+            
+            <MudStack Row="true" Spacing="2">
+                <MudButton Variant="Variant.Outlined"
+                          OnClick="Cancel">
+                    Cancel
+                </MudButton>
+                
+                <MudButton Variant="Variant.Filled"
+                          Color="Color.Primary"
+                          OnClick="SaveSettings">
+                    Save Settings
+                </MudButton>
+            </MudStack>
+        </MudStack>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [Inject]
+    private ISettingsService SettingsService { get; set; } = default!;
+
+    [Inject]
+    private ISnackbar Snackbar { get; set; } = default!;
+
+    [Inject]
+    private NavigationManager Navigation { get; set; } = default!;
+
+    private MudForm _form = default!;
+    private ApplicationSettings _settings = new();
+    private ApplicationSettings _originalSettings = new();
+    
+    private bool _hasChanges => 
+        _settings.PollingIntervalMinutes != _originalSettings.PollingIntervalMinutes ||
+        _settings.PolarionBaseUrl != _originalSettings.PolarionBaseUrl ||
+        _settings.MaxMemoryGB != _originalSettings.MaxMemoryGB ||
+        _settings.FlakyTestThresholds.RollingWindowSize != _originalSettings.FlakyTestThresholds.RollingWindowSize ||
+        _settings.FlakyTestThresholds.TriggerPercentage != _originalSettings.FlakyTestThresholds.TriggerPercentage ||
+        _settings.FlakyTestThresholds.ClearAfterConsecutivePasses != _originalSettings.FlakyTestThresholds.ClearAfterConsecutivePasses;
+
+    protected override void OnInitialized()
+    {
+        _originalSettings = SettingsService.GetSettings();
+        
+        // Create a copy to edit
+        _settings = new ApplicationSettings
+        {
+            Id = _originalSettings.Id,
+            PollingIntervalMinutes = _originalSettings.PollingIntervalMinutes,
+            PolarionBaseUrl = _originalSettings.PolarionBaseUrl,
+            MaxMemoryGB = _originalSettings.MaxMemoryGB,
+            FlakyTestThresholds = new Models.FlakyTestThresholds
+            {
+                RollingWindowSize = _originalSettings.FlakyTestThresholds.RollingWindowSize,
+                TriggerPercentage = _originalSettings.FlakyTestThresholds.TriggerPercentage,
+                ClearAfterConsecutivePasses = _originalSettings.FlakyTestThresholds.ClearAfterConsecutivePasses
+            }
+        };
+    }
+
+    private async Task SaveSettings()
+    {
+        try
+        {
+            await SettingsService.SaveSettingsAsync(_settings);
+            _originalSettings = SettingsService.GetSettings();
+            Snackbar.Add("Settings saved successfully", Severity.Success);
+            Navigation.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving settings: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ResetToDefaults()
+    {
+        try
+        {
+            await SettingsService.ResetToDefaultsAsync();
+            _originalSettings = SettingsService.GetSettings();
+            _settings = new ApplicationSettings
+            {
+                Id = _originalSettings.Id,
+                PollingIntervalMinutes = _originalSettings.PollingIntervalMinutes,
+                PolarionBaseUrl = _originalSettings.PolarionBaseUrl,
+                MaxMemoryGB = _originalSettings.MaxMemoryGB,
+                FlakyTestThresholds = new Models.FlakyTestThresholds
+                {
+                    RollingWindowSize = _originalSettings.FlakyTestThresholds.RollingWindowSize,
+                    TriggerPercentage = _originalSettings.FlakyTestThresholds.TriggerPercentage,
+                    ClearAfterConsecutivePasses = _originalSettings.FlakyTestThresholds.ClearAfterConsecutivePasses
+                }
+            };
+            Snackbar.Add("Settings reset to defaults", Severity.Info);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error resetting settings: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/");
+    }
+
+    private void OnPollingIntervalChanged(int newValue)
+    {
+        _settings.PollingIntervalMinutes = newValue;
+    }
+}

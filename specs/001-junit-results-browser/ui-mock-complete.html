@@ -1,0 +1,1203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JUnit Test Results Browser - Interactive Mock (Blazor/MudBlazor Style)</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        .app-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* Sidebar Navigation */
+        .sidebar {
+            width: 260px;
+            background: #594ae2;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 2px 0 8px rgba(0,0,0,0.1);
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            background: #4c3fb8;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .sidebar-header h1 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .sidebar-header .subtitle {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+
+        .nav-menu {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px 0;
+        }
+
+        .nav-item {
+            padding: 12px 20px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: rgba(255,255,255,0.9);
+        }
+
+        .nav-item:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .nav-item.active {
+            background: rgba(255,255,255,0.15);
+            border-left: 3px solid #fff;
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .nav-icon {
+            width: 20px;
+            height: 20px;
+            opacity: 0.9;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Toolbar */
+        .toolbar {
+            background: white;
+            border-bottom: 1px solid #e0e0e0;
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .toolbar-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #333;
+            margin-right: auto;
+        }
+
+        .filter-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: #e3f2fd;
+            color: #1976d2;
+            border-radius: 16px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .filter-chip .remove {
+            cursor: pointer;
+            opacity: 0.7;
+            font-weight: bold;
+        }
+
+        .filter-chip .remove:hover {
+            opacity: 1;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #594ae2;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #4c3fb8;
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #594ae2;
+            border: 1px solid #594ae2;
+        }
+
+        .btn-secondary:hover {
+            background: #f5f3ff;
+        }
+
+        .toggle-btn {
+            padding: 6px 12px;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .toggle-btn.active {
+            background: #594ae2;
+            color: white;
+            border-color: #594ae2;
+        }
+
+        /* Content Area */
+        .content {
+            flex: 1;
+            padding: 24px;
+            overflow-y: auto;
+            background: #fafafa;
+        }
+
+        /* Stats Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+            border-left: 4px solid;
+        }
+
+        .stat-card.red { border-left-color: #f44336; }
+        .stat-card.green { border-left-color: #4caf50; }
+        .stat-card.orange { border-left-color: #ff9800; }
+        .stat-card.blue { border-left-color: #2196f3; }
+
+        .stat-card .label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .stat-card .value {
+            font-size: 32px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .stat-card .trend {
+            font-size: 13px;
+            margin-top: 8px;
+            color: #666;
+        }
+
+        /* Section */
+        .section {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        /* Configuration Matrix */
+        .config-matrix {
+            overflow-x: auto;
+        }
+
+        .matrix-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 13px;
+        }
+
+        .matrix-table th,
+        .matrix-table td {
+            padding: 12px;
+            text-align: center;
+            border: 1px solid #e0e0e0;
+        }
+
+        .matrix-table th {
+            background: #f5f5f5;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        .matrix-table .row-header {
+            background: #f5f5f5;
+            font-weight: 600;
+            text-align: left;
+            position: sticky;
+            left: 0;
+            z-index: 1;
+        }
+
+        .matrix-cell {
+            cursor: pointer;
+            transition: transform 0.2s;
+            font-weight: 600;
+        }
+
+        .matrix-cell:hover {
+            transform: scale(1.05);
+        }
+
+        .matrix-cell.pass {
+            background: #c8e6c9;
+            color: #2e7d32;
+        }
+
+        .matrix-cell.partial {
+            background: #fff9c4;
+            color: #f57f17;
+        }
+
+        .matrix-cell.fail {
+            background: #ffcdd2;
+            color: #c62828;
+        }
+
+        .matrix-cell.no-data {
+            background: #f5f5f5;
+            color: #999;
+        }
+
+        /* Failure Groups */
+        .failure-group {
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 16px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .failure-group:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-color: #594ae2;
+        }
+
+        .failure-group-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .failure-group-icon {
+            background: #f44336;
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .failure-group-info {
+            flex: 1;
+        }
+
+        .failure-group-pattern {
+            font-weight: 600;
+            color: #c62828;
+            margin-bottom: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+
+        .failure-group-meta {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .failure-group-badge {
+            background: #f44336;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        /* Test Hierarchy Tree */
+        .tree-node {
+            margin: 4px 0;
+        }
+
+        .tree-node-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .tree-node-header:hover {
+            background: #f5f5f5;
+        }
+
+        .tree-expand {
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            color: #666;
+        }
+
+        .tree-icon {
+            width: 20px;
+            height: 20px;
+        }
+
+        .tree-label {
+            flex: 1;
+            font-weight: 500;
+        }
+
+        .tree-stats {
+            display: flex;
+            gap: 12px;
+            font-size: 12px;
+        }
+
+        .tree-stat {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .tree-stat.pass { color: #4caf50; font-weight: 600; }
+        .tree-stat.fail { color: #f44336; font-weight: 600; }
+        .tree-stat.skip { color: #ff9800; font-weight: 600; }
+
+        .tree-children {
+            margin-left: 24px;
+            border-left: 2px solid #e0e0e0;
+            padding-left: 12px;
+        }
+
+        .tree-children.collapsed {
+            display: none;
+        }
+
+        /* Badge */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .badge.flaky {
+            background: #fff3e0;
+            color: #e65100;
+        }
+
+        .badge.polarion {
+            background: #e3f2fd;
+            color: #1565c0;
+            cursor: pointer;
+        }
+
+        .badge.polarion:hover {
+            background: #bbdefb;
+        }
+
+        /* Config Visual Indicator */
+        .config-visual {
+            display: inline-flex;
+            gap: 2px;
+            padding: 4px;
+            background: #f5f5f5;
+            border-radius: 4px;
+        }
+
+        .config-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+        }
+
+        .config-dot.pass { background: #4caf50; }
+        .config-dot.fail { background: #f44336; }
+        .config-dot.partial { background: #ff9800; }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            border-bottom: 2px solid #e0e0e0;
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            padding: 12px 20px;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+            font-weight: 500;
+            color: #666;
+        }
+
+        .tab:hover {
+            color: #594ae2;
+        }
+
+        .tab.active {
+            color: #594ae2;
+            border-bottom-color: #594ae2;
+        }
+
+        /* Hidden Views */
+        .view {
+            display: none;
+        }
+
+        .view.active {
+            display: block;
+        }
+
+        /* Trend Arrow */
+        .trend-arrow {
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .trend-arrow.up { color: #4caf50; }
+        .trend-arrow.down { color: #f44336; }
+        .trend-arrow.stable { color: #999; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h1>Test Results Browser</h1>
+                <div class="subtitle">Pexcite JUnit Results</div>
+            </div>
+            <div class="nav-menu">
+                <div class="nav-item active" onclick="switchView('morning-triage')">
+                    <span class="nav-icon">🌅</span>
+                    <span>Morning Triage</span>
+                </div>
+                <div class="nav-item" onclick="switchView('release-triage')">
+                    <span class="nav-icon">🚀</span>
+                    <span>Release Triage</span>
+                </div>
+                <div class="nav-item" onclick="switchView('feature-impact')">
+                    <span class="nav-icon">🎯</span>
+                    <span>Feature Impact</span>
+                </div>
+                <div class="nav-item" onclick="switchView('flaky-tests')">
+                    <span class="nav-icon">🔀</span>
+                    <span>Flaky Tests</span>
+                </div>
+                <div class="nav-item" onclick="switchView('failure-groups')">
+                    <span class="nav-icon">📊</span>
+                    <span>Failure Grouping</span>
+                </div>
+                <div class="nav-item" onclick="switchView('domain-explorer')">
+                    <span class="nav-icon">🗂️</span>
+                    <span>Domain Explorer</span>
+                </div>
+                <div class="nav-item" onclick="switchView('trends')">
+                    <span class="nav-icon">📈</span>
+                    <span>Quality Trends</span>
+                </div>
+                <div class="nav-item" onclick="switchView('heatmap')">
+                    <span class="nav-icon">🔥</span>
+                    <span>Failure Heatmap</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Toolbar -->
+            <div class="toolbar">
+                <div class="toolbar-title" id="view-title">Morning Triage</div>
+                
+                <!-- Active Filters -->
+                <div class="filter-chip">
+                    <span>Domain: Core</span>
+                    <span class="remove" onclick="this.parentElement.remove()">×</span>
+                </div>
+                <div class="filter-chip">
+                    <span>Version: 1.14.0 [PXrel114]</span>
+                    <span class="remove" onclick="this.parentElement.remove()">×</span>
+                </div>
+                
+                <!-- Controls -->
+                <button class="toggle-btn active">
+                    <span>🔀</span>
+                    <span>Hide Flaky Tests</span>
+                </button>
+                <button class="btn-secondary">
+                    <span>🔍</span>
+                    <span>Filter</span>
+                </button>
+                <button class="btn-secondary">
+                    <span>🔄</span>
+                    <span>Refresh Now</span>
+                </button>
+                <button class="btn-primary">
+                    <span>💾</span>
+                    <span>Save Filter</span>
+                </button>
+            </div>
+
+            <!-- Content Views -->
+            <div class="content">
+                <!-- Morning Triage View -->
+                <div class="view active" id="morning-triage">
+                    <!-- Stats Cards -->
+                    <div class="stats-grid">
+                        <div class="stat-card red">
+                            <div class="label">New Failures</div>
+                            <div class="value">23</div>
+                            <div class="trend">Passed yesterday, failed today</div>
+                        </div>
+                        <div class="stat-card green">
+                            <div class="label">Fixed Tests</div>
+                            <div class="value">15</div>
+                            <div class="trend">Failed yesterday, passed today</div>
+                        </div>
+                        <div class="stat-card orange">
+                            <div class="label">Still Failing</div>
+                            <div class="value">8</div>
+                            <div class="trend">Failed both runs</div>
+                        </div>
+                        <div class="stat-card blue">
+                            <div class="label">Pass Rate</div>
+                            <div class="value">94.2%</div>
+                            <div class="trend">
+                                <span class="trend-arrow down">↓</span> -1.3% from yesterday
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- New Failures by Domain/Feature -->
+                    <div class="section">
+                        <div class="section-header">
+                            <h2 class="section-title">New Failures by Domain → Feature</h2>
+                            <button class="btn-secondary">Expand All</button>
+                        </div>
+
+                        <!-- Domain: Core -->
+                        <div class="tree-node">
+                            <div class="tree-node-header" onclick="toggleNode(this)">
+                                <span class="tree-expand">▼</span>
+                                <span class="tree-icon">📁</span>
+                                <span class="tree-label">Px Core</span>
+                                <div class="tree-stats">
+                                    <span class="tree-stat fail">12 new failures</span>
+                                    <span class="tree-stat">5 features affected</span>
+                                </div>
+                            </div>
+                            <div class="tree-children">
+                                <!-- Feature: Alarm Manager -->
+                                <div class="tree-node">
+                                    <div class="tree-node-header" onclick="toggleNode(this)">
+                                        <span class="tree-expand">▼</span>
+                                        <span class="tree-icon">📄</span>
+                                        <span class="tree-label">Px Core - Alarm Manager</span>
+                                        <div class="tree-stats">
+                                            <span class="tree-stat fail">5 failures</span>
+                                        </div>
+                                        <!-- Config Visual Indicator -->
+                                        <div class="config-visual" title="Affected configs: dev=fail, 1.14.0=fail, 1.14.1=pass">
+                                            <div class="config-dot fail" title="dev"></div>
+                                            <div class="config-dot fail" title="1.14.0"></div>
+                                            <div class="config-dot pass" title="1.14.1"></div>
+                                        </div>
+                                    </div>
+                                    <div class="tree-children">
+                                        <!-- Test Case -->
+                                        <div class="tree-node">
+                                            <div class="tree-node-header">
+                                                <span class="tree-expand"></span>
+                                                <span class="tree-icon">❌</span>
+                                                <span class="tree-label">
+                                                    <span class="badge polarion" onclick="alert('Open Polarion: PEXC-28044')">PEXC-28044</span>
+                                                    Download Alarm Configuration Report
+                                                    <span class="badge flaky">🔀 32% unstable</span>
+                                                </span>
+                                                <div class="tree-stats">
+                                                    <span style="font-size: 11px; color: #666;">AlarmManagerTests.TestDownloadReport</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="tree-node">
+                                            <div class="tree-node-header">
+                                                <span class="tree-expand"></span>
+                                                <span class="tree-icon">❌</span>
+                                                <span class="tree-label">
+                                                    <span class="badge polarion">PEXC-29103</span>
+                                                    Export Alarms to CSV
+                                                </span>
+                                                <div class="tree-stats">
+                                                    <span style="font-size: 11px; color: #666;">AlarmManagerTests.TestCsvExport</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Feature: Dashboard -->
+                                <div class="tree-node">
+                                    <div class="tree-node-header" onclick="toggleNode(this)">
+                                        <span class="tree-expand">▼</span>
+                                        <span class="tree-icon">📄</span>
+                                        <span class="tree-label">Px Core - Dashboard</span>
+                                        <div class="tree-stats">
+                                            <span class="tree-stat fail">3 failures</span>
+                                        </div>
+                                        <div class="config-visual">
+                                            <div class="config-dot fail"></div>
+                                            <div class="config-dot pass"></div>
+                                            <div class="config-dot pass"></div>
+                                        </div>
+                                    </div>
+                                    <div class="tree-children collapsed">
+                                        <div class="tree-node">
+                                            <div class="tree-node-header">
+                                                <span class="tree-expand"></span>
+                                                <span class="tree-icon">❌</span>
+                                                <span class="tree-label">Widget Rendering Performance</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Domain: T&T -->
+                        <div class="tree-node">
+                            <div class="tree-node-header" onclick="toggleNode(this)">
+                                <span class="tree-expand">▶</span>
+                                <span class="tree-icon">📁</span>
+                                <span class="tree-label">Px T&T (Track & Trace)</span>
+                                <div class="tree-stats">
+                                    <span class="tree-stat fail">7 new failures</span>
+                                    <span class="tree-stat">3 features affected</span>
+                                </div>
+                            </div>
+                            <div class="tree-children collapsed">
+                                <!-- Features would be here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Release Triage View -->
+                <div class="view" id="release-triage">
+                    <div class="stats-grid">
+                        <div class="stat-card blue">
+                            <div class="label">Overall Pass Rate</div>
+                            <div class="value">92.8%</div>
+                            <div class="trend">Build: Release-252</div>
+                        </div>
+                        <div class="stat-card green">
+                            <div class="label">Passing Configs</div>
+                            <div class="value">38 / 50</div>
+                            <div class="trend">76% configurations healthy</div>
+                        </div>
+                        <div class="stat-card red">
+                            <div class="label">Failing Configs</div>
+                            <div class="value">12</div>
+                            <div class="trend">Require attention before release</div>
+                        </div>
+                        <div class="stat-card orange">
+                            <div class="label">Release Status</div>
+                            <div class="value">⚠️</div>
+                            <div class="trend">NOT READY (target: 95%)</div>
+                        </div>
+                    </div>
+
+                    <!-- Configuration Matrix -->
+                    <div class="section">
+                        <div class="section-header">
+                            <h2 class="section-title">Configuration Matrix (Version × NamedConfig)</h2>
+                            <span style="font-size: 13px; color: #666;">Only valid tested combinations shown</span>
+                        </div>
+                        <div class="config-matrix">
+                            <table class="matrix-table">
+                                <thead>
+                                    <tr>
+                                        <th class="row-header">Version / Config</th>
+                                        <th>Default1</th>
+                                        <th>Default2</th>
+                                        <th>Win2022</th>
+                                        <th>CustomerA</th>
+                                        <th>CustomerB</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td class="row-header">Development [dev]</td>
+                                        <td class="matrix-cell pass" onclick="alert('Pass Rate: 98.5%\n9,850 / 10,000 tests passed')">98.5%</td>
+                                        <td class="matrix-cell partial" onclick="alert('Pass Rate: 91.2%\n9,120 / 10,000 tests passed')">91.2%</td>
+                                        <td class="matrix-cell pass">99.1%</td>
+                                        <td class="matrix-cell no-data">N/A</td>
+                                        <td class="matrix-cell no-data">N/A</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="row-header">1.14.0 [PXrel114]</td>
+                                        <td class="matrix-cell fail" onclick="alert('Pass Rate: 85.3%\n8,530 / 10,000 tests passed\nCRITICAL: Connection pool exhaustion')">85.3%</td>
+                                        <td class="matrix-cell pass">97.2%</td>
+                                        <td class="matrix-cell pass">96.8%</td>
+                                        <td class="matrix-cell partial">92.1%</td>
+                                        <td class="matrix-cell no-data">N/A</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="row-header">1.14.1 [PXrel1441]</td>
+                                        <td class="matrix-cell pass">99.5%</td>
+                                        <td class="matrix-cell pass">98.9%</td>
+                                        <td class="matrix-cell pass">99.2%</td>
+                                        <td class="matrix-cell pass">97.5%</td>
+                                        <td class="matrix-cell partial">93.8%</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div style="margin-top: 16px; font-size: 12px; color: #666;">
+                            🟢 Pass: ≥95% | 🟡 Partial: 90-95% | 🔴 Fail: <90% | ⚪ N/A: Not tested
+                        </div>
+                    </div>
+
+                    <!-- Domain Pass Rates -->
+                    <div class="section">
+                        <div class="section-header">
+                            <h2 class="section-title">Domain-Level Pass Rates</h2>
+                        </div>
+                        <div class="tree-node">
+                            <div class="tree-node-header">
+                                <span class="tree-icon">📁</span>
+                                <span class="tree-label">Px Core</span>
+                                <div class="tree-stats">
+                                    <span class="tree-stat pass">✓ 96.2%</span>
+                                    <span style="color: #666;">(9,620 / 10,000 tests)</span>
+                                    <span class="trend-arrow up" title="Improving trend">↑</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tree-node">
+                            <div class="tree-node-header">
+                                <span class="tree-icon">📁</span>
+                                <span class="tree-label">Px T&T (Track & Trace)</span>
+                                <div class="tree-stats">
+                                    <span class="tree-stat fail">⚠ 88.5%</span>
+                                    <span style="color: #666;">(4,425 / 5,000 tests)</span>
+                                    <span class="trend-arrow down" title="Degrading trend">↓</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tree-node">
+                            <div class="tree-node-header">
+                                <span class="tree-icon">📁</span>
+                                <span class="tree-label">Px PM (Production Monitoring)</span>
+                                <div class="tree-stats">
+                                    <span class="tree-stat pass">✓ 97.8%</span>
+                                    <span style="color: #666;">(2,934 / 3,000 tests)</span>
+                                    <span class="trend-arrow stable" title="Stable trend">→</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Feature Impact View -->
+                <div class="view" id="feature-impact">
+                    <div class="section">
+                        <div class="section-header">
+                            <h2 class="section-title">Feature: Px Core - Alarm Manager</h2>
+                            <button class="btn-primary">Mark as Release Ready</button>
+                        </div>
+
+                        <div class="stats-grid" style="margin-bottom: 24px;">
+                            <div class="stat-card green">
+                                <div class="label">Overall Pass Rate</div>
+                                <div class="value">94.5%</div>
+                            </div>
+                            <div class="stat-card blue">
+                                <div class="label">Total Tests</div>
+                                <div class="value">185</div>
+                            </div>
+                            <div class="stat-card red">
+                                <div class="label">Failing Tests</div>
+                                <div class="value">10</div>
+                            </div>
+                            <div class="stat-card orange">
+                                <div class="label">Flaky Tests</div>
+                                <div class="value">3</div>
+                            </div>
+                        </div>
+
+                        <h3 style="margin-bottom: 12px;">Configuration Impact Matrix</h3>
+                        <table class="matrix-table">
+                            <thead>
+                                <tr>
+                                    <th class="row-header">Version</th>
+                                    <th>Default1</th>
+                                    <th>Default2</th>
+                                    <th>Win2022</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td class="row-header">dev</td>
+                                    <td class="matrix-cell fail">88.1%</td>
+                                    <td class="matrix-cell pass">95.7%</td>
+                                    <td class="matrix-cell pass">96.2%</td>
+                                </tr>
+                                <tr>
+                                    <td class="row-header">1.14.0</td>
+                                    <td class="matrix-cell fail">87.6%</td>
+                                    <td class="matrix-cell partial">92.4%</td>
+                                    <td class="matrix-cell pass">95.1%</td>
+                                </tr>
+                                <tr>
+                                    <td class="row-header">1.14.1</td>
+                                    <td class="matrix-cell pass">98.9%</td>
+                                    <td class="matrix-cell pass">99.5%</td>
+                                    <td class="matrix-cell pass">98.4%</td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <div style="margin-top: 24px; padding: 16px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 4px;">
+                            <strong>⚠️ Assessment:</strong> Feature NOT ready for release on versions dev/1.14.0 + Default1 configuration. Investigate connection pool issues before release.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Flaky Tests View -->
+                <div class="view" id="flaky-tests">
+                    <div class="section">
+                        <div class="section-header">
+                            <h2 class="section-title">Flaky Tests (Threshold: >30% Instability)</h2>
+                            <button class="btn-secondary">Configure Thresholds</button>
+                        </div>
+
+                        <div class="tree-node">
+                            <div class="tree-node-header">
+                                <span class="tree-icon">🔀</span>
+                                <span class="tree-label">
+                                    <span class="badge polarion">PEXC-28044</span>
+                                    Download Alarm Configuration Report
+                                </span>
+                                <div class="tree-stats">
+                                    <span class="badge flaky">40% unstable</span>
+                                    <span style="color: #666; font-size: 12px;">8 passes, 12 fails in last 20 runs</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="tree-node">
+                            <div class="tree-node-header">
+                                <span class="tree-icon">🔀</span>
+                                <span class="tree-label">
+                                    Database Connection Pool Test
+                                </span>
+                                <div class="tree-stats">
+                                    <span class="badge flaky">35% unstable</span>
+                                    <span style="color: #666; font-size: 12px;">13 passes, 7 fails in last 20 runs</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="tree-node">
+                            <div class="tree-node-header">
+                                <span class="tree-icon">🔀</span>
+                                <span class="tree-label">
+                                    <span class="badge polarion">PEXC-31205</span>
+                                    Concurrent User Session Test
+                                </span>
+                                <div class="tree-stats">
+                                    <span class="badge flaky">32% unstable</span>
+                                    <span style="color: #666; font-size: 12px;">14 passes, 6 fails in last 20 runs</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 16px; padding: 12px; background: #f5f5f5; border-radius: 4px; font-size: 13px;">
+                            💡 <strong>Note:</strong> Tests will be automatically cleared from this list after 10 consecutive passes.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Failure Groups View -->
+                <div class="view" id="failure-groups">
+                    <div class="section">
+                        <div class="section-header">
+                            <h2 class="section-title">Failure Grouping by Error Pattern</h2>
+                            <span style="font-size: 13px; color: #666;">Grouped by 80% similarity threshold</span>
+                        </div>
+
+                        <div class="failure-group">
+                            <div class="failure-group-header">
+                                <div class="failure-group-icon">15</div>
+                                <div class="failure-group-info">
+                                    <div class="failure-group-pattern">Connection timeout to AlarmService</div>
+                                    <div class="failure-group-meta">
+                                        Affects: Px Core (3 features), Px Dashboard (1 feature) | 
+                                        Configurations: dev_E2E_Default1, 1.14.0_E2E_Default1
+                                    </div>
+                                </div>
+                                <div class="failure-group-badge">15 tests</div>
+                            </div>
+                        </div>
+
+                        <div class="failure-group">
+                            <div class="failure-group-header">
+                                <div class="failure-group-icon">8</div>
+                                <div class="failure-group-info">
+                                    <div class="failure-group-pattern">NullReferenceException at DataAccess.GetConfig()</div>
+                                    <div class="failure-group-meta">
+                                        Affects: Px T&T (2 features) | 
+                                        Configurations: All versions + Default2
+                                    </div>
+                                </div>
+                                <div class="failure-group-badge">8 tests</div>
+                            </div>
+                        </div>
+
+                        <div class="failure-group">
+                            <div class="failure-group-header">
+                                <div class="failure-group-icon">5</div>
+                                <div class="failure-group-info">
+                                    <div class="failure-group-pattern">Assertion failed: Expected 100, but was 99</div>
+                                    <div class="failure-group-meta">
+                                        Affects: Px PM (1 feature) | 
+                                        Configurations: dev_E2E_Win2022
+                                    </div>
+                                </div>
+                                <div class="failure-group-badge">5 tests</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Domain Explorer View -->
+                <div class="view" id="domain-explorer">
+                    <div class="section">
+                        <div class="section-header">
+                            <h2 class="section-title">Domain → Feature → Suite → Test Hierarchy</h2>
+                            <div>
+                                <button class="btn-secondary">Expand All</button>
+                                <button class="btn-secondary">Collapse All</button>
+                            </div>
+                        </div>
+
+                        <!-- Full 4-Level Hierarchy -->
+                        <div class="tree-node">
+                            <div class="tree-node-header" onclick="toggleNode(this)">
+                                <span class="tree-expand">▼</span>
+                                <span class="tree-icon">📁</span>
+                                <span class="tree-label">Px Core</span>
+                                <div class="tree-stats">
+                                    <span class="tree-stat pass">✓ 9,620</span>
+                                    <span class="tree-stat fail">✗ 280</span>
+                                    <span class="tree-stat skip">⊘ 100</span>
+                                </div>
+                            </div>
+                            <div class="tree-children">
+                                <!-- Feature -->
+                                <div class="tree-node">
+                                    <div class="tree-node-header" onclick="toggleNode(this)">
+                                        <span class="tree-expand">▼</span>
+                                        <span class="tree-icon">📄</span>
+                                        <span class="tree-label">Px Core - Alarm Manager</span>
+                                        <div class="tree-stats">
+                                            <span class="tree-stat pass">✓ 175</span>
+                                            <span class="tree-stat fail">✗ 10</span>
+                                        </div>
+                                    </div>
+                                    <div class="tree-children">
+                                        <!-- Test Suite -->
+                                        <div class="tree-node">
+                                            <div class="tree-node-header" onclick="toggleNode(this)">
+                                                <span class="tree-expand">▼</span>
+                                                <span class="tree-icon">📋</span>
+                                                <span class="tree-label">Regression Tests for Alarm Reports</span>
+                                                <div class="tree-stats">
+                                                    <span class="tree-stat pass">✓ 45</span>
+                                                    <span class="tree-stat fail">✗ 5</span>
+                                                </div>
+                                            </div>
+                                            <div class="tree-children">
+                                                <!-- Individual Test -->
+                                                <div class="tree-node">
+                                                    <div class="tree-node-header">
+                                                        <span class="tree-expand"></span>
+                                                        <span class="tree-icon">✅</span>
+                                                        <span class="tree-label">
+                                                            <span class="badge polarion">PEXC-28044</span>
+                                                            Download Alarm Configuration Report
+                                                        </span>
+                                                        <div class="tree-stats">
+                                                            <span style="font-size: 11px; color: #4caf50;">2.5s</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="tree-node">
+                                                    <div class="tree-node-header">
+                                                        <span class="tree-expand"></span>
+                                                        <span class="tree-icon">❌</span>
+                                                        <span class="tree-label">
+                                                            <span class="badge polarion">PEXC-29103</span>
+                                                            Export Alarms to CSV
+                                                            <span class="badge flaky">🔀 32%</span>
+                                                        </span>
+                                                        <div class="tree-stats">
+                                                            <span style="font-size: 11px; color: #f44336;">Connection timeout</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Trends View -->
+                <div class="view" id="trends">
+                    <div class="section">
+                        <div class="section-header">
+                            <h2 class="section-title">Quality Trends (Last 30 Builds)</h2>
+                        </div>
+                        <div style="text-align: center; padding: 80px; color: #999;">
+                            📈 Chart visualization would appear here<br>
+                            (Pass rate trends for domains over time)
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Heatmap View -->
+                <div class="view" id="heatmap">
+                    <div class="section">
+                        <div class="section-header">
+                            <h2 class="section-title">Failure History Heatmap (Feature × Build)</h2>
+                        </div>
+                        <div style="text-align: center; padding: 80px; color: #999;">
+                            🔥 Heatmap visualization would appear here<br>
+                            (Color-coded grid: Green=Pass, Yellow=1-5 failures, Red=6+ failures)
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function switchView(viewId) {
+            // Update nav items
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            event.target.closest('.nav-item').classList.add('active');
+
+            // Update views
+            document.querySelectorAll('.view').forEach(view => {
+                view.classList.remove('active');
+            });
+            document.getElementById(viewId).classList.add('active');
+
+            // Update title
+            const titles = {
+                'morning-triage': 'Morning Triage',
+                'release-triage': 'Release Triage',
+                'feature-impact': 'Feature Impact Analysis',
+                'flaky-tests': 'Flaky Tests',
+                'failure-groups': 'Failure Grouping',
+                'domain-explorer': 'Domain Explorer',
+                'trends': 'Quality Trends',
+                'heatmap': 'Failure Heatmap'
+            };
+            document.getElementById('view-title').textContent = titles[viewId];
+        }
+
+        function toggleNode(header) {
+            const children = header.nextElementSibling;
+            const expand = header.querySelector('.tree-expand');
+            
+            if (children && children.classList.contains('tree-children')) {
+                children.classList.toggle('collapsed');
+                expand.textContent = children.classList.contains('collapsed') ? '▶' : '▼';
+            }
+        }
+    </script>
+</body>
+</html>

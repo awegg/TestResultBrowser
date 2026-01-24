@@ -1,0 +1,226 @@
+@page "/morning-triage"
+@rendermode InteractiveServer
+@using TestResultBrowser.Web.Models
+@using TestResultBrowser.Web.Services
+@using Microsoft.AspNetCore.SignalR.Client
+@using MudBlazor
+@inject ITriageService TriageService
+@inject ITestDataService TestDataService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@implements IAsyncDisposable
+
+<PageTitle>Morning Triage - Test Results Browser</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
+    <MudText Typo="Typo.h6" Style="font-weight:600;">Morning Triage - New Failures</MudText>
+    @if (triageResult != null)
+    {
+        <MudChip T="string" Size="Size.Small" Color="Color.Info" Icon="@Icons.Material.Filled.CalendarToday">
+            Build: @triageResult.TodayBuildId
+        </MudChip>
+    }
+</MudStack>
+
+@if (isLoading)
+{
+    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    <MudText>Loading triage data...</MudText>
+}
+else if (triageResult == null)
+{
+    <MudAlert Severity="Severity.Warning">
+        No triage data available. Need at least 2 builds to compare.
+    </MudAlert>
+}
+else
+{
+    <!-- Stats Cards -->
+    <MudGrid Class="mb-0" Spacing="0">
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Style="padding:0.25rem;">
+                <MudText Typo="Typo.caption" Color="Color.Error" Style="margin:0;line-height:1.1;">Total New Failures</MudText>
+                <MudText Typo="Typo.body2" Style="font-weight:700;margin:0;line-height:1;">@triageResult.NewFailures.Count</MudText>
+                <MudText Typo="Typo.caption" Style="font-size:0.75rem;line-height:1.1;margin:0;">Failed @triageResult.TodayBuildId</MudText>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Style="padding:0.25rem;">
+                <MudText Typo="Typo.caption" Color="Color.Success" Style="margin:0;line-height:1.1;">Fixed Tests</MudText>
+                <MudText Typo="Typo.body2" Style="font-weight:700;margin:0;line-height:1;">@triageResult.FixedTests.Count</MudText>
+                <MudText Typo="Typo.caption" Style="font-size:0.75rem;line-height:1.1;margin:0;">Passed today</MudText>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Style="padding:0.25rem;">
+                <MudText Typo="Typo.caption" Color="Color.Warning" Style="margin:0;line-height:1.1;">Still Failing</MudText>
+                <MudText Typo="Typo.body2" Style="font-weight:700;margin:0;line-height:1;">@triageResult.StillFailing.Count</MudText>
+                <MudText Typo="Typo.caption" Style="font-size:0.75rem;line-height:1.1;margin:0;">2-day failures</MudText>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Style="padding:0.25rem;">
+                <MudText Typo="Typo.caption" Color="Color.Info" Style="margin:0;line-height:1.1;">Pass Rate</MudText>
+                <MudText Typo="Typo.body2" Style="font-weight:700;margin:0;line-height:1;">@triageResult.TodayPassRate.ToString("F1")%</MudText>
+                <MudText Typo="Typo.caption" Style="font-size:0.75rem;line-height:1.1;margin:0;">@GetTrendIcon() @Math.Abs(triageResult.TodayPassRate - triageResult.YesterdayPassRate).ToString("F1")%</MudText>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+
+    <!-- Domain Filter -->
+    <MudPaper Style="padding:0.25rem;margin-bottom:0.25rem;">
+        <MudText Typo="Typo.caption" Style="font-weight:600;margin:0 0 0.25rem 0;">Filter by Domain</MudText>
+        <MudSelect T="string" Label="Domains" MultiSelection="true" 
+                   @bind-SelectedValues="selectedDomains" 
+                   SelectAll="true" 
+                   SelectAllText="All Domains" Dense="true">
+            @foreach (var domain in availableDomains)
+            {
+                <MudSelectItem T="string" Value="@domain">@domain</MudSelectItem>
+            }
+        </MudSelect>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Style="margin-top:0.25rem;" Size="Size.Small" OnClick="RefreshTriage">
+            Apply Filter
+        </MudButton>
+    </MudPaper>
+
+    <!-- New Failures Section -->
+    @if (triageResult.NewFailures.Any())
+    {
+        <MudPaper Style="padding:0.25rem;margin-bottom:0.25rem;">
+            <MudText Typo="Typo.caption" Style="font-weight:600;margin:0 0 0.25rem 0;">🔴 New Failures (@triageResult.NewFailures.Count)</MudText>
+            
+            @foreach (var domainGroup in triageResult.NewFailures.GroupBy(f => f.DomainId))
+            {
+                <MudPaper Style="padding:0.25rem;margin-bottom:0.25rem;background-color:rgba(0,0,0,0.05);">
+                    <MudText Typo="Typo.caption" Style="font-weight:600;margin:0 0 0.25rem 0;">📁 <strong>@domainGroup.Key</strong> (@domainGroup.Count())</MudText>
+                    
+                    @foreach (var featureGroup in domainGroup.GroupBy(f => f.FeatureId))
+                    {
+                        <div Style="padding:0.25rem;margin-bottom:0.25rem;border-left:2px solid #1976d2;">
+                            <MudText Typo="Typo.caption" Style="font-weight:600;margin:0 0 0.125rem 0.25rem;">@featureGroup.Key</MudText>
+                            <div>
+                                @foreach (var failure in featureGroup)
+                                {
+                                    <div Style="padding:0.125rem 0.25rem;margin-bottom:0.125rem;background-color:#ffebee;font-size:0.75rem;line-height:1.2;">
+                                        <div Style="font-weight:600;">@failure.TestFullName</div>
+                                        <div>Error: @failure.ErrorMessage</div>
+                                        <div>Configs: @string.Join(", ", failure.AffectedConfigs)</div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </MudPaper>
+            }
+        </MudPaper>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Success" Style="margin-bottom:0.25rem;font-size:0.875rem;">
+            🎉 No new failures! All tests passing.
+        </MudAlert>
+    }
+
+    <!-- Fixed Tests Section -->
+    @if (triageResult.FixedTests.Any())
+    {
+        <MudPaper Style="padding:0.25rem;margin-bottom:0.25rem;">
+            <MudText Typo="Typo.caption" Style="font-weight:600;margin:0 0 0.25rem 0;">✅ Fixed Tests (@triageResult.FixedTests.Count)</MudText>
+            <div>
+                @foreach (var fixedTest in triageResult.FixedTests)
+                {
+                    <div Style="padding:0.125rem 0.25rem;margin-bottom:0.125rem;background-color:#f1f8e9;font-size:0.75rem;line-height:1.2;">
+                        <div Style="font-weight:600;">@fixedTest.TestFullName</div>
+                        <div>@string.Join(", ", fixedTest.FixedInConfigs)</div>
+                    </div>
+                }
+            </div>
+        </MudPaper>
+    }
+}
+
+@code {
+    private HubConnection? hubConnection;
+    private MorningTriageResult? triageResult;
+    private bool isLoading = true;
+    private List<string> availableDomains = new();
+    private IEnumerable<string> selectedDomains = new List<string>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+
+        // Initialize SignalR connection for real-time updates
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri("/hubs/testdata"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        // Auto-refresh when new data is imported
+        hubConnection.On<object>("TestDataUpdated", async (updateInfo) =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadData();
+                
+                // Show toast notification to user
+                Snackbar.Add("✅ New test results imported - Triage updated!", Severity.Success, config =>
+                {
+                    config.VisibleStateDuration = 4000;
+                    config.HideTransitionDuration = 400;
+                    config.ShowTransitionDuration = 400;
+                });
+                
+                StateHasChanged();
+            });
+        });
+
+        await hubConnection.StartAsync();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            isLoading = true;
+            
+            // Get available domains
+            var allResults = TestDataService.GetAllTestResults();
+            availableDomains = allResults.Select(r => r.DomainId).Distinct().OrderBy(d => d).ToList();
+            
+            // Load triage data
+            var domains = selectedDomains.Any() ? selectedDomains.ToList() : null;
+            triageResult = await TriageService.GetMorningTriageAsync(domains);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading triage data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task RefreshTriage()
+    {
+        await LoadData();
+    }
+
+    private string GetTrendIcon()
+    {
+        var diff = triageResult!.TodayPassRate - triageResult.YesterdayPassRate;
+        if (diff > 0.1) return "↑";
+        if (diff < -0.1) return "↓";
+        return "→";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+}

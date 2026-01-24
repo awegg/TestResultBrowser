@@ -1,0 +1,27 @@
+﻿<div class="top-row ps-3 navbar navbar-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="">Test Results</a>
+    </div>
+</div>
+
+<MudNavMenu>
+    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">Home</MudNavLink>
+    <MudNavLink Href="/configuration-history" Icon="@Icons.Material.Filled.History">Configuration History</MudNavLink>
+    <MudNavLink Href="/morning-triage" Icon="@Icons.Material.Filled.Schedule">Morning Triage</MudNavLink>
+    <MudNavLink Href="/system-status" Icon="@Icons.Material.Filled.Dashboard">System Status</MudNavLink>
+    
+    <MudNavGroup Title="Test Views" Icon="@Icons.Material.Filled.BugReport" Expanded="true">
+        <MudNavLink Href="/release-triage" Icon="@Icons.Material.Filled.Receipt">Release Triage</MudNavLink>
+        <MudNavLink Href="/domain-view" Icon="@Icons.Material.Filled.Category">Domain View</MudNavLink>
+    </MudNavGroup>
+    
+    <MudNavGroup Title="Analysis" Icon="@Icons.Material.Filled.Analytics">
+        <MudNavLink Href="/flaky-tests" Icon="@Icons.Material.Filled.Warning">Flaky Tests</MudNavLink>
+        <MudNavLink Href="/failure-groups" Icon="@Icons.Material.Filled.GroupWork">Failure Groups</MudNavLink>
+    </MudNavGroup>
+    
+    <MudDivider Class="my-2" />
+    
+    <MudNavLink Href="/settings" Icon="@Icons.Material.Filled.Settings">Settings</MudNavLink>
+</MudNavMenu>
+

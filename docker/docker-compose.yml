@@ -1,0 +1,35 @@
+services:
+  testresultbrowser:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: testresultbrowser
+    ports:
+      - "5000:8080"  # HTTP
+      - "5001:8081"  # HTTPS (if configured)
+    volumes:
+      # Mount test results directory (adjust path to your network share)
+      - ${TEST_RESULTS_PATH:-../sample_data}:/mnt/testresults:ro
+      # Mount user data for persistence (baselines, comments, saved filters)
+      - testresultbrowser-userdata:/app/userdata
+    environment:
+      # ASP.NET Core settings
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      
+      # Application settings (deployment-specific, managed in UI Settings page)
+      - TestResultBrowser__FileSharePath=/mnt/testresults
+      - TestResultBrowser__UserDataPath=/app/userdata
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 60s
+    mem_limit: 20g
+    mem_reservation: 12g
+
+volumes:
+  testresultbrowser-userdata:
+    driver: local

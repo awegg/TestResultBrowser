@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JUnit Test Results Browser - Interactive UI Mock</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .header .subtitle {
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+
+        .container {
+            max-width: 100%;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            height: calc(100vh - 80px);
+        }
+
+        .sidebar {
+            width: 250px;
+            background: #2c3e50;
+            color: white;
+            padding: 1rem 0;
+            overflow-y: auto;
+        }
+
+        .sidebar-item {
+            padding: 0.75rem 1.5rem;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .sidebar-item:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .sidebar-item.active {
+            background: rgba(255,255,255,0.2);
+            border-left: 3px solid #3498db;
+        }
+
+        .main-content {
+            flex: 1;
+            overflow: auto;
+            background: #f5f5f5;
+        }
+
+        .toolbar {
+            background: white;
+            padding: 1rem 2rem;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .toolbar-section {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .toolbar-section label {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #555;
+        }
+
+        select, input[type="text"], button {
+            padding: 0.5rem 1rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        select {
+            min-width: 150px;
+        }
+
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #2980b9;
+        }
+
+        button.secondary {
+            background: #95a5a6;
+        }
+
+        button.secondary:hover {
+            background: #7f8c8d;
+        }
+
+        button.success {
+            background: #27ae60;
+        }
+
+        button.success:hover {
+            background: #229954;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .card h2 {
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            color: #2c3e50;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .metric:last-child {
+            border-bottom: none;
+        }
+
+        .metric-label {
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .metric-value {
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+
+        .metric-value.success {
+            color: #27ae60;
+        }
+
+        .metric-value.error {
+            color: #e74c3c;
+        }
+
+        .metric-value.warning {
+            color: #f39c12;
+        }
+
+        .metric-value.info {
+            color: #3498db;
+        }
+
+        .change-indicator {
+            display: inline-flex;
+            align-items: center;
+            font-size: 0.85rem;
+            margin-left: 0.5rem;
+        }
+
+        .change-indicator.positive {
+            color: #27ae60;
+        }
+
+        .change-indicator.negative {
+            color: #e74c3c;
+        }
+
+        .chart-placeholder {
+            width: 100%;
+            height: 200px;
+            background: linear-gradient(to top, #e8f5e9 0%, #fff 100%);
+            border-radius: 4px;
+            display: flex;
+            align-items: flex-end;
+            padding: 1rem;
+            gap: 0.5rem;
+            position: relative;
+        }
+
+        .chart-bar {
+            flex: 1;
+            background: #27ae60;
+            border-radius: 4px 4px 0 0;
+            position: relative;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .chart-bar:hover {
+            opacity: 0.8;
+        }
+
+        .chart-bar.failing {
+            background: #e74c3c;
+        }
+
+        .chart-bar-tooltip {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #2c3e50;
+            color: white;
+            padding: 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            margin-bottom: 0.5rem;
+        }
+
+        .chart-bar:hover .chart-bar-tooltip {
+            opacity: 1;
+        }
+
+        .test-list {
+            margin-top: 1rem;
+        }
+
+        .test-item {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background 0.2s;
+            cursor: pointer;
+        }
+
+        .test-item:hover {
+            background: #f8f9fa;
+        }
+
+        .test-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 1rem;
+        }
+
+        .test-status.pass {
+            background: #27ae60;
+        }
+
+        .test-status.fail {
+            background: #e74c3c;
+        }
+
+        .test-status.skip {
+            background: #f39c12;
+        }
+
+        .test-name {
+            flex: 1;
+            font-size: 0.9rem;
+        }
+
+        .test-time {
+            font-size: 0.85rem;
+            color: #999;
+            margin-right: 1rem;
+        }
+
+        .test-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .test-badge.new {
+            background: #ffe5e5;
+            color: #c0392b;
+        }
+
+        .test-badge.fixed {
+            background: #e8f5e9;
+            color: #27ae60;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            border-bottom: 2px solid #e0e0e0;
+            margin-bottom: 1rem;
+        }
+
+        .tab {
+            padding: 0.75rem 1.5rem;
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            font-weight: 600;
+            color: #666;
+            transition: all 0.2s;
+        }
+
+        .tab.active {
+            color: #3498db;
+            border-bottom-color: #3498db;
+        }
+
+        .tab:hover {
+            background: #f8f9fa;
+        }
+
+        .filter-chip {
+            display: inline-flex;
+            align-items: center;
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 0.4rem 0.8rem;
+            border-radius: 16px;
+            font-size: 0.85rem;
+            margin-right: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .filter-chip-close {
+            margin-left: 0.5rem;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .active-filters {
+            margin-bottom: 1rem;
+        }
+
+        .comparison-view {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .comparison-column h3 {
+            background: #f8f9fa;
+            padding: 0.75rem;
+            border-radius: 4px;
+            margin-bottom: 0.75rem;
+            font-size: 0.95rem;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 24px;
+            background: #f0f0f0;
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            margin-top: 0.5rem;
+        }
+
+        .progress-segment {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: white;
+            transition: all 0.3s;
+        }
+
+        .progress-segment.pass {
+            background: #27ae60;
+        }
+
+        .progress-segment.fail {
+            background: #e74c3c;
+        }
+
+        .progress-segment.skip {
+            background: #f39c12;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 8px;
+            padding: 2rem;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-content h2 {
+            margin-bottom: 1rem;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .form-group input[type="text"],
+        .form-group select {
+            width: 100%;
+        }
+
+        .machine-selector {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 0.5rem;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 1rem;
+            border-radius: 4px;
+        }
+
+        .machine-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .badge-group {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-top: 0.5rem;
+        }
+
+        .info-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            background: #f0f0f0;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🧪 JUnit Test Results Browser</h1>
+        <div class="subtitle">Comprehensive test monitoring across teams, features, and configurations</div>
+    </div>
+
+    <div class="container">
+        <!-- Toolbar with Filters -->
+        <div class="toolbar">
+            <div class="toolbar-section">
+                <label>Team:</label>
+                <select id="teamFilter">
+                    <option value="">All Teams</option>
+                    <option value="team-alpha">Team Alpha</option>
+                    <option value="team-beta">Team Beta</option>
+                    <option value="team-gamma">Team Gamma</option>
+                </select>
+            </div>
+            <div class="toolbar-section">
+                <label>Feature:</label>
+                <select id="featureFilter">
+                    <option value="">All Features</option>
+                    <option value="authentication">Authentication</option>
+                    <option value="payment">Payment</option>
+                    <option value="reporting">Reporting</option>
+                </select>
+            </div>
+            <div class="toolbar-section">
+                <label>Machine:</label>
+                <select id="machineFilter">
+                    <option value="">All Machines</option>
+                    <option value="win-01">Windows-01</option>
+                    <option value="linux-01">Linux-01</option>
+                    <option value="macos-01">macOS-01</option>
+                </select>
+            </div>
+            <div class="toolbar-section">
+                <input type="text" id="searchBox" placeholder="Search tests..." style="min-width: 250px;">
+            </div>
+            <div class="toolbar-section" style="margin-left: auto;">
+                <button class="secondary" onclick="showSaveFilterModal()">💾 Save Filter</button>
+                <button class="secondary" onclick="showLoadFilterModal()">📂 Load Filter</button>
+                <button class="success" onclick="showDashboardConfig()">⚙️ Configure Dashboard</button>
+            </div>
+        </div>
+
+        <!-- Active Filters -->
+        <div class="active-filters" id="activeFilters"></div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('overview')">Overview</button>
+            <button class="tab" onclick="showTab('trends')">Trends</button>
+            <button class="tab" onclick="showTab('comparison')">Comparison</button>
+            <button class="tab" onclick="showTab('tests')">All Tests</button>
+        </div>
+
+        <!-- Overview Tab -->
+        <div id="overviewTab" class="tab-content">
+            <div class="dashboard-grid">
+                <!-- Latest Run Summary -->
+                <div class="card">
+                    <h2>Latest Test Run <span style="font-size: 0.85rem; font-weight: normal; color: #999;">2 hours ago</span></h2>
+                    <div class="metric">
+                        <span class="metric-label">Total Tests</span>
+                        <span class="metric-value info">1,247</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Passed</span>
+                        <span class="metric-value success">
+                            1,189 (95.3%)
+                            <span class="change-indicator positive">▲ 2.1%</span>
+                        </span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Failed</span>
+                        <span class="metric-value error">
+                            42 (3.4%)
+                            <span class="change-indicator negative">▲ 0.8%</span>
+                        </span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Skipped</span>
+                        <span class="metric-value warning">16 (1.3%)</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-segment pass" style="width: 95.3%">95.3%</div>
+                        <div class="progress-segment fail" style="width: 3.4%"></div>
+                        <div class="progress-segment skip" style="width: 1.3%"></div>
+                    </div>
+                </div>
+
+                <!-- Changes from Last Run -->
+                <div class="card">
+                    <h2>Changes vs Previous Run</h2>
+                    <div class="metric">
+                        <span class="metric-label">New Failures</span>
+                        <span class="metric-value error">7</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Fixed Tests</span>
+                        <span class="metric-value success">12</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Consistently Failing</span>
+                        <span class="metric-value warning">35</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">New Tests Added</span>
+                        <span class="metric-value info">5</span>
+                    </div>
+                </div>
+
+                <!-- Team Breakdown -->
+                <div class="card">
+                    <h2>Results by Team</h2>
+                    <div class="metric">
+                        <span class="metric-label">Team Alpha</span>
+                        <span class="metric-value success">456 / 478 (95.4%)</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Team Beta</span>
+                        <span class="metric-value success">423 / 441 (95.9%)</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Team Gamma</span>
+                        <span class="metric-value error">310 / 328 (94.5%)</span>
+                    </div>
+                </div>
+
+                <!-- Machine Breakdown -->
+                <div class="card">
+                    <h2>Results by Machine</h2>
+                    <div class="metric">
+                        <span class="metric-label">Windows (18 machines)</span>
+                        <span class="metric-value success">97.2%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Linux (22 machines)</span>
+                        <span class="metric-value success">96.8%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">macOS (10 machines)</span>
+                        <span class="metric-value error">91.3%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Failures -->
+            <div class="card">
+                <h2>Recent Test Failures</h2>
+                <div class="test-list">
+                    <div class="test-item" onclick="alert('Test Details: AuthenticationTest.testLoginWithValidCredentials')">
+                        <div class="test-status fail"></div>
+                        <div class="test-name">AuthenticationTest.testLoginWithValidCredentials</div>
+                        <div class="test-time">1.2s</div>
+                        <div class="test-badge new">NEW</div>
+                        <div class="badge-group">
+                            <div class="info-badge">Team Alpha</div>
+                            <div class="info-badge">macOS-03</div>
+                        </div>
+                    </div>
+                    <div class="test-item" onclick="alert('Test Details: PaymentTest.testCheckoutFlow')">
+                        <div class="test-status fail"></div>
+                        <div class="test-name">PaymentTest.testCheckoutFlow</div>
+                        <div class="test-time">3.4s</div>
+                        <div class="badge-group">
+                            <div class="info-badge">Team Beta</div>
+                            <div class="info-badge">Windows-12</div>
+                        </div>
+                    </div>
+                    <div class="test-item" onclick="alert('Test Details: ReportingTest.testGeneratePDF')">
+                        <div class="test-status fail"></div>
+                        <div class="test-name">ReportingTest.testGeneratePDF</div>
+                        <div class="test-time">2.1s</div>
+                        <div class="badge-group">
+                            <div class="info-badge">Team Gamma</div>
+                            <div class="info-badge">Linux-08</div>
+                        </div>
+                    </div>
+                    <div class="test-item" onclick="alert('Test Details: DatabaseTest.testConnectionPool')">
+                        <div class="test-status skip"></div>
+                        <div class="test-name">DatabaseTest.testConnectionPool</div>
+                        <div class="test-time">0.1s</div>
+                        <div class="badge-group">
+                            <div class="info-badge">Team Alpha</div>
+                            <div class="info-badge">SKIPPED</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Trends Tab -->
+        <div id="trendsTab" class="tab-content" style="display: none;">
+            <div class="card">
+                <h2>Test Pass Rate Over Time (Last 30 Days)</h2>
+                <div class="chart-placeholder">
+                    <div class="chart-bar" style="height: 95%;">
+                        <div class="chart-bar-tooltip">Jan 15: 95.3% (1189/1247)</div>
+                    </div>
+                    <div class="chart-bar" style="height: 93%;">
+                        <div class="chart-bar-tooltip">Jan 14: 93.1% (1162/1247)</div>
+                    </div>
+                    <div class="chart-bar" style="height: 96%;">
+                        <div class="chart-bar-tooltip">Jan 13: 96.2% (1200/1247)</div>
+                    </div>
+                    <div class="chart-bar" style="height: 94%;">
+                        <div class="chart-bar-tooltip">Jan 12: 94.5% (1178/1247)</div>
+                    </div>
+                    <div class="chart-bar" style="height: 97%;">
+                        <div class="chart-bar-tooltip">Jan 11: 97.1% (1211/1247)</div>
+                    </div>
+                    <div class="chart-bar" style="height: 95%;">
+                        <div class="chart-bar-tooltip">Jan 10: 95.8% (1195/1247)</div>
+                    </div>
+                    <div class="chart-bar" style="height: 96%;">
+                        <div class="chart-bar-tooltip">Jan 9: 96.4% (1202/1247)</div>
+                    </div>
+                    <div class="chart-bar" style="height: 94%;">
+                        <div class="chart-bar-tooltip">Jan 8: 94.2% (1175/1247)</div>
+                    </div>
+                    <div class="chart-bar" style="height: 98%;">
+                        <div class="chart-bar-tooltip">Jan 7: 98.0% (1222/1247)</div>
+                    </div>
+                    <div class="chart-bar" style="height: 95%;">
+                        <div class="chart-bar-tooltip">Jan 6: 95.5% (1191/1247)</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dashboard-grid">
+                <div class="card">
+                    <h2>Team Alpha Trend</h2>
+                    <div class="chart-placeholder" style="height: 150px;">
+                        <div class="chart-bar" style="height: 96%;"></div>
+                        <div class="chart-bar" style="height: 94%;"></div>
+                        <div class="chart-bar" style="height: 97%;"></div>
+                        <div class="chart-bar" style="height: 95%;"></div>
+                        <div class="chart-bar" style="height: 98%;"></div>
+                        <div class="chart-bar" style="height: 95%;"></div>
+                        <div class="chart-bar" style="height: 96%;"></div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Team Beta Trend</h2>
+                    <div class="chart-placeholder" style="height: 150px;">
+                        <div class="chart-bar" style="height: 97%;"></div>
+                        <div class="chart-bar" style="height: 95%;"></div>
+                        <div class="chart-bar" style="height: 96%;"></div>
+                        <div class="chart-bar" style="height: 98%;"></div>
+                        <div class="chart-bar" style="height: 97%;"></div>
+                        <div class="chart-bar" style="height: 99%;"></div>
+                        <div class="chart-bar" style="height: 96%;"></div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Team Gamma Trend</h2>
+                    <div class="chart-placeholder" style="height: 150px;">
+                        <div class="chart-bar" style="height: 93%;"></div>
+                        <div class="chart-bar failing" style="height: 91%;"></div>
+                        <div class="chart-bar failing" style="height: 90%;"></div>
+                        <div class="chart-bar" style="height: 94%;"></div>
+                        <div class="chart-bar" style="height: 95%;"></div>
+                        <div class="chart-bar" style="height: 93%;"></div>
+                        <div class="chart-bar" style="height: 94%;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Comparison Tab -->
+        <div id="comparisonTab" class="tab-content" style="display: none;">
+            <div class="card">
+                <h2>Compare Test Runs</h2>
+                <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+                    <div style="flex: 1;">
+                        <label>Run A:</label>
+                        <select style="width: 100%;">
+                            <option>Jan 15, 2026 - 14:30 (Build #1247)</option>
+                            <option selected>Jan 14, 2026 - 14:25 (Build #1246)</option>
+                            <option>Jan 13, 2026 - 14:20 (Build #1245)</option>
+                        </select>
+                    </div>
+                    <div style="flex: 1;">
+                        <label>Run B:</label>
+                        <select style="width: 100%;">
+                            <option selected>Jan 15, 2026 - 14:30 (Build #1247)</option>
+                            <option>Jan 14, 2026 - 14:25 (Build #1246)</option>
+                            <option>Jan 13, 2026 - 14:20 (Build #1245)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="comparison-view">
+                    <div class="comparison-column">
+                        <h3>Run A - Jan 14 (Build #1246)</h3>
+                        <div class="metric">
+                            <span class="metric-label">Total Tests</span>
+                            <span class="metric-value info">1,247</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Passed</span>
+                            <span class="metric-value success">1,162 (93.2%)</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Failed</span>
+                            <span class="metric-value error">69 (5.5%)</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Skipped</span>
+                            <span class="metric-value warning">16 (1.3%)</span>
+                        </div>
+                    </div>
+
+                    <div class="comparison-column">
+                        <h3>Run B - Jan 15 (Build #1247)</h3>
+                        <div class="metric">
+                            <span class="metric-label">Total Tests</span>
+                            <span class="metric-value info">1,247</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Passed</span>
+                            <span class="metric-value success">1,189 (95.3%)</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Failed</span>
+                            <span class="metric-value error">42 (3.4%)</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Skipped</span>
+                            <span class="metric-value warning">16 (1.3%)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Test Status Changes</h2>
+                <div class="test-list">
+                    <div class="test-item">
+                        <div class="test-status pass"></div>
+                        <div class="test-name">UserTest.testProfileUpdate</div>
+                        <div class="test-badge fixed">FIXED</div>
+                        <div style="margin-left: auto; font-size: 0.85rem; color: #666;">Failed → Passed</div>
+                    </div>
+                    <div class="test-item">
+                        <div class="test-status pass"></div>
+                        <div class="test-name">ApiTest.testRateLimiting</div>
+                        <div class="test-badge fixed">FIXED</div>
+                        <div style="margin-left: auto; font-size: 0.85rem; color: #666;">Failed → Passed</div>
+                    </div>
+                    <div class="test-item">
+                        <div class="test-status fail"></div>
+                        <div class="test-name">AuthenticationTest.testLoginWithValidCredentials</div>
+                        <div class="test-badge new">NEW FAILURE</div>
+                        <div style="margin-left: auto; font-size: 0.85rem; color: #666;">Passed → Failed</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- All Tests Tab -->
+        <div id="testsTab" class="tab-content" style="display: none;">
+            <div class="card">
+                <h2>All Test Cases (1,247 tests)</h2>
+                <div class="test-list">
+                    <div class="test-item">
+                        <div class="test-status pass"></div>
+                        <div class="test-name">AuthenticationTest.testLoginWithValidCredentials</div>
+                        <div class="test-time">1.2s</div>
+                        <div class="badge-group">
+                            <div class="info-badge">Team Alpha</div>
+                            <div class="info-badge">Authentication</div>
+                        </div>
+                    </div>
+                    <div class="test-item">
+                        <div class="test-status pass"></div>
+                        <div class="test-name">AuthenticationTest.testLogout</div>
+                        <div class="test-time">0.8s</div>
+                        <div class="badge-group">
+                            <div class="info-badge">Team Alpha</div>
+                            <div class="info-badge">Authentication</div>
+                        </div>
+                    </div>
+                    <div class="test-item">
+                        <div class="test-status fail"></div>
+                        <div class="test-name">PaymentTest.testCheckoutFlow</div>
+                        <div class="test-time">3.4s</div>
+                        <div class="badge-group">
+                            <div class="info-badge">Team Beta</div>
+                            <div class="info-badge">Payment</div>
+                        </div>
+                    </div>
+                    <div class="test-item">
+                        <div class="test-status pass"></div>
+                        <div class="test-name">PaymentTest.testRefund</div>
+                        <div class="test-time">2.1s</div>
+                        <div class="badge-group">
+                            <div class="info-badge">Team Beta</div>
+                            <div class="info-badge">Payment</div>
+                        </div>
+                    </div>
+                    <div class="test-item">
+                        <div class="test-status skip"></div>
+                        <div class="test-name">DatabaseTest.testConnectionPool</div>
+                        <div class="test-time">0.1s</div>
+                        <div class="badge-group">
+                            <div class="info-badge">Team Gamma</div>
+                            <div class="info-badge">SKIPPED</div>
+                        </div>
+                    </div>
+                    <div class="test-item">
+                        <div class="test-status pass"></div>
+                        <div class="test-name">ReportingTest.testGenerateCSV</div>
+                        <div class="test-time">1.5s</div>
+                        <div class="badge-group">
+                            <div class="info-badge">Team Gamma</div>
+                            <div class="info-badge">Reporting</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Save Filter Modal -->
+    <div id="saveFilterModal" class="modal">
+        <div class="modal-content">
+            <h2>Save Filter Configuration</h2>
+            <div class="form-group">
+                <label>Configuration Name:</label>
+                <input type="text" placeholder="e.g., Team Alpha - Windows Machines">
+            </div>
+            <div class="form-group">
+                <label>Current Filters:</label>
+                <div style="background: #f8f9fa; padding: 1rem; border-radius: 4px;">
+                    <div>Team: <strong>Team Alpha</strong></div>
+                    <div>Feature: <strong>All Features</strong></div>
+                    <div>Machine: <strong>All Machines</strong></div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                <button class="success">Save Configuration</button>
+                <button class="secondary" onclick="closeSaveFilterModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load Filter Modal -->
+    <div id="loadFilterModal" class="modal">
+        <div class="modal-content">
+            <h2>Load Filter Configuration</h2>
+            <div class="test-list">
+                <div class="test-item" onclick="loadFilter('config1')">
+                    <div style="flex: 1;">
+                        <div style="font-weight: 600;">Team Alpha - Windows Machines</div>
+                        <div style="font-size: 0.85rem; color: #666;">Saved: Jan 10, 2026</div>
+                    </div>
+                </div>
+                <div class="test-item" onclick="loadFilter('config2')">
+                    <div style="flex: 1;">
+                        <div style="font-weight: 600;">Payment Feature - All Teams</div>
+                        <div style="font-size: 0.85rem; color: #666;">Saved: Jan 8, 2026</div>
+                    </div>
+                </div>
+                <div class="test-item" onclick="loadFilter('config3')">
+                    <div style="flex: 1;">
+                        <div style="font-weight: 600;">Last Week Failures</div>
+                        <div style="font-size: 0.85rem; color: #666;">Saved: Jan 5, 2026</div>
+                    </div>
+                </div>
+            </div>
+            <div style="margin-top: 1rem;">
+                <button class="secondary" onclick="closeLoadFilterModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard Config Modal -->
+    <div id="dashboardConfigModal" class="modal">
+        <div class="modal-content">
+            <h2>Configure Dashboard</h2>
+            <div class="form-group">
+                <label>Dashboard Name:</label>
+                <input type="text" placeholder="e.g., My Custom Dashboard">
+            </div>
+            <div class="form-group">
+                <label>Select Machines (50 available):</label>
+                <div style="margin-bottom: 0.5rem;">
+                    <input type="text" placeholder="Search machines..." style="width: 100%;">
+                </div>
+                <div class="machine-selector">
+                    <label class="machine-checkbox"><input type="checkbox" checked> Windows-01</label>
+                    <label class="machine-checkbox"><input type="checkbox" checked> Windows-02</label>
+                    <label class="machine-checkbox"><input type="checkbox"> Windows-03</label>
+                    <label class="machine-checkbox"><input type="checkbox"> Linux-01</label>
+                    <label class="machine-checkbox"><input type="checkbox" checked> Linux-02</label>
+                    <label class="machine-checkbox"><input type="checkbox"> macOS-01</label>
+                    <label class="machine-checkbox"><input type="checkbox"> macOS-02</label>
+                    <label class="machine-checkbox"><input type="checkbox"> Windows-04</label>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Display Widgets:</label>
+                <label class="machine-checkbox"><input type="checkbox" checked> Test Summary</label>
+                <label class="machine-checkbox"><input type="checkbox" checked> Trend Chart</label>
+                <label class="machine-checkbox"><input type="checkbox" checked> Recent Failures</label>
+                <label class="machine-checkbox"><input type="checkbox"> Team Breakdown</label>
+                <label class="machine-checkbox"><input type="checkbox"> Machine Breakdown</label>
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                <button class="success">Save Dashboard</button>
+                <button class="secondary" onclick="closeDashboardConfig()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Tab switching
+        function showTab(tabName) {
+            const tabs = document.querySelectorAll('.tab');
+            const tabContents = document.querySelectorAll('.tab-content');
+            
+            tabs.forEach(tab => tab.classList.remove('active'));
+            tabContents.forEach(content => content.style.display = 'none');
+            
+            event.target.classList.add('active');
+            document.getElementById(tabName + 'Tab').style.display = 'block';
+        }
+
+        // Filter management
+        function updateActiveFilters() {
+            const team = document.getElementById('teamFilter').value;
+            const feature = document.getElementById('featureFilter').value;
+            const machine = document.getElementById('machineFilter').value;
+            
+            const filtersDiv = document.getElementById('activeFilters');
+            let html = '';
+            
+            if (team || feature || machine) {
+                html += '<div style="margin-bottom: 0.5rem; font-weight: 600; font-size: 0.9rem;">Active Filters:</div>';
+            }
+            
+            if (team) {
+                html += `<span class="filter-chip">Team: ${team} <span class="filter-chip-close" onclick="clearFilter('teamFilter')">×</span></span>`;
+            }
+            if (feature) {
+                html += `<span class="filter-chip">Feature: ${feature} <span class="filter-chip-close" onclick="clearFilter('featureFilter')">×</span></span>`;
+            }
+            if (machine) {
+                html += `<span class="filter-chip">Machine: ${machine} <span class="filter-chip-close" onclick="clearFilter('machineFilter')">×</span></span>`;
+            }
+            
+            filtersDiv.innerHTML = html;
+        }
+
+        function clearFilter(filterId) {
+            document.getElementById(filterId).value = '';
+            updateActiveFilters();
+        }
+
+        // Modal management
+        function showSaveFilterModal() {
+            document.getElementById('saveFilterModal').classList.add('active');
+        }
+
+        function closeSaveFilterModal() {
+            document.getElementById('saveFilterModal').classList.remove('active');
+        }
+
+        function showLoadFilterModal() {
+            document.getElementById('loadFilterModal').classList.add('active');
+        }
+
+        function closeLoadFilterModal() {
+            document.getElementById('loadFilterModal').classList.remove('active');
+        }
+
+        function showDashboardConfig() {
+            document.getElementById('dashboardConfigModal').classList.add('active');
+        }
+
+        function closeDashboardConfig() {
+            document.getElementById('dashboardConfigModal').classList.remove('active');
+        }
+
+        function loadFilter(configId) {
+            alert('Loaded filter configuration: ' + configId);
+            closeLoadFilterModal();
+            updateActiveFilters();
+        }
+
+        // Event listeners
+        document.getElementById('teamFilter').addEventListener('change', updateActiveFilters);
+        document.getElementById('featureFilter').addEventListener('change', updateActiveFilters);
+        document.getElementById('machineFilter').addEventListener('change', updateActiveFilters);
+
+        // Close modals when clicking outside
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    modal.classList.remove('active');
+                }
+            });
+        });
+
+        // Search functionality
+        document.getElementById('searchBox').addEventListener('input', function(e) {
+            console.log('Searching for:', e.target.value);
+            // In a real implementation, this would filter the test list
+        });
+    </script>
+</body>
+</html>
