@@ -53,8 +53,10 @@ public class AssetsController : ControllerBase
                 // CRITICAL: Validate reportPath is under the allowed base directory
                 var allowedBaseDir = Path.GetFullPath(_options.FileSharePath);
                 var resolvedReportPath = Path.GetFullPath(Path.Combine(allowedBaseDir, reportDirectory));
+                var allowedBaseDirWithSeparator = allowedBaseDir.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
 
-                if (!resolvedReportPath.StartsWith(allowedBaseDir, StringComparison.OrdinalIgnoreCase))
+                if (!resolvedReportPath.StartsWith(allowedBaseDirWithSeparator, StringComparison.OrdinalIgnoreCase) &&
+                    !resolvedReportPath.Equals(allowedBaseDir, StringComparison.OrdinalIgnoreCase))
                 {
                     _logger.LogWarning("Report path outside allowed base directory: {ReportPath}", reportPath);
                     return BadRequest(new { error = "Invalid report path" });

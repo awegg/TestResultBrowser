@@ -27,6 +27,7 @@ public class SmokeTests : IAsyncLifetime
         if (_browser != null) await _browser.CloseAsync();
     }
 
+    [Trait("Category", "E2E")]
     [Fact]
     public async Task AppStarts_HomePageLoads()
     {
@@ -39,6 +40,7 @@ public class SmokeTests : IAsyncLifetime
         heading.ShouldNotBeNull("Home page should have h1 heading");
     }
 
+    [Trait("Category", "E2E")]
     [Fact]
     public async Task MorningTriage_ApplyFilter()
     {
@@ -55,6 +57,7 @@ public class SmokeTests : IAsyncLifetime
         statsCards.Count.ShouldBeGreaterThan(0, "Morning Triage page should display stats cards");
     }
 
+    [Trait("Category", "E2E")]
     [Fact]
     public async Task ConfigurationHistory_BuildCountChange()
     {
@@ -80,6 +83,7 @@ public class SmokeTests : IAsyncLifetime
         historyCards.Count.ShouldBeGreaterThan(0, "History grid should display cards");
     }
 
+    [Trait("Category", "E2E")]
     [Fact]
     public async Task SettingsWorkflow_ChangeSaveAndVerifyPersistence()
     {
@@ -137,6 +141,7 @@ public class SmokeTests : IAsyncLifetime
         }
     }
 
+    [Trait("Category", "E2E")]
     [Fact]
     public async Task TestReportViewing_ReportAndAssetsLoad()
     {

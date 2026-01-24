@@ -27,6 +27,7 @@ public class ConfigurationHistoryTests : IAsyncLifetime
         if (_browser != null) await _browser.CloseAsync();
     }
 
+    [Trait("Category", "E2E")]
     [Fact]
     public async Task ConfigurationHistory_PageLoadsSuccessfully()
     {
@@ -52,6 +53,7 @@ public class ConfigurationHistoryTests : IAsyncLifetime
         loadButton.ShouldNotBeNull("Load button should exist");
     }
 
+    [Trait("Category", "E2E")]
     [Fact]
     public async Task ConfigurationHistory_DisplaysTestResults()
     {
@@ -69,6 +71,7 @@ public class ConfigurationHistoryTests : IAsyncLifetime
         tableRows.Count.ShouldBeGreaterThan(0, "Should have test result rows");
     }
 
+    [Trait("Category", "E2E")]
     [Fact]
     public async Task ConfigurationHistory_ConfigurationButtonOpensDialog()
     {
@@ -92,6 +95,7 @@ public class ConfigurationHistoryTests : IAsyncLifetime
         modalBackdrop.ShouldNotBeNull("Modal backdrop should be present");
     }
 
+    [Trait("Category", "E2E")]
     [Fact]
     public async Task ConfigurationHistory_CompleteWorkflow_SelectConfigurationAndFeatures()
     {

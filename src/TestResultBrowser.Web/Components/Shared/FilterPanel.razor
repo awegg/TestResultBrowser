@@ -165,10 +165,10 @@
             .ToList();
         
         // Default to all selected EXCEPT builds - default to latest build only
-        SelectedDomains = AvailableDomains;
-        SelectedFeatures = AvailableFeatures;
-        SelectedVersions = AvailableVersions;
-        SelectedConfigurations = AvailableConfigurations;
+        SelectedDomains = AvailableDomains.ToHashSet();
+        SelectedFeatures = AvailableFeatures.ToHashSet();
+        SelectedVersions = AvailableVersions.ToHashSet();
+        SelectedConfigurations = AvailableConfigurations.ToHashSet();
         // Default to only the most recent build to avoid confusion between current and historical results
         SelectedBuilds = AvailableBuilds.Take(1).ToHashSet();
     }
@@ -190,10 +190,10 @@
     
     private async Task ClearFilters()
     {
-        SelectedDomains = AvailableDomains;
-        SelectedFeatures = AvailableFeatures;
-        SelectedVersions = AvailableVersions;
-        SelectedConfigurations = AvailableConfigurations;
+        SelectedDomains = AvailableDomains.ToHashSet();
+        SelectedFeatures = AvailableFeatures.ToHashSet();
+        SelectedVersions = AvailableVersions.ToHashSet();
+        SelectedConfigurations = AvailableConfigurations.ToHashSet();
         // Restore default: only latest build selected (avoid confusion between current and historical)
         SelectedBuilds = AvailableBuilds.Take(1).ToHashSet();
         SelectedStatuses = new HashSet<string> { "Pass", "Fail", "Skip" };

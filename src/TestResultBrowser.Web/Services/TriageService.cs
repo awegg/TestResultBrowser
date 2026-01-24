@@ -55,7 +55,7 @@ public class TriageService : ITriageService
             // Apply domain filter if specified
             if (selectedDomains != null && selectedDomains.Any())
             {
-                var domainSet = selectedDomains.ToHashSet();
+                var domainSet = new HashSet<string>(selectedDomains);
                 todayTests = todayTests.Where(t => domainSet.Contains(t.DomainId)).ToList();
                 yesterdayTests = yesterdayTests.Where(t => domainSet.Contains(t.DomainId)).ToList();
             }

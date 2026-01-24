@@ -41,9 +41,11 @@ public class TestReportController : ControllerBase
             // Resolve the path relative to FileSharePath and validate it exists and is safe
             var allowedBaseDir = Path.GetFullPath(_options.FileSharePath);
             var resolvedPath = Path.GetFullPath(Path.Combine(allowedBaseDir, path));
+            var allowedBaseDirWithSeparator = allowedBaseDir.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
 
             // CRITICAL: Ensure resolved path is under the allowed base directory
-            if (!resolvedPath.StartsWith(allowedBaseDir, StringComparison.OrdinalIgnoreCase))
+            if (!resolvedPath.StartsWith(allowedBaseDirWithSeparator, StringComparison.OrdinalIgnoreCase) &&
+                !resolvedPath.Equals(allowedBaseDir, StringComparison.OrdinalIgnoreCase))
             {
                 _logger.LogWarning("Path outside allowed base directory: {Path}", path);
                 return BadRequest(new { error = "Invalid file path" });

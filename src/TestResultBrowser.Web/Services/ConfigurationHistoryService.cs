@@ -183,7 +183,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
         var featureNodes = new List<HierarchyNode>();
         foreach (var featureGroup in features)
         {
-            var featureName = featureGroup.Key;
+            var featureName = string.IsNullOrWhiteSpace(featureGroup.Key) ? "Unknown" : featureGroup.Key;
             var featureNode = new HierarchyNode
             {
                 Name = featureName,
@@ -500,6 +500,9 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
     {
         // suiteId format: "Domain_SuiteName"
         // Example: "CORE_UserService" → "UserService"
+        if (string.IsNullOrWhiteSpace(suiteId))
+            return "Unknown";
+        
         var parts = suiteId.Split('_');
         return parts.Length > 1 ? parts[^1] : suiteId;
     }
