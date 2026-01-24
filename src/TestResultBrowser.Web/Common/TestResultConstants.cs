@@ -12,6 +12,10 @@ public static class TestResultConstants
     public static class Paths
     {
         public const string ReleaseFolderPrefix = "Release-";
+        /// <summary>
+        /// Pattern matches all XML files. This is intentionally broad because the search
+        /// directory (sample_data/Release-{number}) only contains JUnit result files.
+        /// </summary>
         public const string JUnitFilePattern = "*.xml";
         public const string TestResultsPattern = "tests-*.xml";
     }

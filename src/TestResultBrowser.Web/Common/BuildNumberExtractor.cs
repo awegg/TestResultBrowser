@@ -18,34 +18,12 @@ public static class BuildNumberExtractor
 
         // Try to extract number after last hyphen or underscore
         var parts = buildId.Split('-', '_');
-        if (parts.Length > 0)
+        var lastPart = parts[^1];
+        if (int.TryParse(lastPart, out var buildNumber))
         {
-            var lastPart = parts[^1];
-            if (int.TryParse(lastPart, out var buildNumber))
-            {
-                return buildNumber;
-            }
+            return buildNumber;
         }
 
         return 0;
-    }
-
-    /// <summary>
-    /// Extracts build time from build ID string
-    /// </summary>
-    /// <param name="buildId">Build ID containing timestamp</param>
-    /// <returns>DateTime or DateTime.MinValue if extraction fails</returns>
-    public static DateTime GetBuildTime(string buildId)
-    {
-        // For now, use build number as proxy for time
-        // In real implementation, could parse timestamp from directory
-        var buildNumber = ExtractBuildNumber(buildId);
-        if (buildNumber > 0)
-        {
-            // Use a base date + build number days as approximation
-            return new DateTime(2024, 1, 1).AddDays(buildNumber);
-        }
-        
-        return DateTime.MinValue;
     }
 }

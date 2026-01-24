@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using TestResultBrowser.Web.Common;
 using TestResultBrowser.Web.Models;
 
 namespace TestResultBrowser.Web.Services;
@@ -48,13 +49,13 @@ public class JUnitParserService : IJUnitParserService
         // Process each testsuite
         foreach (var testSuite in testSuites)
         {
-            await ProcessTestSuite(testSuite, parsedPath, results, xmlFilePath);
+            ProcessTestSuite(testSuite, parsedPath, results, xmlFilePath);
         }
 
         return results;
     }
 
-    private async Task ProcessTestSuite(XElement testSuite, ParsedFilePath parsedPath, List<TestResult> results, string xmlFilePath)
+    private void ProcessTestSuite(XElement testSuite, ParsedFilePath parsedPath, List<TestResult> results, string xmlFilePath)
     {
         var testSuiteName = testSuite.Attribute("name")?.Value ?? Path.GetFileNameWithoutExtension(xmlFilePath);
         var timestamp = testSuite.Attribute("timestamp")?.Value;
@@ -87,7 +88,7 @@ public class JUnitParserService : IJUnitParserService
                 _logger.LogWarning("Test case missing 'name' attribute in file {File}. Using '<unknown>'", xmlFilePath);
             }
             
-            if (!double.TryParse(timeStr, out var executionTime))
+            if (!double.TryParse(timeStr, System.Globalization.CultureInfo.InvariantCulture, out var executionTime))
             {
                 executionTime = 0;
             }
@@ -134,8 +135,8 @@ public class JUnitParserService : IJUnitParserService
                     
                     if (name == "Polarion" && !string.IsNullOrEmpty(value))
                     {
-                        // Extract PEXC-xxxxx pattern
-                        var matches = System.Text.RegularExpressions.Regex.Matches(value, @"PEXC-\d+");
+                        // Extract PEXC-xxxxx pattern using constant from TestResultConstants
+                        var matches = System.Text.RegularExpressions.Regex.Matches(value, TestResultConstants.RegexPatterns.PolarionTicketId);
                         foreach (System.Text.RegularExpressions.Match match in matches)
                         {
                             polarionTickets.Add(match.Value);
@@ -144,15 +145,9 @@ public class JUnitParserService : IJUnitParserService
                 }
             }
 
-            // Map version
+            // Map version (always returns non-null string per IVersionMapperService contract)
             var version = _versionMapper.MapVersion(parsedPath.VersionRaw);
-
-            // Build IDs with validation for required fields
             var versionStr = version ?? "<unknown>";
-            if (string.IsNullOrEmpty(version))
-            {
-                _logger.LogWarning("Failed to map version from {VersionRaw} in file {File}. Using '<unknown>'", parsedPath.VersionRaw, xmlFilePath);
-            }
 
             var configurationId = $"{versionStr}_{parsedPath.TestType}_{parsedPath.NamedConfig}_{parsedPath.DomainId}";
             var testFullName = $"{className}.{methodName}";
@@ -221,7 +216,5 @@ public class JUnitParserService : IJUnitParserService
 
             results.Add(testResult);
         }
-
-        await Task.CompletedTask;
     }
 }

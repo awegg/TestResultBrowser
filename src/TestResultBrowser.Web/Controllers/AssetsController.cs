@@ -26,14 +26,25 @@ public class AssetsController : ControllerBase
     /// Serves assets (images, CSS, JS) from the test report directory
     /// </summary>
     [HttpGet("{**assetPath}")]
-    public IActionResult GetAsset(string assetPath)
+    public IActionResult GetAsset(string assetPath, [FromQuery] string? reportPath)
     {
         try
         {
-            if (!HttpContext.Items.TryGetValue(ReportDirectoryKey, out var reportDirObj) || reportDirObj is not string reportDirectory)
+            // Get report directory from query parameter or request context (fallback)
+            string? reportDirectory = reportPath;
+            
+            if (string.IsNullOrEmpty(reportDirectory))
             {
-                _logger.LogWarning("No report directory set for asset: {AssetPath}", assetPath);
-                return NotFound("Report directory not set");
+                if (!HttpContext.Items.TryGetValue(ReportDirectoryKey, out var reportDirObj) || reportDirObj is not string contextDirectory)
+                {
+                    _logger.LogWarning("No report directory provided for asset: {AssetPath}", assetPath);
+                    return NotFound("Report directory not set");
+                }
+                reportDirectory = contextDirectory;
+            }
+            else
+            {
+                reportDirectory = Uri.UnescapeDataString(reportDirectory);
             }
 
             // Validate assetPath to prevent path traversal attacks

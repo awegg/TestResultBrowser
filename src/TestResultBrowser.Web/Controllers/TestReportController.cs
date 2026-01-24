@@ -53,16 +53,30 @@ public class TestReportController : ControllerBase
                 return NotFound("Report file not found");
             }
 
-            // Store the report directory in request context for asset resolution
-            var assetsLogger = HttpContext.RequestServices.GetRequiredService<ILogger<AssetsController>>();
-            var assetsController = new AssetsController(assetsLogger);
-            assetsController.SetReportDirectory(resolvedPath);
-
             // Read the HTML file
             var htmlContent = System.IO.File.ReadAllText(resolvedReportPath);
 
+            // Rewrite asset URLs to include reportPath parameter for asset resolution
+            // This allows the /api/assets endpoint to access the correct directory
+            var reportPathParam = Uri.EscapeDataString(resolvedPath);
+            var rewrittenContent = System.Text.RegularExpressions.Regex.Replace(
+                htmlContent,
+                @"(src|href)=""([^""]+)""",
+                match =>
+                {
+                    var attrName = match.Groups[1].Value;
+                    var assetUrl = match.Groups[2].Value;
+                    
+                    // Only rewrite relative paths (not absolute URLs)
+                    if (!assetUrl.StartsWith("http") && !assetUrl.StartsWith("/"))
+                    {
+                        return $"{attrName}=\"/api/assets/{assetUrl}?reportPath={reportPathParam}\"";
+                    }
+                    return match.Value;
+                });
+
             // Return as HTML
-            return Content(htmlContent, "text/html");
+            return Content(rewrittenContent, "text/html");
         }
         catch (Exception ex)
         {

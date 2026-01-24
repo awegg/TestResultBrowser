@@ -99,4 +99,10 @@ public interface ITestDataService
     /// Gets all unique named configurations
     /// </summary>
     IEnumerable<string> GetAllNamedConfigs();
+
+    /// <summary>
+    /// Gets the timestamp of the earliest test result for a given build
+    /// More efficient than fetching all results when only timestamp is needed
+    /// </summary>
+    DateTime? GetBuildTimestamp(string buildId);
 }

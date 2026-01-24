@@ -263,4 +263,20 @@ public class TestDataService : ITestDataService
             _ => new HashSet<string> { testResult.Id },
             (_, set) => { set.Add(testResult.Id); return set; });
     }
+
+    /// <inheritdoc/>
+    public DateTime? GetBuildTimestamp(string buildId)
+    {
+        // Return the timestamp of the first (earliest) test result for this build
+        // This avoids fetching all results when we only need the build timestamp
+        if (_byBuild.TryGetValue(buildId, out var resultIds))
+        {
+            var timestamp = resultIds
+                .Select(id => _testResults.TryGetValue(id, out var result) ? result.Timestamp : (DateTime?)null)
+                .Where(t => t.HasValue)
+                .FirstOrDefault();
+            return timestamp;
+        }
+        return null;
+    }
 }

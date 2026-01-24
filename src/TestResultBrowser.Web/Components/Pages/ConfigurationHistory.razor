@@ -165,106 +165,99 @@
         </MudItem>
     </MudGrid>
 </MudContainer>
-@if (showConfigurationDialog)
-{
-    <div class="modal-overlay" @onclick="@(() => { showConfigurationDialog = false; })" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1300; display: flex; align-items: center; justify-content: center;">
-        <div @onclick:stopPropagation="true" style="background: white; border-radius: 4px; max-width: 600px; width: 90%; max-height: 600px; display: flex; flex-direction: column;">
-            <div style="padding: 16px; border-bottom: 1px solid #e0e0e0;">
-                <MudText Typo="Typo.h6">Select Configuration (@availableConfigurations.Count available)</MudText>
-            </div>
-            <div style="padding: 16px; flex: 1; overflow: auto;">
-                <MudTextField @bind-Value="searchText" 
-                             Placeholder="Search configurations..." 
-                             Adornment="Adornment.Start"
-                             AdornmentIcon="@Icons.Material.Filled.Search"
-                             Variant="Variant.Outlined"
-                             Immediate="true"
-                             Dense="true"
-                             FullWidth="true"
-                             AutoFocus="true"
-                             Class="mb-3" />
-                
-                <MudList T="string" Clickable="true" Dense="true" Style="max-height: 400px; overflow-y: auto;">
-                    @foreach (var config in GetFilteredConfigurations())
-                    {
-                        <MudListItem T="string" OnClick="@(() => SelectConfigurationFromDialog(config))"
-                                    Style="@(config == selectedConfiguration ? "background-color: #e3f2fd;" : "")">
-                            <div class="d-flex align-center justify-space-between" Style="width: 100%;">
-                                <MudText>@config</MudText>
-                                @if (config == selectedConfiguration)
-                                {
-                                    <MudIcon Icon="@Icons.Material.Filled.Check" Color="Color.Primary" Size="Size.Small" />
-                                }
-                            </div>
-                        </MudListItem>
-                    }
-                </MudList>
-            </div>
-            <div style="padding: 16px; border-top: 1px solid #e0e0e0; display: flex; justify-content: flex-end;">
-                <MudButton Variant="Variant.Text" OnClick="@(() => { showConfigurationDialog = false; })">Cancel</MudButton>
-            </div>
-        </div>
-    </div>
-}
-@* Test Details Popup *@
-@if (showDetailsDialog)
-{
-    <div class="modal-overlay" @onclick="@(() => { ClearSelectedTest(); })" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1400; display: flex; align-items: center; justify-content: center;">
-        <div @onclick:stopPropagation="true" style="background: white; border-radius: 4px; max-width: 900px; width: 95%; max-height: 80vh; display: flex; flex-direction: column;">
-            <TestDetailsSidePanel SelectedNode="selectedTestNode" OnClose="@(() => ClearSelectedTest())" />
-        </div>
-    </div>
-}
+@* Configuration Dialog using MudDialog *@
+<MudDialog @bind-IsVisible="showConfigurationDialog" MaxWidth="MaxWidth.Small" FullWidth="true">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Select Configuration (@availableConfigurations.Count available)</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="searchText" 
+                     Placeholder="Search configurations..." 
+                     Adornment="Adornment.Start"
+                     AdornmentIcon="@Icons.Material.Filled.Search"
+                     Variant="Variant.Outlined"
+                     Immediate="true"
+                     Dense="true"
+                     FullWidth="true"
+                     AutoFocus="true"
+                     Class="mb-3" />
+        
+        <MudList T="string" Clickable="true" Dense="true" Style="max-height: 400px; overflow-y: auto;">
+            @foreach (var config in GetFilteredConfigurations())
+            {
+                <MudListItem T="string" OnClick="@(() => SelectConfigurationFromDialog(config))"
+                            Style="@(config == selectedConfiguration ? "background-color: #e3f2fd;" : "")">
+                    <div class="d-flex align-center justify-space-between" Style="width: 100%;">
+                        <MudText>@config</MudText>
+                        @if (config == selectedConfiguration)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Check" Color="Color.Primary" Size="Size.Small" />
+                        }
+                    </div>
+                </MudListItem>
+            }
+        </MudList>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="@(() => { showConfigurationDialog = false; })">Cancel</MudButton>
+    </DialogActions>
+</MudDialog>
 
-@* Feature Selection Dialog *@
-@if (showFeatureDialog)
-{
-    <div class="modal-overlay" @onclick="@(() => { showFeatureDialog = false; })" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1450; display: flex; align-items: center; justify-content: center;">
-        <div @onclick:stopPropagation="true" style="background: white; border-radius: 4px; max-width: 600px; width: 90%; max-height: 600px; display: flex; flex-direction: column;">
-            <div style="padding: 16px; border-bottom: 1px solid #e0e0e0;">
-                <MudText Typo="Typo.h6">Select Features</MudText>
-            </div>
-            <div style="padding: 16px; flex: 1; overflow: auto;">
-                @if (featureGroups.Count == 0)
-                {
-                    <MudText>No features available</MudText>
-                }
-                else
-                {
-                    @foreach (var group in featureGroups)
-                    {
-                        var groupKey = group.Key;
-                        var groupFeatures = group.Value;
-                        var countInGroup = groupFeatures.Count(f => selectedFeatureNames.Contains(f));
-                        <div style="margin-bottom: 16px;">
-                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                                <MudCheckBox T="bool?" TriState="true" 
-                                             Checked="@(countInGroup == groupFeatures.Count ? true : countInGroup > 0 ? (bool?)null : false)"
-                                             CheckedChanged="@((bool? value) => ToggleGroup(groupKey, value))" />
-                                <MudText Typo="Typo.subtitle2">@groupKey</MudText>
-                            </div>
-                            <div style="padding-left: 32px;">
-                                @foreach (var feature in groupFeatures)
-                                {
-                                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-                                        <MudCheckBox T="bool" Checked="@selectedFeatureNames.Contains(feature)"
+@* Test Details Dialog using MudDialog *@
+<MudDialog @bind-IsVisible="showDetailsDialog" MaxWidth="MaxWidth.Large" FullWidth="true">
+    <DialogContent>
+        @if (selectedTestNode != null)
+        {
+            <TestDetailsSidePanel SelectedNode="selectedTestNode" OnClose="@(() => ClearSelectedTest())" />
+        }
+    </DialogContent>
+</MudDialog>
+
+@* Feature Selection Dialog using MudDialog *@
+<MudDialog @bind-IsVisible="showFeatureDialog" MaxWidth="MaxWidth.Small" FullWidth="true">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Select Features</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (featureGroups.Count == 0)
+        {
+            <MudText>No features available</MudText>
+        }
+        else
+        {
+            @foreach (var group in featureGroups)
+            {
+                var groupKey = group.Key;
+                var groupFeatures = group.Value;
+                var countInGroup = groupFeatures.Count(f => selectedFeatureNames.Contains(f));
+                <div style="margin-bottom: 16px;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                        <MudCheckBox T="bool?" TriState="true" 
+                                     Checked="@(countInGroup == groupFeatures.Count ? true : countInGroup > 0 ? (bool?)null : false)"
+                                     CheckedChanged="@((bool? value) => ToggleGroup(groupKey, value))" />
+                        <MudText Typo="Typo.subtitle2">@groupKey</MudText>
+                    </div>
+                    <div style="padding-left: 32px;">
+                        @foreach (var feature in groupFeatures)
+                        {
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                                <MudCheckBox T="bool" Checked="@selectedFeatureNames.Contains(feature)"
                                                      CheckedChanged="@((bool value) => ToggleFeature(feature, value))" />
-                                        <MudText>@feature</MudText>
-                                    </div>
-                                }
+                                <MudText>@feature</MudText>
                             </div>
-                        </div>
-                    }
-                }
-            </div>
-            <div style="padding: 16px; border-top: 1px solid #e0e0e0; display: flex; justify-content: flex-end; gap: 8px;">
-                <MudButton Variant="Variant.Outlined" Color="Color.Info" OnClick="@ClearAllFeatures">Clear All</MudButton>
-                <MudButton Variant="Variant.Text" OnClick="@(() => { showFeatureDialog = false; })">Cancel</MudButton>
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@ApplyFeatureSelection">Apply</MudButton>
-            </div>
-        </div>
-    </div>
-}
+                        }
+                    </div>
+                </div>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Outlined" Color="Color.Info" OnClick="@ClearAllFeatures">Clear All</MudButton>
+        <MudButton Variant="Variant.Text" OnClick="@(() => { showFeatureDialog = false; })">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@ApplyFeatureSelection">Apply</MudButton>
+    </DialogActions>
+</MudDialog>
+
 
 @code {
     [SupplyParameterFromQuery(Name = "config")]
@@ -291,15 +284,26 @@
     {
         await LoadAvailableConfigurations();
         
+        // Load from URL parameters if present (has priority)
+        if (!string.IsNullOrEmpty(ConfigFromUrl) && availableConfigurations.Contains(ConfigFromUrl))
+        {
+            selectedConfiguration = ConfigFromUrl;
+        }
+        else if (availableConfigurations.Count > 0 && string.IsNullOrEmpty(selectedConfiguration))
+        {
+            // Only set default if no URL parameter was provided
+            selectedConfiguration = availableConfigurations[0];
+        }
+        
         // Load from URL parameters if present
         if (BuildsFromUrl.HasValue && BuildsFromUrl.Value >= 1 && BuildsFromUrl.Value <= 20)
         {
             numberOfBuilds = BuildsFromUrl.Value;
         }
         
-        if (!string.IsNullOrEmpty(ConfigFromUrl) && availableConfigurations.Contains(ConfigFromUrl))
+        // Load data after selection is finalized
+        if (!string.IsNullOrEmpty(selectedConfiguration))
         {
-            selectedConfiguration = ConfigFromUrl;
             await RefreshData();
         }
     }
@@ -322,10 +326,7 @@
         try
         {
             availableConfigurations = await ConfigHistoryService.GetAvailableConfigurationsAsync();
-            if (availableConfigurations.Count > 0)
-            {
-                selectedConfiguration = availableConfigurations[0];
-            }
+            // Don't set default here - let OnInitializedAsync handle it to respect URL params
         }
         catch (Exception ex)
         {
@@ -333,19 +334,7 @@
         }
     }
 
-    private Task<IEnumerable<string>> SearchConfigurations(string value, CancellationToken token)
-    {
-        // If value is empty, return all configurations
-        if (string.IsNullOrEmpty(value))
-            return Task.FromResult<IEnumerable<string>>(availableConfigurations);
-        
-        // Filter configurations based on search text (case-insensitive)
-        var results = availableConfigurations
-            .Where(x => x.Contains(value, StringComparison.OrdinalIgnoreCase))
-            .ToList();
-        
-        return Task.FromResult<IEnumerable<string>>(results);
-    }
+
 
     private IEnumerable<string> GetFilteredConfigurations()
     {
@@ -482,11 +471,12 @@
         if (historyResult?.HierarchyNodes == null || historyResult.HierarchyNodes.Count == 0)
             return;
 
-        void Traverse(HierarchyNode node)
+        void Traverse(HierarchyNode node, string parentGroupName = "")
         {
             if (node.NodeType == HierarchyNodeType.Feature)
             {
-                const string group = "Core";
+                // Use parent domain/feature as group name, or "Other" if no parent
+                string group = !string.IsNullOrEmpty(parentGroupName) ? parentGroupName : "Other";
                 if (!featureGroups.TryGetValue(group, out var list))
                 {
                     list = new List<string>();
@@ -499,7 +489,9 @@
             }
             foreach (var child in node.Children)
             {
-                Traverse(child);
+                // Pass current node name as group for its children if it's a domain/namespace
+                string childGroup = node.NodeType == HierarchyNodeType.Domain ? node.Name : parentGroupName;
+                Traverse(child, childGroup);
             }
         }
 
@@ -584,8 +576,13 @@
                 IsExpanded = node.IsExpanded,
                 ReportDirectoryPath = node.ReportDirectoryPath,
                 TestFullName = node.TestFullName,
-                HistoryCells = node.HistoryCells,
-                LatestStats = node.LatestStats,
+                HistoryCells = new List<HistoryCellData>(node.HistoryCells),
+                LatestStats = new TestNodeStats
+                {
+                    Passed = node.LatestStats.Passed,
+                    Failed = node.LatestStats.Failed,
+                    Skipped = node.LatestStats.Skipped,
+                },
                 Children = new()
             };
 
@@ -617,8 +614,13 @@
             IsExpanded = node.IsExpanded,
             ReportDirectoryPath = node.ReportDirectoryPath,
             TestFullName = node.TestFullName,
-            HistoryCells = node.HistoryCells,
-            LatestStats = node.LatestStats,
+            HistoryCells = new List<HistoryCellData>(node.HistoryCells),
+            LatestStats = new TestNodeStats
+            {
+                Passed = node.LatestStats.Passed,
+                Failed = node.LatestStats.Failed,
+                Skipped = node.LatestStats.Skipped,
+            },
             Children = new()
         };
 
@@ -663,8 +665,13 @@
             IsExpanded = node.IsExpanded,
             ReportDirectoryPath = node.ReportDirectoryPath,
             TestFullName = node.TestFullName,
-            HistoryCells = node.HistoryCells,
-            LatestStats = node.LatestStats,
+            HistoryCells = new List<HistoryCellData>(node.HistoryCells),
+            LatestStats = new TestNodeStats
+            {
+                Passed = node.LatestStats.Passed,
+                Failed = node.LatestStats.Failed,
+                Skipped = node.LatestStats.Skipped,
+            },
             Children = new()
         };
 

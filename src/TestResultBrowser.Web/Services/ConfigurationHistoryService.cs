@@ -42,12 +42,11 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                 return Task.FromResult(result);
             }
 
-            // Take last N builds
-            var selectedBuilds = allBuilds.Take(numberOfBuilds).OrderByDescending(b => BuildNumberExtractor.ExtractBuildNumber(b)).ToList();
+            // Take last N builds (already sorted descending)
+            var selectedBuilds = allBuilds.Take(numberOfBuilds).ToList();
 
-            // Build history columns (newest first for display)
+            // Build history columns (selectedBuilds is already sorted newest first for display)
             result.HistoryColumns = selectedBuilds
-                .OrderByDescending(b => BuildNumberExtractor.ExtractBuildNumber(b))
                 .Select((buildId, index) => new HistoryColumn
                 {
                     BuildId = buildId,
@@ -421,24 +420,6 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
     /// <summary>
     /// Get all test IDs under a node (recursively includes children)
     /// </summary>
-    private HashSet<string> GetAllTestIdsUnderNode(HierarchyNode node)
-    {
-        var testIds = new HashSet<string>();
-
-        if (node.NodeType == HierarchyNodeType.Test)
-        {
-            testIds.Add(node.NodeId);
-        }
-
-        foreach (var child in node.Children)
-        {
-            var childIds = GetAllTestIdsUnderNode(child);
-            testIds.UnionWith(childIds);
-        }
-
-        return testIds;
-    }
-
     /// <summary>
     /// Get all unique test full names under a node (recursively includes children)
     /// This is used for proper deduplication when calculating parent stats
@@ -462,15 +443,12 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
     }
 
     /// <summary>
-    /// Get build timestamp from test data
+    /// Get build timestamp from test data using optimized service method
     /// </summary>
     private DateTime GetBuildTime(string buildId)
     {
-        // Get the actual timestamp from the first test result for this build
-        var testForBuild = _testDataService.GetAllTestResults()
-            .FirstOrDefault(t => t.BuildId == buildId);
-        
-        return testForBuild?.Timestamp ?? DateTime.UtcNow;
+        // Use dedicated method to avoid fetching all results
+        return _testDataService.GetBuildTimestamp(buildId) ?? DateTime.UtcNow;
     }
 
     /// <summary>

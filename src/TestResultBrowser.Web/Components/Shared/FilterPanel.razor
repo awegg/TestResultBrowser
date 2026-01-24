@@ -127,12 +127,12 @@
     private IEnumerable<string> SelectedBuilds { get; set; } = new HashSet<string>();
     private IEnumerable<string> SelectedStatuses { get; set; } = new HashSet<string> { "Pass", "Fail", "Skip" };
     
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        LoadAvailableOptions();
+        await LoadAvailableOptionsAsync();
     }
     
-    private void LoadAvailableOptions()
+    private Task LoadAvailableOptionsAsync()
     {
         var allResults = TestDataService.GetAllTestResults();
         
@@ -170,6 +170,8 @@
         SelectedConfigurations = AvailableConfigurations;
         // Default to only the most recent build to avoid confusion between current and historical results
         SelectedBuilds = AvailableBuilds.Take(1).ToList();
+        
+        return Task.CompletedTask;
     }
     
     private async Task ApplyFilters()
@@ -193,12 +195,13 @@
         SelectedFeatures = AvailableFeatures;
         SelectedVersions = AvailableVersions;
         SelectedConfigurations = AvailableConfigurations;
-        SelectedBuilds = AvailableBuilds;
+        // Restore default: only latest build selected (avoid confusion between current and historical)
+        SelectedBuilds = AvailableBuilds.Take(1).ToHashSet();
         SelectedStatuses = new HashSet<string> { "Pass", "Fail", "Skip" };
-        
+
         await ApplyFilters();
     }
-    
+
     private string GetBuildHelperText()
     {
         if (!SelectedBuilds.Any())

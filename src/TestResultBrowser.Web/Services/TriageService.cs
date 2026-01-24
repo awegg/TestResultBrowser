@@ -224,13 +224,15 @@ public class TriageService : ITriageService
             }
 
             // Build configuration matrix (Version × NamedConfig)
+            // Aggregate all results by (Version, NamedConfig) since multiple ConfigurationIds can map to the same cell
             var versions = new HashSet<string>();
             var namedConfigs = new HashSet<string>();
-            var cells = new Dictionary<string, Dictionary<string, Models.ConfigCell>>();
+            var cellsByVersionAndConfig = new Dictionary<(string Version, string NamedConfig), (int Total, int Passed, int Failed, List<string> ConfigIds)>();
+            var configIdsByVersionAndConfig = new Dictionary<(string Version, string NamedConfig), HashSet<string>>();
 
-            foreach (var group in currentResults.GroupBy(r => r.ConfigurationId))
+            foreach (var config in currentResults.Select(r => r.ConfigurationId).Distinct())
             {
-                var parts = group.Key.Split('_');
+                var parts = config.Split('_');
                 if (parts.Length < 4) continue; // {Version}_{TestType}_{NamedConfig}_{Domain}
                 var version = parts[0];
                 var namedConfig = parts[2];
@@ -238,17 +240,41 @@ public class TriageService : ITriageService
                 versions.Add(version);
                 namedConfigs.Add(namedConfig);
 
-                var total = group.Count(r => r.Status != Models.TestStatus.Skip);
-                var passed = group.Count(r => r.Status == Models.TestStatus.Pass);
-                var failed = group.Count(r => r.Status == Models.TestStatus.Fail);
+                if (!configIdsByVersionAndConfig.ContainsKey((version, namedConfig)))
+                    configIdsByVersionAndConfig[(version, namedConfig)] = new HashSet<string>();
+                configIdsByVersionAndConfig[(version, namedConfig)].Add(config);
+            }
+
+            // Aggregate test results by (Version, NamedConfig)
+            foreach (var kvp in configIdsByVersionAndConfig)
+            {
+                var (version, namedConfig) = kvp.Key;
+                var configIds = kvp.Value;
+                
+                var resultsForCell = currentResults.Where(r => configIds.Contains(r.ConfigurationId)).ToList();
+                var total = resultsForCell.Count(r => r.Status != Models.TestStatus.Skip);
+                var passed = resultsForCell.Count(r => r.Status == Models.TestStatus.Pass);
+                var failed = resultsForCell.Count(r => r.Status == Models.TestStatus.Fail);
+                var passRate = total > 0 ? (double)passed / total * 100.0 : 0.0;
+
+                cellsByVersionAndConfig[(version, namedConfig)] = (total, passed, failed, configIds.ToList());
+            }
+
+            // Build cells dictionary for matrix display
+            var cells = new Dictionary<string, Dictionary<string, Models.ConfigCell>>();
+            foreach (var kvp in cellsByVersionAndConfig)
+            {
+                var (version, namedConfig) = kvp.Key;
+                var (total, passed, failed, configIds) = kvp.Value;
                 var passRate = total > 0 ? (double)passed / total * 100.0 : 0.0;
 
                 if (!cells.ContainsKey(version))
                     cells[version] = new Dictionary<string, Models.ConfigCell>();
 
+                // Use first configuration ID as representative (all in this cell share Version+NamedConfig)
                 cells[version][namedConfig] = new Models.ConfigCell
                 {
-                    ConfigurationId = group.Key,
+                    ConfigurationId = string.Join(", ", configIds.OrderBy(c => c)),
                     TotalTests = total,
                     PassedTests = passed,
                     FailedTests = failed,
@@ -256,11 +282,10 @@ public class TriageService : ITriageService
                 };
             }
 
-            // Identify failing configurations (any failed tests)
-            var failingConfigs = cells
-                .SelectMany(v => v.Value.Values)
-                .Where(c => c.FailedTests > 0)
-                .Select(c => c.ConfigurationId)
+            // Identify failing configurations (any failed tests in the cell)
+            var failingConfigs = cellsByVersionAndConfig
+                .Where(kvp => kvp.Value.Failed > 0)
+                .SelectMany(kvp => kvp.Value.ConfigIds)
                 .Distinct()
                 .OrderBy(c => c)
                 .ToList();

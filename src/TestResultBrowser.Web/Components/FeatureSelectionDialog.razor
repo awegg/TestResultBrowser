@@ -27,7 +27,9 @@
                 var allSelected = features.All(IsFeatureSelected);
                 var anySelected = features.Any(IsFeatureSelected);
                 var groupChanged = CreateGroupChangedCallback(groupName);
-                <MudExpansionPanel IsExpanded="@IsGroupExpanded(groupName)">
+                var expandedChanged = CreateExpandedChangedCallback(groupName);
+                <MudExpansionPanel IsExpanded="@IsGroupExpanded(groupName)"
+                                   IsExpandedChanged="@expandedChanged">
                     <TitleContent>
                         <div class="d-flex align-center" style="gap:8px;">
                             <MudCheckBox T="bool?" TriState="true"
@@ -77,15 +79,21 @@
     private string searchText = string.Empty;
     private HashSet<string> tempSelected = new();
     private Dictionary<string, bool> expanded = new();
+    private bool isInitialized = false;
 
     protected override void OnInitialized()
     {
         SyncSelections();
+        isInitialized = true;
     }
 
     protected override void OnParametersSet()
     {
-        SyncSelections();
+        // Only reset selections on first initialization to avoid losing user changes if parent re-renders
+        if (!isInitialized)
+        {
+            SyncSelections();
+        }
     }
 
     private bool IsGroupExpanded(string group) => expanded.TryGetValue(group, out var v) ? v : false;
@@ -135,6 +143,14 @@
         return EventCallback.Factory.Create<bool?>(this, (bool? value) => OnGroupChanged(groupName, value));
     }
 
+    private EventCallback<bool> CreateExpandedChangedCallback(string groupName)
+    {
+        return EventCallback.Factory.Create<bool>(this, (bool isExpanded) =>
+        {
+            expanded[groupName] = isExpanded;
+        });
+    }
+
     private EventCallback<bool> CreateFeatureChangedCallback(string feature)
     {
         return EventCallback.Factory.Create<bool>(this, (bool value) => OnFeatureChanged(feature, value));
@@ -159,7 +175,8 @@
             .Select(kv => new KeyValuePair<string, List<string>>(kv.Key, kv.Value.OrderBy(v => v).ToList()));
         if (string.IsNullOrEmpty(q)) return groups;
         return groups
+            // Include group if group name matches OR if any feature matches
             .Select(kv => new KeyValuePair<string, List<string>>(kv.Key, kv.Value.Where(v => v.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList()))
-            .Where(kv => kv.Value.Any());
+            .Where(kv => kv.Key.Contains(q, StringComparison.OrdinalIgnoreCase) || kv.Value.Any());
     }
 }
