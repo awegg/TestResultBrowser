@@ -299,128 +299,12 @@
     </div>
 }
 
-@if (showTestDetailsDialog && selectedTestInfo?.TestNode != null)
-{
-    <div class="modal-backdrop fade show" style="display: block; z-index: 9998;"></div>
-    <div class="modal fade show" style="display: block; z-index: 9999;" role="dialog">
-        <div class="modal-dialog modal-lg" style="max-height: 90vh; display: flex; flex-direction: column;">
-            <div class="modal-content" style="display: flex; flex-direction: column; max-height: 90vh;">
-                <div class="modal-header">
-                    <h5 class="modal-title">Test Details</h5>
-                    <button type="button" class="btn-close" @onclick="ClearSelectedTest"></button>
-                </div>
-                <div class="modal-body" style="overflow-y: auto; flex: 1; max-height: calc(90vh - 120px);">
-                    @{
-                        var testNode = selectedTestInfo.TestNode;
-                        var columnIndex = selectedTestInfo.ColumnIndex;
-                        var historyCell = columnIndex < testNode.HistoryCells.Count ? testNode.HistoryCells[columnIndex] : null;
-                        var sourceTestResult = historyCell?.SourceTestResult;
-                        var buildId = columnIndex < historyResult?.HistoryColumns.Count ? historyResult.HistoryColumns[columnIndex].BuildId : "Unknown";
-                    }
-
-                    <div class="mb-3">
-                        <h6>Build</h6>
-                        <p><strong>@buildId</strong></p>
-                    </div>
-
-                    <div class="mb-3">
-                        <h6>Test Name</h6>
-                        <p>@testNode.TestFullName</p>
-                    </div>
-
-                    @if (sourceTestResult != null && !string.IsNullOrEmpty(sourceTestResult.ErrorMessage))
-                    {
-                        <div class="mb-3">
-                            <h6>Error Message</h6>
-                            <div style="background-color: #fff3cd; padding: 10px; border-radius: 4px; border-left: 4px solid #ff6b6b;">
-                                <p style="margin: 0; white-space: pre-wrap; word-break: break-word;">@sourceTestResult.ErrorMessage</p>
-                            </div>
-                        </div>
-                    }
-
-                    @if (sourceTestResult != null && !string.IsNullOrEmpty(sourceTestResult.StackTrace))
-                    {
-                        <div class="mb-3">
-                            <h6>Stack Trace</h6>
-                            <div style="background-color: #f8f9fa; padding: 10px; border-radius: 4px; max-height: 300px; overflow-y: auto;">
-                                <pre style="margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 0.85rem;">@sourceTestResult.StackTrace</pre>
-                            </div>
-                        </div>
-                    }
-
-                    <div class="mb-3">
-                        <h6>Test History</h6>
-                        <table class="table table-sm table-striped" style="font-size: 0.85rem;">
-                            <thead>
-                                <tr>
-                                    <th>Build</th>
-                                    <th>Date</th>
-                                    <th>Status</th>
-                                    <th>Error Message</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @if (historyResult?.HistoryColumns != null && testNode.HistoryCells.Count > 0)
-                                {
-                                    @foreach (var (column, idx) in historyResult.HistoryColumns.Select((c, i) => (c, i)))
-                                    {
-                                        var cell = idx < testNode.HistoryCells.Count ? testNode.HistoryCells[idx] : null;
-                                        var isCurrent = idx == columnIndex;
-                                        var bgColor = isCurrent ? "#e3f2fd" : "transparent";
-                                        <tr style="background-color: @bgColor;">
-                                            <td style="width: 120px;"><strong>@column.BuildId</strong></td>
-                                            <td style="width: 140px;">@column.DisplayDate</td>
-                                            <td style="width: 80px;">
-                                                @if (cell?.Status == HistoryCellStatus.HasFailures)
-                                                {
-                                                    <span style="color: #dc3545;">Failed</span>
-                                                }
-                                                else if (cell?.Status == HistoryCellStatus.AllPassed)
-                                                {
-                                                    <span style="color: #28a745;">Passed</span>
-                                                }
-                                                else if (cell?.Status == HistoryCellStatus.AllSkipped)
-                                                {
-                                                    <span style="color: #6c757d;">Skipped</span>
-                                                }
-                                                else
-                                                {
-                                                    <span style="color: #6c757d;">-</span>
-                                                }
-                                            </td>
-                                            <td style="word-break: break-word;">
-                                                @if (cell?.SourceTestResult?.ErrorMessage != null)
-                                                {
-                                                    <details style="cursor: pointer;">
-                                                        <summary style="color: #666; font-size: 0.9rem;">
-                                                            @(cell.SourceTestResult.ErrorMessage.Length > 80 
-                                                                ? cell.SourceTestResult.ErrorMessage.Substring(0, 80) + "..." 
-                                                                : cell.SourceTestResult.ErrorMessage)
-                                                        </summary>
-                                                        <div style="margin-top: 8px; padding: 8px; background-color: #f8f9fa; border-radius: 4px; white-space: pre-wrap; word-break: break-word; font-size: 0.8rem;">
-                                                            @cell.SourceTestResult.ErrorMessage
-                                                        </div>
-                                                    </details>
-                                                }
-                                                else
-                                                {
-                                                    <span style="color: #999;">-</span>
-                                                }
-                                            </td>
-                                        </tr>
-                                    }
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="ClearSelectedTest">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
-}
+@* Test Details Modal *@
+<TestDetailsModal IsOpen="@showTestDetailsDialog" 
+                  TestResult="@GetSelectedTestResult()"
+                  BuildId="@GetSelectedBuildId()"
+                  History="@GetTestHistory()"
+                  OnClose="@CloseTestDetails" />
 
 @* Save Filter Dialog *@
 <SaveFilterDialog IsOpen="@showSaveFilterDialog" 
@@ -649,10 +533,51 @@
         showTestDetailsDialog = true;
     }
 
-    private void ClearSelectedTest()
+    private async Task CloseTestDetails()
     {
         selectedTestInfo = null;
         showTestDetailsDialog = false;
+        await Task.CompletedTask;
+    }
+
+    private TestResult? GetSelectedTestResult()
+    {
+        if (selectedTestInfo?.TestNode == null) return null;
+        
+        var columnIndex = selectedTestInfo.ColumnIndex;
+        var testNode = selectedTestInfo.TestNode;
+        var historyCell = columnIndex < testNode.HistoryCells.Count ? testNode.HistoryCells[columnIndex] : null;
+        
+        return historyCell?.SourceTestResult;
+    }
+
+    private string? GetSelectedBuildId()
+    {
+        if (selectedTestInfo == null) return null;
+        
+        var columnIndex = selectedTestInfo.ColumnIndex;
+        return columnIndex < historyResult?.HistoryColumns.Count 
+            ? historyResult.HistoryColumns[columnIndex].BuildId 
+            : "Unknown";
+    }
+
+    private List<TestResult>? GetTestHistory()
+    {
+        if (selectedTestInfo?.TestNode == null || historyResult?.HistoryColumns == null) return null;
+        
+        var testNode = selectedTestInfo.TestNode;
+        var history = new List<TestResult>();
+        
+        for (int idx = 0; idx < testNode.HistoryCells.Count; idx++)
+        {
+            var cell = testNode.HistoryCells[idx];
+            if (cell.SourceTestResult != null)
+            {
+                history.Add(cell.SourceTestResult);
+            }
+        }
+        
+        return history.Count > 0 ? history : null;
     }
 
     private void OpenFeatureDialog()

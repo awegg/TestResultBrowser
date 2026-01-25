@@ -1,0 +1,390 @@
+@page "/flaky-tests"
+@rendermode InteractiveServer
+@using TestResultBrowser.Web.Models
+@using TestResultBrowser.Web.Services
+@using Microsoft.Extensions.Logging
+@implements IAsyncDisposable
+@implements IDisposable
+
+@inject IFlakyTestDetectionService FlakyTestDetectionService
+@inject ITestDataService TestDataService
+@inject ISnackbar Snackbar
+@inject ILogger<FlakyTests> Logger
+
+<PageTitle>Flaky Tests | Test Result Browser</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+    <MudStack Spacing="2">
+        <!-- Header -->
+        <MudStack Row="true" Class="align-center justify-between">
+            <MudText Typo="Typo.h4">Flaky Tests Analysis</MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RefreshAsync" Disabled="@IsLoading">
+                @if (IsLoading)
+                {
+                    <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-2" />
+                }
+                Refresh
+            </MudButton>
+        </MudStack>
+
+        <!-- Filter Panel -->
+        <MudPaper Elevation="1" Class="pa-4">
+            <MudStack>
+                <MudText Typo="Typo.subtitle2" Class="font-weight-bold">Filters</MudText>
+                <MudGrid>
+                    <!-- Failure Rate Threshold Slider -->
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.caption">Failure Rate Threshold: @FailureRateThreshold.ToString("P0")</MudText>
+                            <MudSlider @bind-Value="FailureRateThreshold" @bind-Value:after="OnFailureRateChanged" Min="0" Max="1" Step="0.05" />
+                        </MudStack>
+                    </MudItem>
+
+                    <!-- Recent Run Window -->
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudNumericField @bind-Value="RecentRunWindow" @bind-Value:after="OnRecentRunWindowChanged" Label="Recent Run Window" Min="5" Max="50" />
+                    </MudItem>
+
+                    <!-- Trend Filter -->
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudSelect @bind-Value="SelectedTrend" @bind-Value:after="OnSelectedTrendChanged" T="TrendDirection?" Label="Trend" Clearable="true" AnchorOrigin="Origin.BottomCenter">
+                            <MudSelectItem T="TrendDirection?" Value="null">All Trends</MudSelectItem>
+                            <MudSelectItem T="TrendDirection?" Value="TrendDirection.Improving">↘ Improving</MudSelectItem>
+                            <MudSelectItem T="TrendDirection?" Value="TrendDirection.Stable">→ Stable</MudSelectItem>
+                            <MudSelectItem T="TrendDirection?" Value="TrendDirection.Worsening">↗ Worsening</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+
+                    <!-- Configuration Filter -->
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudSelect @bind-Value="SelectedConfiguration" @bind-Value:after="OnSelectedConfigurationChanged" T="string" Label="Configuration" Clearable="true" AnchorOrigin="Origin.BottomCenter">
+                            <MudSelectItem T="string" Value="null">All Configurations</MudSelectItem>
+                            @foreach (var config in AvailableConfigurations)
+                            {
+                                <MudSelectItem T="string" Value="@config">@config</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                </MudGrid>
+            </MudStack>
+        </MudPaper>
+
+        <!-- Loading Indicator -->
+        @if (IsLoading)
+        {
+            <MudStack AlignItems="AlignItems.Center" Class="py-8">
+                <MudProgressCircular Indeterminate="true" Size="Size.Large" />
+                <MudText>Analyzing flaky tests...</MudText>
+            </MudStack>
+        }
+        else if (FlakyTestList == null || FlakyTestList.Count == 0)
+        {
+            <MudAlert Severity="Severity.Success" Class="my-4">
+                No flaky tests detected! All tests appear to be stable.
+            </MudAlert>
+        }
+        else
+        {
+            <!-- Test Results -->
+            <MudStack>
+                <MudText Typo="Typo.subtitle2">
+                    @FlakyTestList.Count flaky @(FlakyTestList.Count == 1 ? "test" : "tests") found
+                </MudText>
+
+                @foreach (var test in FlakyTestList)
+                {
+                    <MudPaper Elevation="2" Class="pa-3 mb-3">
+                        <MudStack>
+                            <!-- Test Card Header -->
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                <MudButton Variant="Variant.Text" OnClick="@(() => ToggleExpanded(test.TestFullName))" Class="flex-grow-1">
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="w-100">
+                                        <MudIcon Icon="@(IsExpanded(test.TestFullName) ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)" />
+                                        <MudText Typo="Typo.body1">@test.TestFullName</MudText>
+                                    </MudStack>
+                                </MudButton>
+
+                                <!-- Risk Indicators -->
+                                <MudChip T="string" Icon="@GetTrendIcon(test.Trend)" 
+                                        Color="@GetTrendColor(test.Trend)"
+                                        Variant="Variant.Outlined">
+                                    @GetTrendLabel(test.Trend)
+                                </MudChip>
+
+                                <MudChip T="string" Icon="@Icons.Material.Filled.Warning" 
+                                        Color="@GetFailureRateColor(test.FailureRate)"
+                                        Variant="Variant.Outlined">
+                                    @test.FailureRate.ToString("P0") fail rate
+                                </MudChip>
+                            </MudStack>
+
+                            <!-- Expanded Details -->
+                            @if (IsExpanded(test.TestFullName))
+                            {
+                                <MudDivider Class="my-2" />
+                                <MudStack>
+                                    <!-- Statistics Grid -->
+                                    <MudGrid>
+                                        <MudItem xs="12" sm="6" md="3">
+                                            <MudText Typo="Typo.caption">Total Runs</MudText>
+                                            <MudText Typo="Typo.body2" Class="font-weight-bold">@test.TotalRuns</MudText>
+                                        </MudItem>
+                                        <MudItem xs="12" sm="6" md="3">
+                                            <MudText Typo="Typo.caption">Failures</MudText>
+                                            <MudText Typo="Typo.body2" Class="font-weight-bold">@test.FailureCount</MudText>
+                                        </MudItem>
+                                        <MudItem xs="12" sm="6" md="3">
+                                            <MudText Typo="Typo.caption">Passes</MudText>
+                                            <MudText Typo="Typo.body2" Class="font-weight-bold">@test.PassCount</MudText>
+                                        </MudItem>
+                                        <MudItem xs="12" sm="6" md="3">
+                                            <MudText Typo="Typo.caption">Last Event</MudText>
+                                            <MudText Typo="Typo.body2" Class="font-weight-bold">
+                                                @if (test.LastFailure > DateTime.MinValue && test.LastPass > DateTime.MinValue)
+                                                {
+                                                    @if (test.LastFailure > test.LastPass)
+                                                    {
+                                                        <span>@test.LastFailure.ToShortDateString()</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span>@test.LastPass.ToShortDateString()</span>
+                                                    }
+                                                }
+                                                else if (test.LastFailure > DateTime.MinValue)
+                                                {
+                                                    <span>@test.LastFailure.ToShortDateString()</span>
+                                                }
+                                            </MudText>
+                                        </MudItem>
+                                    </MudGrid>
+
+                                    <!-- Run Timeline -->
+                                    <MudStack>
+                                        <MudText Typo="Typo.caption" Class="mt-2 font-weight-bold">Recent Runs (Last 20)</MudText>
+                                        <MudStack Row="true" Spacing="0" Class="pa-2">
+                                            @foreach (var run in test.RecentRuns.OrderBy(r => r.Timestamp).Take(20))
+                                            {
+                                                var tooltipText = $"{run.Timestamp:MM/dd/yyyy HH:mm} - {run.Status}";
+                                                <MudTooltip Title="@tooltipText">
+                                                    <div style="@($"width: 20px; height: 20px; background-color: {GetStatusColor(run.Status)}; margin-right: 2px; border-radius: 3px; cursor: pointer;")" 
+                                                         @onclick="@(() => ShowTestDetails(run, run.BuildId))" />
+                                                </MudTooltip>
+                                            }
+                                        </MudStack>
+                                        <MudText Typo="Typo.caption" Class="mt-1">
+                                            <MudIcon Icon="@Icons.Material.Filled.Circle" Size="Size.Small" Color="Color.Success" /> Pass
+                                            <MudIcon Icon="@Icons.Material.Filled.Circle" Size="Size.Small" Color="Color.Error" Class="ml-3" /> Fail
+                                        </MudText>
+                                    </MudStack>
+
+                                    <!-- View History Button -->
+                                    <MudStack Row="true" Class="mt-3">
+                                        <MudButton Variant="Variant.Outlined" 
+                                                  Color="Color.Primary" 
+                                                  Size="Size.Small"
+                                                  OnClick="@(() => ShowTestDetails(test.RecentRuns.Last(), test.RecentRuns.Last().BuildId ?? ""))">
+                                            <MudIcon Icon="@Icons.Material.Filled.History" Class="mr-2" Size="Size.Small" />
+                                            View Full History
+                                        </MudButton>
+                                    </MudStack>
+                                </MudStack>
+                            }
+                        </MudStack>
+                    </MudPaper>
+                }
+            </MudStack>
+        }
+    </MudStack>
+</MudContainer>
+
+<!-- Test Details Modal -->
+<TestDetailsModal IsOpen="@ShowTestDetailsModal" 
+                  TestResult="@SelectedTestResult"
+                  BuildId="@SelectedTestBuildId"
+                  History="@SelectedTestHistory"
+                  OnClose="@CloseTestDetails" />
+
+@code {
+    private List<FlakyTestReport>? FlakyTestList;
+    private List<string> AvailableConfigurations = new();
+    private bool IsLoading = true;
+    private HashSet<string> ExpandedTests = new();
+
+    private double FailureRateThreshold = 0.20;
+    private int RecentRunWindow = 20;
+    private TrendDirection? SelectedTrend;
+    private string? SelectedConfiguration;
+    private Timer? _debounceTimer;
+
+    // Test Details Modal State
+    private bool ShowTestDetailsModal = false;
+    private TestResult? SelectedTestResult;
+    private string? SelectedTestBuildId;
+    private List<TestResult>? SelectedTestHistory;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Load available configurations
+            var allResults = TestDataService.GetAllTestResults();
+            AvailableConfigurations = allResults
+                .Select(r => r.ConfigurationId)
+                .Distinct()
+                .OrderBy(c => c)
+                .ToList();
+
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading flaky tests page");
+            Snackbar.Add("Error loading flaky tests data", Severity.Error);
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        IsLoading = true;
+        try
+        {
+            await InvokeAsync(StateHasChanged); // Yield to ensure loading indicator is visible
+            
+            var allResults = TestDataService.GetAllTestResults();
+            
+            // Detect flaky tests
+            var detected = FlakyTestDetectionService.DetectFlakyTests(
+                allResults.ToList(),
+                failureRateThreshold: FailureRateThreshold,
+                recentRunWindow: RecentRunWindow);
+
+            // Apply additional filters
+            FlakyTestList = FlakyTestDetectionService.FilterFlakyTests(
+                detected,
+                configurationFilter: SelectedConfiguration,
+                dateRange: null,
+                trendFilter: SelectedTrend);
+
+            Logger.LogInformation("Refreshed flaky tests: {Count} found, Threshold={Threshold:P0}, Trend={Trend}, Config={Config}",
+                FlakyTestList?.Count ?? 0, FailureRateThreshold, SelectedTrend ?? TrendDirection.Stable, SelectedConfiguration ?? "All");
+
+            ExpandedTests.Clear();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error refreshing flaky tests");
+            Snackbar.Add("Error refreshing flaky tests", Severity.Error);
+        }
+        finally
+        {
+            IsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private bool IsExpanded(string testName) => ExpandedTests.Contains(testName);
+
+    private void ToggleExpanded(string testName)
+    {
+        if (ExpandedTests.Contains(testName))
+            ExpandedTests.Remove(testName);
+        else
+            ExpandedTests.Add(testName);
+        StateHasChanged();
+    }
+
+    private string GetTrendIcon(TrendDirection trend) => trend switch
+    {
+        TrendDirection.Improving => Icons.Material.Filled.TrendingDown,
+        TrendDirection.Worsening => Icons.Material.Filled.TrendingUp,
+        _ => Icons.Material.Filled.TrendingFlat
+    };
+
+    private Color GetTrendColor(TrendDirection trend) => trend switch
+    {
+        TrendDirection.Improving => Color.Success,
+        TrendDirection.Worsening => Color.Error,
+        _ => Color.Warning
+    };
+
+    private string GetTrendLabel(TrendDirection trend) => trend switch
+    {
+        TrendDirection.Improving => "↘ Improving",
+        TrendDirection.Worsening => "↗ Worsening",
+        _ => "→ Stable"
+    };
+
+    private Color GetFailureRateColor(double failureRate)
+    {
+        if (failureRate >= 0.75)
+            return Color.Error;
+        if (failureRate >= 0.50)
+            return Color.Warning;
+        return Color.Default;
+    }
+
+    private string GetStatusColor(TestStatus status) => status switch
+    {
+        TestStatus.Pass => "#4CAF50",
+        TestStatus.Fail => "#F44336",
+        _ => "#9E9E9E"
+    };
+
+    // Event handlers for filter changes
+    private void OnFailureRateChanged()
+    {
+        // Debounce slider changes to avoid excessive recalculation on drag
+        _debounceTimer?.Dispose();
+        _debounceTimer = new Timer(_ => InvokeAsync(RefreshAsync), null, 300, Timeout.Infinite);
+    }
+
+    private void OnRecentRunWindowChanged()
+    {
+        InvokeAsync(RefreshAsync);
+    }
+
+    private void OnSelectedTrendChanged()
+    {
+        InvokeAsync(RefreshAsync);
+    }
+
+    private void OnSelectedConfigurationChanged()
+    {
+        InvokeAsync(RefreshAsync);
+    }
+
+    async ValueTask IAsyncDisposable.DisposeAsync()
+    {
+        // Cleanup if needed
+        await Task.CompletedTask;
+    }
+
+    void IDisposable.Dispose()
+    {
+        _debounceTimer?.Dispose();
+    }
+
+    private void ShowTestDetails(TestResult testResult, string buildId = "")
+    {
+        SelectedTestResult = testResult;
+        SelectedTestBuildId = buildId;
+        SelectedTestHistory = testResult.Id != null
+            ? FlakyTestList?
+                .FirstOrDefault(f => f.TestFullName == testResult.TestFullName)?
+                .RecentRuns
+                .OrderByDescending(r => r.Timestamp)
+                .ToList()
+            : null;
+        ShowTestDetailsModal = true;
+    }
+
+    private async Task CloseTestDetails()
+    {
+        ShowTestDetailsModal = false;
+        SelectedTestResult = null;
+        SelectedTestBuildId = null;
+        SelectedTestHistory = null;
+        await Task.CompletedTask;
+    }
+}

@@ -1,0 +1,125 @@
+@using TestResultBrowser.Web.Models
+@using MudBlazor
+
+@if (IsOpen && TestResult != null)
+{
+    <div class="modal-backdrop fade show" style="display: block; z-index: 9998;"></div>
+    <div class="modal fade show" style="display: block; z-index: 9999;" role="dialog">
+        <div class="modal-dialog modal-lg" style="max-height: 90vh; display: flex; flex-direction: column;">
+            <div class="modal-content" style="display: flex; flex-direction: column; max-height: 90vh;">
+                <!-- Header -->
+                <div class="modal-header">
+                    <h5 class="modal-title">Test Details</h5>
+                    <button type="button" class="btn-close" @onclick="Close"></button>
+                </div>
+
+                <!-- Body -->
+                <div class="modal-body" style="overflow-y: auto; flex: 1; max-height: calc(90vh - 120px);">
+                    <!-- Build -->
+                    <div class="mb-3">
+                        <h6>Build</h6>
+                        <p><strong>@(BuildId ?? TestResult.BuildId ?? "Unknown")</strong></p>
+                    </div>
+
+                    <!-- Test Name -->
+                    <div class="mb-3">
+                        <h6>Test Name</h6>
+                        <p>@TestResult.TestFullName</p>
+                    </div>
+
+                    <!-- Error Message -->
+                    @if (!string.IsNullOrEmpty(TestResult.ErrorMessage))
+                    {
+                        <div class="mb-3">
+                            <h6>Error Message</h6>
+                            <div style="background-color: #fff3cd; padding: 10px; border-radius: 4px; border-left: 4px solid #ff6b6b;">
+                                <p style="margin: 0; white-space: pre-wrap; word-break: break-word;">@TestResult.ErrorMessage</p>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Stack Trace -->
+                    @if (!string.IsNullOrEmpty(TestResult.StackTrace))
+                    {
+                        <div class="mb-3">
+                            <h6>Stack Trace</h6>
+                            <div style="background-color: #f8f9fa; padding: 10px; border-radius: 4px; max-height: 300px; overflow-y: auto;">
+                                <pre style="margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 0.85rem;">@TestResult.StackTrace</pre>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Test History -->
+                    @if (History?.Count > 0)
+                    {
+                        <div class="mb-3">
+                            <h6>Test History</h6>
+                            <table class="table table-sm table-striped" style="font-size: 0.85rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Build</th>
+                                        <th>Date</th>
+                                        <th>Status</th>
+                                        <th>Error Message</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var item in History)
+                                    {
+                                        <tr>
+                                            <td style="width: 120px;"><strong>@item.BuildId</strong></td>
+                                            <td style="width: 140px;">@item.Timestamp.ToString("MM/dd/yyyy HH:mm")</td>
+                                            <td style="width: 80px;">
+                                                @if (item.Status == TestStatus.Fail)
+                                                {
+                                                    <span style="color: #dc3545;">Failed</span>
+                                                }
+                                                else
+                                                {
+                                                    <span style="color: #28a745;">Passed</span>
+                                                }
+                                            </td>
+                                            <td style="word-break: break-word;">
+                                                @if (!string.IsNullOrEmpty(item.ErrorMessage))
+                                                {
+                                                    <span>@item.ErrorMessage</span>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+
+                <!-- Footer -->
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="Close">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    [Parameter]
+    public TestResult? TestResult { get; set; }
+
+    [Parameter]
+    public string? BuildId { get; set; }
+
+    [Parameter]
+    public List<TestResult>? History { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    private async Task Close()
+    {
+        await OnClose.InvokeAsync();
+    }
+}

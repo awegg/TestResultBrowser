@@ -33,6 +33,7 @@ builder.Services.AddSingleton<IConfigurationHistoryService, ConfigurationHistory
 builder.Services.AddSingleton<IUserDataService, UserDataService>();
 builder.Services.AddSingleton<IWorkItemLinkService, WorkItemLinkService>();
 builder.Services.AddSingleton<IFailureGroupingService, FailureGroupingService>();
+builder.Services.AddSingleton<IFlakyTestDetectionService, FlakyTestDetectionService>();
 builder.Services.AddSingleton<ConfigurationValidator>();
 
 // Register background services
