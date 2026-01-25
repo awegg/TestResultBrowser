@@ -26,9 +26,9 @@ public static class TestResultConstants
     public static class RegexPatterns
     {
         /// <summary>
-        /// Pattern for extracting Polarion ticket IDs (e.g., PEXC-28044)
+        /// Pattern for extracting work item IDs (e.g., PEXC-28044)
         /// </summary>
-        public const string PolarionTicketId = @"PEXC-\d+";
+        public const string WorkItemId = @"PEXC-\d+";
 
         /// <summary>
         /// Pattern for parsing version codes (e.g., PXrel114 = 1.14.0)

@@ -28,9 +28,9 @@ public class TestResultBrowserOptions
     public FlakyTestThresholds FlakyTestThresholds { get; set; } = new();
 
     /// <summary>
-    /// Base URL for Polarion integration
+    /// Base URL for work item links
     /// </summary>
-    public string PolarionBaseUrl { get; set; } = string.Empty;
+    public string WorkItemBaseUrl { get; set; } = string.Empty;
 
     /// <summary>
     /// Path to user data directory for LiteDB databases

@@ -80,6 +80,11 @@ public class HierarchyNode
     /// First error message (for parent nodes, this is the error from the first failed child test)
     /// </summary>
     public string? FirstErrorMessage { get; set; }
+
+    /// <summary>
+    /// Work item references associated with this test node (empty for non-test nodes).
+    /// </summary>
+    public List<WorkItemReference> WorkItemReferences { get; set; } = new();
 }
 
 /// <summary>

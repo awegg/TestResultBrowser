@@ -116,7 +116,7 @@ public class SettingsPageTests
         {
             Id = "default",
             PollingIntervalMinutes = polling,
-            PolarionBaseUrl = "https://polarion.local",
+            WorkItemBaseUrl = "https://workitems.local",
             MaxMemoryGB = maxMemory,
             FlakyTestThresholds = new FlakyTestThresholds
             {
@@ -133,7 +133,7 @@ public class SettingsPageTests
         {
             Id = source.Id,
             PollingIntervalMinutes = source.PollingIntervalMinutes,
-            PolarionBaseUrl = source.PolarionBaseUrl,
+            WorkItemBaseUrl = source.WorkItemBaseUrl,
             MaxMemoryGB = source.MaxMemoryGB,
             FlakyTestThresholds = new FlakyTestThresholds
             {

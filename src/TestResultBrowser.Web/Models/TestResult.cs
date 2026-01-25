@@ -58,8 +58,8 @@ public record TestResult
     /// <summary>Feature directory name extracted from ReportDirectoryPath, e.g., "Px Core - Alarm Dashboard"</summary>
     public required string Feature { get; init; }
 
-    /// <summary>Extracted Polarion ticket references, e.g., ["PEXC-28044"]</summary>
-    public List<string> PolarionTickets { get; init; } = new();
+    /// <summary>Extracted work item IDs, e.g., ["PEXC-28044"]</summary>
+    public List<string> WorkItemIds { get; init; } = new();
 
     /// <summary>Directory path containing the test report (index.html) - e.g., "C:\\data\\Release-252\\Px Core - Alarm Dashboard"</summary>
     public string? ReportDirectoryPath { get; init; }

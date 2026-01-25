@@ -62,16 +62,16 @@ public class ConfigurationValidator
             _logger.LogWarning("FlakyTestThresholds.ClearAfterConsecutivePasses should be between 1 and 50. Current value: {Value}", flaky.ClearAfterConsecutivePasses);
         }
 
-        // Validate PolarionBaseUrl (if configured)
-        if (!string.IsNullOrWhiteSpace(_options.PolarionBaseUrl))
+        // Validate WorkItemBaseUrl (if configured)
+        if (!string.IsNullOrWhiteSpace(_options.WorkItemBaseUrl))
         {
-            if (!Uri.TryCreate(_options.PolarionBaseUrl, UriKind.Absolute, out var uri))
+            if (!Uri.TryCreate(_options.WorkItemBaseUrl, UriKind.Absolute, out var uri))
             {
-                _logger.LogWarning("PolarionBaseUrl is not a valid URL: {Url}", _options.PolarionBaseUrl);
+                _logger.LogWarning("WorkItemBaseUrl is not a valid URL: {Url}", _options.WorkItemBaseUrl);
             }
             else if (uri.Scheme != "http" && uri.Scheme != "https")
             {
-                _logger.LogWarning("PolarionBaseUrl should use http or https scheme: {Url}", _options.PolarionBaseUrl);
+                _logger.LogWarning("WorkItemBaseUrl should use http or https scheme: {Url}", _options.WorkItemBaseUrl);
             }
         }
 

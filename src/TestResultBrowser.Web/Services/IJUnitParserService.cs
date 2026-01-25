@@ -20,7 +20,7 @@ public interface IJUnitParserService
     /// testcase[@classname, @name, @time]: Maps to TestResult
     /// failure/error: Maps to Status=Fail with ErrorMessage/StackTrace
     /// skipped: Maps to Status=Skip
-    /// properties/property[@name="Polarion"]: Extracts PEXC-xxxxx ticket IDs
+    /// properties/property[@name="Polarion"]: Extracts PEXC-xxxxx work item IDs
     /// </remarks>
     Task<List<TestResult>> ParseJUnitXmlAsync(string xmlFilePath, ParsedFilePath parsedPath);
 }

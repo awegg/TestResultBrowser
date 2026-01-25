@@ -52,8 +52,18 @@ else
                 }
                 
                 <MudIcon Icon="@GetNodeIcon()" Size="Size.Small" />
-                <MudText Typo="Typo.body2" style="flex: 1;">
+                <MudText Typo="Typo.body2" style="flex: 1; display: flex; align-items: center; gap: 6px;">
                     @Node.Name
+
+                    @if (Node.NodeType == HierarchyNodeType.Test && Node.WorkItemReferences.Any())
+                    {
+                        <div class="workitem-link-group">
+                            @foreach (var ticket in Node.WorkItemReferences)
+                            {
+                                <WorkItemLink Ticket="ticket" />
+                            }
+                        </div>
+                    }
                 </MudText>
             </div>
         </td>
@@ -253,6 +263,13 @@ else
 
     .cell-passed:hover {
         opacity: 0.8;
+    }
+
+    .workitem-link-group {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        align-items: center;
     }
 
     .cell-failed {

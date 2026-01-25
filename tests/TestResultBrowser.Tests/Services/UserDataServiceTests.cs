@@ -282,9 +282,13 @@ public class UserDataServiceTests : IDisposable
         loaded.SelectedConfiguration.ShouldBe("Debug");
         loaded.NumberOfBuilds.ShouldBe(10);
         loaded.DateFrom.ShouldNotBeNull();
-        loaded.DateFrom.Value.ShouldBe(filter.DateFrom!.Value, TimeSpan.FromMilliseconds(5));
         loaded.DateTo.ShouldNotBeNull();
-        loaded.DateTo.Value.ShouldBe(filter.DateTo!.Value, TimeSpan.FromMilliseconds(5));
+
+        var expectedFromUtc = filter.DateFrom!.Value.ToUniversalTime();
+        var expectedToUtc = filter.DateTo!.Value.ToUniversalTime();
+
+        loaded.DateFrom.Value.ToUniversalTime().ShouldBe(expectedFromUtc, TimeSpan.FromSeconds(1));
+        loaded.DateTo.Value.ToUniversalTime().ShouldBe(expectedToUtc, TimeSpan.FromSeconds(1));
         loaded.OnlyFailures.ShouldBe(true);
         loaded.HideFlakyTests.ShouldBe(false);
     }

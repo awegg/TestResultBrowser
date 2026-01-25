@@ -4,6 +4,7 @@
 @using MudBlazor
 @using Microsoft.AspNetCore.Components
 @using Microsoft.JSInterop
+@using TestResultBrowser.Web.Components
 @inject IConfigurationHistoryService ConfigHistoryService
 @inject IUserDataService UserDataService
 @inject ISnackbar Snackbar
@@ -851,6 +852,7 @@
                 IsExpanded = node.IsExpanded,
                 ReportDirectoryPath = node.ReportDirectoryPath,
                 TestFullName = node.TestFullName,
+                WorkItemReferences = new List<WorkItemReference>(node.WorkItemReferences),
                 HistoryCells = new List<HistoryCellData>(node.HistoryCells),
                 LatestStats = new TestNodeStats
                 {
@@ -890,6 +892,7 @@
             IsExpanded = node.IsExpanded,
             ReportDirectoryPath = node.ReportDirectoryPath,
             TestFullName = node.TestFullName,
+                WorkItemReferences = new List<WorkItemReference>(node.WorkItemReferences),
             HistoryCells = new List<HistoryCellData>(node.HistoryCells),
             LatestStats = new TestNodeStats
             {
@@ -947,6 +950,7 @@
             IsExpanded = node.IsExpanded,
             ReportDirectoryPath = node.ReportDirectoryPath,
             TestFullName = node.TestFullName,
+            WorkItemReferences = new List<WorkItemReference>(node.WorkItemReferences),
             HistoryCells = new List<HistoryCellData>(node.HistoryCells),
             LatestStats = new TestNodeStats
             {

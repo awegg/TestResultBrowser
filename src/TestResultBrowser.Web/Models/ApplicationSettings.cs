@@ -17,9 +17,9 @@ public class ApplicationSettings
     public int PollingIntervalMinutes { get; set; } = 15;
 
     /// <summary>
-    /// Base URL for Polarion integration
+    /// Base URL for work item links
     /// </summary>
-    public string? PolarionBaseUrl { get; set; } = "https://polarion.example.com";
+    public string? WorkItemBaseUrl { get; set; } = "https://workitems.example.com";
 
     /// <summary>
     /// Maximum memory to use in GB

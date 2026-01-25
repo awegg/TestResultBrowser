@@ -49,11 +49,11 @@
             
             <MudDivider Class="my-4" />
             
-            <MudText Typo="Typo.h6" Class="mb-3">Polarion Integration</MudText>
+            <MudText Typo="Typo.h6" Class="mb-3">Work Item Links</MudText>
             
-            <MudTextField @bind-Value="_settings.PolarionBaseUrl"
-                        Label="Polarion Base URL"
-                        HelperText="Base URL for Polarion integration (optional)"
+            <MudTextField @bind-Value="_settings.WorkItemBaseUrl"
+                        Label="Work Item Base URL"
+                        HelperText="Base URL for external work item system (optional)"
                         Variant="Variant.Outlined"
                         Class="mb-4" />
             
@@ -115,7 +115,7 @@
     
     private bool _hasChanges => 
         _settings.PollingIntervalMinutes != _originalSettings.PollingIntervalMinutes ||
-        _settings.PolarionBaseUrl != _originalSettings.PolarionBaseUrl ||
+        _settings.WorkItemBaseUrl != _originalSettings.WorkItemBaseUrl ||
         _settings.MaxMemoryGB != _originalSettings.MaxMemoryGB ||
         _settings.FlakyTestThresholds.RollingWindowSize != _originalSettings.FlakyTestThresholds.RollingWindowSize ||
         _settings.FlakyTestThresholds.TriggerPercentage != _originalSettings.FlakyTestThresholds.TriggerPercentage ||
@@ -130,7 +130,7 @@
         {
             Id = _originalSettings.Id,
             PollingIntervalMinutes = _originalSettings.PollingIntervalMinutes,
-            PolarionBaseUrl = _originalSettings.PolarionBaseUrl,
+            WorkItemBaseUrl = _originalSettings.WorkItemBaseUrl,
             MaxMemoryGB = _originalSettings.MaxMemoryGB,
             FlakyTestThresholds = new Models.FlakyTestThresholds
             {
@@ -166,7 +166,7 @@
             {
                 Id = _originalSettings.Id,
                 PollingIntervalMinutes = _originalSettings.PollingIntervalMinutes,
-                PolarionBaseUrl = _originalSettings.PolarionBaseUrl,
+                WorkItemBaseUrl = _originalSettings.WorkItemBaseUrl,
                 MaxMemoryGB = _originalSettings.MaxMemoryGB,
                 FlakyTestThresholds = new Models.FlakyTestThresholds
                 {

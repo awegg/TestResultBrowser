@@ -26,7 +26,7 @@ public class TestDataServiceTests
             BuildNumber = buildNumber,
             Machine = "host",
             Feature = feature,
-            PolarionTickets = new List<string>(),
+            WorkItemIds = new List<string>(),
             ReportDirectoryPath = null
         };
     }
