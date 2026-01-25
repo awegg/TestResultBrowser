@@ -3,6 +3,7 @@ using TestResultBrowser.Web.Models;
 using TestResultBrowser.Web.Services;
 using Xunit;
 using Microsoft.Extensions.Logging;
+using TestResultBrowser.Tests.Utilities;
 
 namespace TestResultBrowser.Tests.Services;
 
@@ -246,9 +247,22 @@ public class FailureGroupingIntegrationTests
         var groupsModerate = _groupingService.GroupFailures(allFailed, 0.80);
         var groupsPermissive = _groupingService.GroupFailures(allFailed, 0.60);
 
-        // Assert
+        // Assert - verify threshold behavior with specific content checks
         groupsStrict.Count.ShouldBeGreaterThanOrEqualTo(groupsModerate.Count);
         groupsModerate.Count.ShouldBeGreaterThanOrEqualTo(groupsPermissive.Count);
+        
+        // Verify all tests are accounted for in each grouping
+        groupsStrict.Sum(g => g.TestCount).ShouldBe(3);
+        groupsModerate.Sum(g => g.TestCount).ShouldBe(3);
+        groupsPermissive.Sum(g => g.TestCount).ShouldBe(3);
+        
+        // At permissive threshold, similar "Connection failed" messages should merge
+        var connectionGroup = groupsPermissive.FirstOrDefault(g => 
+            g.RepresentativeMessage.Contains("Connection", StringComparison.OrdinalIgnoreCase));
+        if (connectionGroup != null)
+        {
+            connectionGroup.TestCount.ShouldBeGreaterThanOrEqualTo(2);
+        }
     }
 
     #endregion

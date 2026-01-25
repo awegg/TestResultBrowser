@@ -58,6 +58,7 @@ public class FailureGroupingService : IFailureGroupingService
             var domains = new HashSet<string>(baseGroup.DomainIds);
             var features = new HashSet<string>(baseGroup.FeatureIds);
             used[i] = true;
+            double minSimilarity = 1.0; // Track minimum similarity for fuzzy groups
 
             for (int j = 0; j < groups.Count; j++)
             {
@@ -84,6 +85,11 @@ public class FailureGroupingService : IFailureGroupingService
                     if (combined < threshold) continue;
                 }
 
+                // Track the weakest similarity for this merge
+                var effectiveSim = Math.Max(textSim, tokenSim);
+                if (effectiveSim < minSimilarity)
+                    minSimilarity = effectiveSim;
+
                 collected.AddRange(candidate.TestResults);
                 foreach (var d in candidate.DomainIds) domains.Add(d);
                 foreach (var f in candidate.FeatureIds) features.Add(f);
@@ -98,61 +104,12 @@ public class FailureGroupingService : IFailureGroupingService
                 DomainIds: domains.ToList(),
                 FeatureIds: features.ToList(),
                 TestResults: collected
-            ) { SimilarityScore = 1.0 };
+            ) { SimilarityScore = minSimilarity };
 
             result.Add(mergedGroup);
         }
 
         return result;
-    }
-
-    private static IEnumerable<ulong> GetBandKeys(ulong hash)
-    {
-        // 4 bands x 16 bits; prefix band index to avoid collisions across bands
-        for (int band = 0; band < 4; band++)
-        {
-            var part = (hash >> (band * 16)) & 0xFFFFUL;
-            yield return ((ulong)band << 48) | part;
-        }
-    }
-
-    private static ulong SimHash(string message)
-    {
-        var weights = new int[64];
-        foreach (var token in Tokenize(message))
-        {
-            var h = Fnv1a64(token);
-            for (int bit = 0; bit < 64; bit++)
-            {
-                var isSet = ((h >> bit) & 1UL) == 1UL;
-                weights[bit] += isSet ? 1 : -1;
-            }
-        }
-
-        ulong result = 0;
-        for (int bit = 0; bit < 64; bit++)
-        {
-            if (weights[bit] > 0) result |= 1UL << bit;
-        }
-        return result;
-    }
-
-    private static IEnumerable<string> Tokenize(string message)
-    {
-        var tokens = message.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return tokens.Length > 0 ? tokens : new[] { message };
-    }
-
-    private static int HammingDistance(ulong a, ulong b)
-    {
-        var x = a ^ b;
-        int count = 0;
-        while (x != 0)
-        {
-            x &= x - 1;
-            count++;
-        }
-        return count;
     }
 
     private static ulong Fnv1a64(string value)

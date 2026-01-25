@@ -3,6 +3,7 @@ using TestResultBrowser.Web.Models;
 using TestResultBrowser.Web.Services;
 using Xunit;
 using Microsoft.Extensions.Logging;
+using TestResultBrowser.Tests.Utilities;
 
 namespace TestResultBrowser.Tests.Services;
 
@@ -462,17 +463,4 @@ public class FailureGroupingServiceTests
     }
 
     #endregion
-}
-
-/// <summary>
-/// Mock logger for testing
-/// </summary>
-public class MockLogger<T> : ILogger<T>
-{
-    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-    public bool IsEnabled(LogLevel logLevel) => true;
-    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-    {
-        // No-op for testing
-    }
 }

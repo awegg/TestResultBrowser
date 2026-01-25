@@ -68,6 +68,12 @@
 
     private string SearchText { get; set; } = string.Empty;
 
+    protected override void OnParametersSet()
+    {
+        // Guard against null to prevent NullReferenceException
+        AvailableConfigurations ??= new List<string>();
+    }
+
     private IEnumerable<string> GetFilteredConfigurations()
     {
         if (string.IsNullOrEmpty(SearchText))

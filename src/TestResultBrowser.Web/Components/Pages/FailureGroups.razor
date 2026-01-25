@@ -6,6 +6,7 @@
 @inject IFailureGroupingService Grouping
 @inject ISnackbar Snackbar
 @inject ILogger<FailureGroups> Logger
+@implements IDisposable
 
 <PageTitle>Failure Groups</PageTitle>
 
@@ -65,22 +66,18 @@
                 <MudExpansionPanel IsInitiallyExpanded="true" Text="@($"{group.TestCount} - {group.RepresentativeMessage}")">
                     <ChildContent>
                         <MudExpansionPanels MultiExpanded="true" Class="ms-4">
-                            @{
-                                var byTest = group.TestResults.GroupBy(t => t.TestFullName).OrderByDescending(gr => gr.Count());
-                            }
-                            @foreach (var test in byTest)
+                            @if (precomputedGroupings != null && precomputedGroupings.TryGetValue(group, out var testGroups))
                             {
-                                <MudExpansionPanel IsInitiallyExpanded="true" Text="@($"{test.Key} ({test.Count()} occurrences)")">
-                                    <ChildContent>
-                                        <MudExpansionPanels MultiExpanded="true" Class="ms-4">
-                                            @{
-                                                var byDate = test.GroupBy(t => t.Timestamp.Date).OrderByDescending(gr => gr.Key);
-                                            }
-                                            @foreach (var dateGroup in byDate)
-                                            {
-                                                <MudExpansionPanel IsInitiallyExpanded="true" Text="@($"{dateGroup.Key:yyyy-MM-dd} ({dateGroup.Count()} failures)")">
-                                                    <ChildContent>
-                                                        @foreach (var testResult in dateGroup.OrderByDescending(t => t.Timestamp))
+                                @foreach (var test in testGroups)
+                                {
+                                    <MudExpansionPanel IsInitiallyExpanded="true" Text="@($"{test.TestName} ({test.Count} occurrences)")">
+                                        <ChildContent>
+                                            <MudExpansionPanels MultiExpanded="true" Class="ms-4">
+                                                @foreach (var dateGroup in test.DateGroups)
+                                                {
+                                                    <MudExpansionPanel IsInitiallyExpanded="true" Text="@($"{dateGroup.Date:yyyy-MM-dd} ({dateGroup.Count} failures)")">
+                                                        <ChildContent>
+                                                            @foreach (var testResult in dateGroup.Results)
                                                         {
                                                             <MudPaper Class="pa-3 mb-3">
                                                                 <MudText Typo="Typo.body2" Style="font-weight:bold;">@testResult.DomainId - @testResult.BuildId</MudText>
@@ -98,10 +95,11 @@
                                                         }
                                                     </ChildContent>
                                                 </MudExpansionPanel>
-                                            }
-                                        </MudExpansionPanels>
-                                    </ChildContent>
-                                </MudExpansionPanel>
+                                                }
+                                            </MudExpansionPanels>
+                                        </ChildContent>
+                                    </MudExpansionPanel>
+                                }
                             }
                         </MudExpansionPanels>
                     </ChildContent>
@@ -120,6 +118,7 @@
 
 @code {
     private List<FailureGroup>? groups;
+    private Dictionary<FailureGroup, List<GroupedTest>>? precomputedGroupings; // Pre-compute nested groupings for performance
     private bool isLoading = false;
     private int similarityThresholdPercent = 80;
     private int lastXDays = 30;
@@ -127,6 +126,20 @@
     private List<string> availableConfigurations = new();
     private bool showConfigurationDialog = false;
     private Timer? _debounceTimer;
+
+    private class GroupedTest
+    {
+        public string TestName { get; set; } = string.Empty;
+        public int Count { get; set; }
+        public List<GroupedByDate> DateGroups { get; set; } = new();
+    }
+
+    private class GroupedByDate
+    {
+        public DateTime Date { get; set; }
+        public int Count { get; set; }
+        public List<TestResult> Results { get; set; } = new();
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -150,7 +163,7 @@
     {
         // Debounce filter changes to avoid excessive re-grouping on large datasets
         _debounceTimer?.Dispose();
-        _debounceTimer = new Timer(async _ => await Refresh(), null, 500, Timeout.Infinite);
+        _debounceTimer = new Timer(_ => InvokeAsync(async () => await Refresh()), null, 500, Timeout.Infinite);
     }
 
     private async Task Refresh()
@@ -160,8 +173,8 @@
         {
             var allFailed = TestData.GetAllTestResults().Where(tr => tr.Status == TestStatus.Fail);
             
-            // Filter by date range
-            var cutoffDate = DateTime.Now.AddDays(-lastXDays);
+            // Filter by date range (use UTC to match TestResult.Timestamp)
+            var cutoffDate = DateTime.UtcNow.AddDays(-lastXDays);
             var filtered = allFailed.Where(tr => tr.Timestamp >= cutoffDate);
             
             // Filter by configuration if selected
@@ -170,10 +183,38 @@
                 filtered = filtered.Where(tr => tr.ConfigurationId == selectedConfiguration);
             }
             
+            // Materialize to avoid multiple enumeration
+            var filteredList = filtered.ToList();
+            
             var threshold = Math.Clamp(similarityThresholdPercent, 50, 100) / 100.0;
-            groups = Grouping.GroupFailures(filtered, threshold);
+            groups = Grouping.GroupFailures(filteredList, threshold);
+            
+            // Pre-compute nested groupings to avoid re-computation in render loop
+            precomputedGroupings = groups?.ToDictionary(
+                g => g,
+                g => g.TestResults
+                    .GroupBy(t => t.TestFullName)
+                    .OrderByDescending(gr => gr.Count())
+                    .Select(testGroup => new GroupedTest
+                    {
+                        TestName = testGroup.Key,
+                        Count = testGroup.Count(),
+                        DateGroups = testGroup
+                            .GroupBy(t => t.Timestamp.Date)
+                            .OrderByDescending(dg => dg.Key)
+                            .Select(dateGroup => new GroupedByDate
+                            {
+                                Date = dateGroup.Key,
+                                Count = dateGroup.Count(),
+                                Results = dateGroup.OrderByDescending(t => t.Timestamp).ToList()
+                            })
+                            .ToList()
+                    })
+                    .ToList()
+            );
+            
             Logger.LogInformation("Grouped {GroupCount} failure groups from {FailureCount} tests at {Threshold:P0} similarity", 
-                groups?.Count ?? 0, filtered.Count(), threshold);
+                groups?.Count ?? 0, filteredList.Count, threshold);
         }
         catch (Exception ex)
         {
