@@ -16,7 +16,7 @@ public class SettingsServiceTests
         {
             UserDataPath = userDataPath,
             PollingIntervalMinutes = 7,
-            PolarionBaseUrl = "https://polarion.local",
+            WorkItemBaseUrl = "https://workitems.local",
             MaxMemoryGB = 32,
             FlakyTestThresholds = new FlakyTestThresholds
             {
@@ -38,7 +38,7 @@ public class SettingsServiceTests
         {
             var settings = svc.GetSettings();
             settings.PollingIntervalMinutes.ShouldBe(7);
-            settings.PolarionBaseUrl.ShouldBe("https://polarion.local");
+            settings.WorkItemBaseUrl.ShouldBe("https://workitems.local");
             settings.MaxMemoryGB.ShouldBe(32);
             settings.FlakyTestThresholds.RollingWindowSize.ShouldBe(14);
             Directory.Exists(tempDir).ShouldBeTrue();

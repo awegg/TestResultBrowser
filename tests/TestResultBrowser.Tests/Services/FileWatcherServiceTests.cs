@@ -36,7 +36,7 @@ public class FileWatcherServiceTests
             Id = "default",
             PollingIntervalMinutes = 1,
             MaxMemoryGB = 16,
-            PolarionBaseUrl = "",
+            WorkItemBaseUrl = "",
             FlakyTestThresholds = new TestResultBrowser.Web.Models.FlakyTestThresholds()
         });
 
@@ -85,7 +85,7 @@ public class FileWatcherServiceTests
             Id = "default",
             PollingIntervalMinutes = 1,
             MaxMemoryGB = 16,
-            PolarionBaseUrl = "",
+            WorkItemBaseUrl = "",
             FlakyTestThresholds = new TestResultBrowser.Web.Models.FlakyTestThresholds()
         });
 

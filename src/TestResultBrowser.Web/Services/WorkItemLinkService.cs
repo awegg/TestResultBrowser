@@ -6,18 +6,18 @@ using TestResultBrowser.Web.Models;
 namespace TestResultBrowser.Web.Services;
 
 /// <summary>
-/// Default implementation for Polarion link generation and ticket extraction.
+/// Default implementation for work item link generation and ID extraction.
 /// </summary>
-public class PolarionLinkService : IPolarionLinkService
+public class WorkItemLinkService : IWorkItemLinkService
 {
-    private readonly ILogger<PolarionLinkService> _logger;
+    private readonly ILogger<WorkItemLinkService> _logger;
     private readonly string _baseUrl;
-    private static readonly Regex TicketRegex = new(TestResultConstants.RegexPatterns.PolarionTicketId, RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex TicketRegex = new(TestResultConstants.RegexPatterns.WorkItemId, RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    public PolarionLinkService(IOptions<TestResultBrowserOptions> options, ILogger<PolarionLinkService> logger)
+    public WorkItemLinkService(IOptions<TestResultBrowserOptions> options, ILogger<WorkItemLinkService> logger)
     {
         _logger = logger;
-        _baseUrl = options.Value.PolarionBaseUrl?.Trim() ?? string.Empty;
+        _baseUrl = options.Value.WorkItemBaseUrl?.Trim() ?? string.Empty;
     }
 
     public List<string> ExtractTicketIds(string? text)
@@ -45,23 +45,15 @@ public class PolarionLinkService : IPolarionLinkService
             return null;
         }
 
-        try
-        {
-            // Preserve callers' formatting of base URL; just append the ticket id
-            return _baseUrl.EndsWith('/') || _baseUrl.EndsWith('=')
-                ? _baseUrl + ticketId
-                : _baseUrl + "/" + ticketId;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to generate Polarion URL for ticket {TicketId}", ticketId);
-            return null;
-        }
+        // Preserve callers' formatting of base URL; just append the ticket id
+        return _baseUrl.EndsWith('/') || _baseUrl.EndsWith('=')
+            ? _baseUrl + ticketId
+            : _baseUrl + "/" + ticketId;
     }
 
-    public List<PolarionTicketReference> GetTicketReferences(IEnumerable<string> ticketIds)
+    public List<WorkItemReference> GetTicketReferences(IEnumerable<string> ticketIds)
     {
-        var references = new List<PolarionTicketReference>();
+        var references = new List<WorkItemReference>();
         if (ticketIds == null)
         {
             return references;
@@ -69,7 +61,7 @@ public class PolarionLinkService : IPolarionLinkService
 
         foreach (var id in ticketIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            references.Add(new PolarionTicketReference
+            references.Add(new WorkItemReference
             {
                 TicketId = id,
                 Url = GenerateTicketUrl(id)

@@ -57,7 +57,7 @@ public class SettingsService : ISettingsService
                     {
                         Id = "default",
                         PollingIntervalMinutes = _options.PollingIntervalMinutes,
-                        PolarionBaseUrl = _options.PolarionBaseUrl,
+                        WorkItemBaseUrl = _options.WorkItemBaseUrl,
                         MaxMemoryGB = _options.MaxMemoryGB,
                         FlakyTestThresholds = new FlakyTestThresholds
                         {
@@ -82,7 +82,7 @@ public class SettingsService : ISettingsService
                 {
                     Id = "default",
                     PollingIntervalMinutes = _options.PollingIntervalMinutes,
-                    PolarionBaseUrl = _options.PolarionBaseUrl,
+                    WorkItemBaseUrl = _options.WorkItemBaseUrl,
                     MaxMemoryGB = _options.MaxMemoryGB,
                     FlakyTestThresholds = new FlakyTestThresholds
                     {
@@ -143,7 +143,7 @@ public class SettingsService : ISettingsService
         {
             Id = "default",
             PollingIntervalMinutes = _options.PollingIntervalMinutes,
-            PolarionBaseUrl = _options.PolarionBaseUrl,
+            WorkItemBaseUrl = _options.WorkItemBaseUrl,
             MaxMemoryGB = _options.MaxMemoryGB,
             FlakyTestThresholds = new FlakyTestThresholds
             {
