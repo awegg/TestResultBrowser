@@ -87,6 +87,7 @@
     private async Task OnSelect(string config)
     {
         SelectedConfiguration = config;
+        SearchText = string.Empty; // Clear search to avoid stale filtering on reopen
         await SelectedConfigurationChanged.InvokeAsync(config);
         await IsOpenChanged.InvokeAsync(false);
     }

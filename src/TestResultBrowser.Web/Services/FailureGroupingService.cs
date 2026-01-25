@@ -14,6 +14,9 @@ public class FailureGroupingService : IFailureGroupingService
 
     public List<FailureGroup> GroupFailures(IEnumerable<TestResult> failedResults, double similarityThreshold = 0.8)
     {
+        // Clamp threshold to valid range to prevent silent behavioral issues
+        similarityThreshold = Math.Clamp(similarityThreshold, 0.0, 1.0);
+        
         var failures = failedResults
             .Where(tr => tr.Status == TestStatus.Fail && !string.IsNullOrWhiteSpace(tr.ErrorMessage))
             .ToList();

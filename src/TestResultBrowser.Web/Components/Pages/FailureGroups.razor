@@ -169,6 +169,8 @@
     private async Task Refresh()
     {
         isLoading = true;
+        await InvokeAsync(StateHasChanged); // Yield to render loading indicator before heavy processing
+        
         try
         {
             var allFailed = TestData.GetAllTestResults().Where(tr => tr.Status == TestStatus.Fail);
