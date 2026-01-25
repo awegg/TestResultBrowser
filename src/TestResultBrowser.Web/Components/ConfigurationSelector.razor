@@ -1,0 +1,93 @@
+@using MudBlazor
+@using TestResultBrowser.Web.Models
+
+@if (IsOpen)
+{
+    <div class="modal-backdrop fade show" style="display: block; z-index: 9998;"></div>
+    <div class="modal fade show" style="display: block; z-index: 9999;" role="dialog">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Select Configuration (@AvailableConfigurations.Count available)</h5>
+                    <button type="button" class="btn-close" @onclick="OnCancel"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="text" class="form-control mb-3" placeholder="Search configurations..." 
+                           @bind="SearchText" @bind:event="oninput" />
+                    
+                    <div style="max-height: 500px; overflow-y: auto;">
+                        <div style="padding: 12px; cursor: pointer; background-color: @(string.IsNullOrEmpty(SelectedConfiguration) ? "#e3f2fd" : "transparent"); border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;"
+                             @onclick="@(() => OnSelect(string.Empty))">
+                            <div style="flex: 1;">
+                                <div style="font-weight: 500;">All Configurations</div>
+                                <div style="font-size: 0.85rem; color: #666; margin-top: 2px;">Show results from all configurations</div>
+                            </div>
+                            @if (string.IsNullOrEmpty(SelectedConfiguration))
+                            {
+                                <span style="color: #1976d2; font-size: 1.2rem;">✓</span>
+                            }
+                        </div>
+                        @foreach (var config in GetFilteredConfigurations())
+                        {
+                            <div style="padding: 12px; cursor: pointer; background-color: @(config == SelectedConfiguration ? "#e3f2fd" : "transparent"); border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;"
+                                 @onclick="@(() => OnSelect(config))">
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 500;">@config</div>
+                                </div>
+                                @if (config == SelectedConfiguration)
+                                {
+                                    <span style="color: #1976d2; font-size: 1.2rem;">✓</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="OnCancel">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> IsOpenChanged { get; set; }
+
+    [Parameter]
+    public string SelectedConfiguration { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> SelectedConfigurationChanged { get; set; }
+
+    [Parameter]
+    public List<string> AvailableConfigurations { get; set; } = new();
+
+    private string SearchText { get; set; } = string.Empty;
+
+    private IEnumerable<string> GetFilteredConfigurations()
+    {
+        if (string.IsNullOrEmpty(SearchText))
+            return AvailableConfigurations;
+        
+        return AvailableConfigurations
+            .Where(x => x.Contains(SearchText, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    private async Task OnSelect(string config)
+    {
+        SelectedConfiguration = config;
+        await SelectedConfigurationChanged.InvokeAsync(config);
+        await IsOpenChanged.InvokeAsync(false);
+    }
+
+    private async Task OnCancel()
+    {
+        SearchText = string.Empty;
+        await IsOpenChanged.InvokeAsync(false);
+    }
+}

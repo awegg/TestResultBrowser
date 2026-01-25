@@ -3,6 +3,18 @@
         <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
         <FocusOnNavigate RouteData="routeData" Selector="h1" />
     </Found>
+    <NotFound>
+        <LayoutView Layout="typeof(Layout.MainLayout)">
+            <MudContainer MaxWidth="MaxWidth.Small" Class="mt-6">
+                <MudAlert Severity="Severity.Error" Variant="Variant.Filled">Page not found</MudAlert>
+                <MudText Class="mt-2" Typo="Typo.body2">The requested page could not be found.</MudText>
+                <MudButton Href="/" Variant="Variant.Filled" Color="Color.Primary" Class="mt-3">
+                    <MudIcon Icon="@Icons.Material.Filled.Home" Class="mr-2" />
+                    Go Home
+                </MudButton>
+            </MudContainer>
+        </LayoutView>
+    </NotFound>
 </Router>
 
 @code {

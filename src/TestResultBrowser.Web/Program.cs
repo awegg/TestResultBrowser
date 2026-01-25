@@ -32,6 +32,7 @@ builder.Services.AddSingleton<ITriageService, TriageService>();
 builder.Services.AddSingleton<IConfigurationHistoryService, ConfigurationHistoryService>();
 builder.Services.AddSingleton<IUserDataService, UserDataService>();
 builder.Services.AddSingleton<IWorkItemLinkService, WorkItemLinkService>();
+builder.Services.AddSingleton<IFailureGroupingService, FailureGroupingService>();
 builder.Services.AddSingleton<ConfigurationValidator>();
 
 // Register background services
