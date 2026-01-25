@@ -43,7 +43,14 @@ public class FlakyTestDetectionService : IFlakyTestDetectionService
 
             var failureCount = recentRuns.Count(tr => tr.Status == TestStatus.Fail);
             var passCount = recentRuns.Count(tr => tr.Status == TestStatus.Pass);
-            var failureRate = (double)failureCount / recentRuns.Count;
+            var skipCount = recentRuns.Count(tr => tr.Status == TestStatus.Skip);
+            
+            // Calculate failure rate only against pass/fail runs (exclude skipped)
+            var totalRelevantRuns = failureCount + passCount;
+            if (totalRelevantRuns == 0)
+                continue; // Skip if no pass/fail runs
+            
+            var failureRate = (double)failureCount / totalRelevantRuns;
 
             // Only flag tests that meet the flakiness threshold
             if (failureRate < failureRateThreshold || failureRate >= 1.0)
@@ -59,15 +66,19 @@ public class FlakyTestDetectionService : IFlakyTestDetectionService
             var report = new FlakyTestReport(
                 TestFullName: testGroup.Key,
                 FailureRate: failureRate,
-                TotalRuns: recentRuns.Count,
+                TotalRuns: totalRelevantRuns,  // Count only pass/fail runs
                 FailureCount: failureCount,
                 PassCount: passCount,
                 LastStatus: lastStatus,
                 LastFailure: lastFailure?.Timestamp ?? DateTime.MinValue,
                 LastPass: lastPass?.Timestamp ?? DateTime.MinValue,
                 Trend: trend,
-                RecentRuns: recentRuns
+                RecentRuns: (IReadOnlyList<TestResult>)recentRuns
             );
+            
+            _logger.LogInformation(
+                "Detected flaky test: {TestName}, FailureRate={FailureRate:P0}, TotalRuns={TotalRuns}, Skipped={SkipCount}, Trend={Trend}",
+                testGroup.Key, failureRate, totalRelevantRuns, skipCount, trend);
 
             flakyTests.Add(report);
         }

@@ -241,6 +241,40 @@ public class FlakyTestDetectionServiceTests
         filtered[0].Trend.ShouldBe(TrendDirection.Improving);
     }
 
+    [Fact]
+    public void FilterFlakyTests_ByDateRange_ReturnsMatchingOnly()
+    {
+        // Arrange
+        var now = DateTime.UtcNow;
+        var reports = new List<FlakyTestReport>
+        {
+            new FlakyTestReport("Test.A", 0.5, 2, 1, 1, TestStatus.Fail, now, now,
+                TrendDirection.Stable,
+                new List<TestResult>
+                {
+                    CreateTestResult("id_1", "Test.A", TestStatus.Fail, now.AddDays(-1), "Config1"),
+                    CreateTestResult("id_2", "Test.A", TestStatus.Pass, now, "Config1")
+                }
+            ),
+            new FlakyTestReport("Test.B", 0.5, 2, 1, 1, TestStatus.Pass, now, now,
+                TrendDirection.Stable,
+                new List<TestResult>
+                {
+                    CreateTestResult("id_3", "Test.B", TestStatus.Fail, now.AddDays(-5), "Config2"),
+                    CreateTestResult("id_4", "Test.B", TestStatus.Pass, now.AddDays(-4), "Config2")
+                }
+            )
+        };
+
+        // Act - filter to last 2 days only
+        var dateRange = new DateRange(now.AddDays(-2), now);
+        var filtered = _service.FilterFlakyTests(reports, dateRange: dateRange);
+
+        // Assert - should only include Test.A (all runs within 2 days)
+        filtered.Count.ShouldBe(1);
+        filtered[0].TestFullName.ShouldBe("Test.A");
+    }
+
     #endregion
 
     #region Trend Tests
@@ -271,6 +305,62 @@ public class FlakyTestDetectionServiceTests
         // Assert - should detect Worsening trend (0% -> 100% failure rate)
         flakyTests.ShouldHaveSingleItem();
         flakyTests[0].Trend.ShouldBe(TrendDirection.Worsening);
+    }
+
+    [Fact]
+    public void DetectFlakyTests_CalculatesTrend_Improving()
+    {
+        // Arrange - first 5 runs: all fail, second 5 runs: all pass = Improving trend
+        var now = DateTime.UtcNow;
+        var results = new List<TestResult>();
+
+        // First 5 runs (older): all fail (100% failure)
+        for (int i = 0; i < 5; i++)
+        {
+            results.Add(CreateTestResult($"id_{i}", "Test.Improving", TestStatus.Fail, now.AddHours(-(10 - i))));
+        }
+
+        // Last 5 runs (newer): all pass (0% failure) = Improving
+        for (int i = 5; i < 10; i++)
+        {
+            results.Add(CreateTestResult($"id_{i}", "Test.Improving", TestStatus.Pass, now.AddHours(-(10 - i))));
+        }
+
+        // Act
+        var flakyTests = _service.DetectFlakyTests(results, failureRateThreshold: 0.20);
+
+        // Assert - should detect Improving trend
+        flakyTests.ShouldHaveSingleItem();
+        flakyTests[0].Trend.ShouldBe(TrendDirection.Improving);
+    }
+
+    [Fact]
+    public void DetectFlakyTests_CalculatesTrend_Stable()
+    {
+        // Arrange - similar failure rate in both halves = Stable trend
+        var now = DateTime.UtcNow;
+        var results = new List<TestResult>();
+
+        // First 5 runs: 2 fail, 3 pass = 40% failure
+        results.Add(CreateTestResult("id_0", "Test.Stable", TestStatus.Fail, now.AddHours(-10)));
+        results.Add(CreateTestResult("id_1", "Test.Stable", TestStatus.Fail, now.AddHours(-9)));
+        results.Add(CreateTestResult("id_2", "Test.Stable", TestStatus.Pass, now.AddHours(-8)));
+        results.Add(CreateTestResult("id_3", "Test.Stable", TestStatus.Pass, now.AddHours(-7)));
+        results.Add(CreateTestResult("id_4", "Test.Stable", TestStatus.Pass, now.AddHours(-6)));
+
+        // Last 5 runs: 2 fail, 3 pass = 40% failure (stable)
+        results.Add(CreateTestResult("id_5", "Test.Stable", TestStatus.Fail, now.AddHours(-5)));
+        results.Add(CreateTestResult("id_6", "Test.Stable", TestStatus.Fail, now.AddHours(-4)));
+        results.Add(CreateTestResult("id_7", "Test.Stable", TestStatus.Pass, now.AddHours(-3)));
+        results.Add(CreateTestResult("id_8", "Test.Stable", TestStatus.Pass, now.AddHours(-2)));
+        results.Add(CreateTestResult("id_9", "Test.Stable", TestStatus.Pass, now.AddHours(-1)));
+
+        // Act
+        var flakyTests = _service.DetectFlakyTests(results, failureRateThreshold: 0.20);
+
+        // Assert - should detect Stable trend
+        flakyTests.ShouldHaveSingleItem();
+        flakyTests[0].Trend.ShouldBe(TrendDirection.Stable);
     }
 
     #endregion

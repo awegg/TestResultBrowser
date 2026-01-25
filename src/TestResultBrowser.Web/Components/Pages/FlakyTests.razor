@@ -179,14 +179,21 @@
                                     </MudStack>
 
                                     <!-- View History Button -->
+                                    @{
+                                        var lastRun = test.RecentRuns.LastOrDefault();
+                                        var lastRunBuildId = lastRun?.BuildId ?? "";
+                                    }
                                     <MudStack Row="true" Class="mt-3">
-                                        <MudButton Variant="Variant.Outlined" 
-                                                  Color="Color.Primary" 
-                                                  Size="Size.Small"
-                                                  OnClick="@(() => ShowTestDetails(test.RecentRuns.Last(), test.RecentRuns.Last().BuildId ?? ""))">
-                                            <MudIcon Icon="@Icons.Material.Filled.History" Class="mr-2" Size="Size.Small" />
-                                            View Full History
-                                        </MudButton>
+                                        @if (lastRun != null)
+                                        {
+                                            <MudButton Variant="Variant.Outlined" 
+                                                      Color="Color.Primary" 
+                                                      Size="Size.Small"
+                                                      OnClick="@(() => ShowTestDetails(lastRun, lastRunBuildId))">
+                                                <MudIcon Icon="@Icons.Material.Filled.History" Class="mr-2" Size="Size.Small" />
+                                                View Full History
+                                            </MudButton>
+                                        }
                                     </MudStack>
                                 </MudStack>
                             }

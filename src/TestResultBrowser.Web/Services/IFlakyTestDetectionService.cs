@@ -28,8 +28,3 @@ public interface IFlakyTestDetectionService
         DateRange? dateRange = null,
         TrendDirection? trendFilter = null);
 }
-
-/// <summary>
-/// Date range filter
-/// </summary>
-public record DateRange(DateTime StartDate, DateTime EndDate);

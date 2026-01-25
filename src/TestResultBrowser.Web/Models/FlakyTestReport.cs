@@ -16,15 +16,15 @@ public enum TrendDirection
 public record FlakyTestReport
 (
     string TestFullName,
-    double FailureRate,           // 0.0-1.0 (e.g., 0.45 = 45%)
+    double FailureRate,                       // 0.0-1.0 (e.g., 0.45 = 45%)
     int TotalRuns,
     int FailureCount,
     int PassCount,
     TestStatus LastStatus,
     DateTime LastFailure,
     DateTime LastPass,
-    TrendDirection Trend,         // Improving/Stable/Worsening
-    List<TestResult> RecentRuns   // Last N runs in chronological order
+    TrendDirection Trend,                     // Improving/Stable/Worsening
+    IReadOnlyList<TestResult> RecentRuns      // Last N runs in chronological order (immutable)
 )
 {
     /// <summary>

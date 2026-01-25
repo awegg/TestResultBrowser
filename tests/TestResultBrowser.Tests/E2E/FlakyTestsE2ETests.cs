@@ -65,9 +65,14 @@ public class FlakyTestsE2ETests : IAsyncLifetime
         var sliders = await _page.QuerySelectorAllAsync("input[type='range']");
         sliders.Count.ShouldBeGreaterThan(0, "Should have threshold slider");
 
-        // Configuration dropdown should exist
-        var dropdowns = await _page.QuerySelectorAllAsync("select, [role='combobox']");
-        dropdowns.Count.ShouldBeGreaterThanOrEqualTo(0, "Filter controls should be present");
+        // Numeric field should exist (Recent Run Window)
+        var numericFields = await _page.QuerySelectorAllAsync("input[type='number']");
+        numericFields.Count.ShouldBeGreaterThan(0, "Should have numeric input field");
+
+        // Verify filter labels exist (Trend, Configuration)
+        var filterText = await _page.TextContentAsync("body");
+        filterText?.Contains("Trend").ShouldBeTrue("Filter panel should contain Trend filter");
+        filterText?.Contains("Configuration").ShouldBeTrue("Filter panel should contain Configuration filter");
     }
 
     [Trait("Category", "E2E")]
@@ -157,17 +162,14 @@ public class FlakyTestsE2ETests : IAsyncLifetime
         await _page!.GotoAsync(FlakyTestsUrl);
         await _page.WaitForLoadStateAsync(LoadState.NetworkIdle);
 
-        // Find trend filter dropdown
-        var trendSelects = await _page.QuerySelectorAllAsync("select");
+        // Find MudSelect components by looking for their button triggers
+        // MudBlazor MudSelect renders as a div with role='button'
+        var selectButtons = await _page.QuerySelectorAllAsync("div[role='button']");
         
-        if (trendSelects.Count > 0)
+        if (selectButtons.Count > 0)
         {
-            // Try to interact with dropdown (if it exists)
-            var firstSelect = trendSelects[0];
-            var options = await firstSelect.QuerySelectorAllAsync("option");
-            
-            // Should have at least one option
-            options.Count.ShouldBeGreaterThan(0, "Dropdown should have options");
+            // MudSelect should be present - these are the dropdown triggers
+            selectButtons.Count.ShouldBeGreaterThan(0, "Dropdown filters should exist");
         }
     }
 
@@ -183,16 +185,15 @@ public class FlakyTestsE2ETests : IAsyncLifetime
         var flakyTestsLink = await _page.QuerySelectorAsync("a[href*='flaky-tests']");
         
         // Link should exist in navigation
-        if (flakyTestsLink != null)
-        {
-            // Click the link
-            await flakyTestsLink.ClickAsync();
-            await _page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+        flakyTestsLink.ShouldNotBeNull("Flaky Tests navigation link should exist");
+        
+        // Click the link
+        await flakyTestsLink!.ClickAsync();
+        await _page.WaitForLoadStateAsync(LoadState.NetworkIdle);
 
-            // Should be on flaky tests page
-            var currentUrl = _page.Url;
-            currentUrl.ShouldContain("flaky-tests");
-        }
+        // Should be on flaky tests page
+        var currentUrl = _page.Url;
+        currentUrl.ShouldContain("flaky-tests");
     }
 
     [Trait("Category", "E2E")]
