@@ -1,0 +1,237 @@
+@page "/failure-groups"
+@rendermode InteractiveServer
+@using TestResultBrowser.Web.Models
+@using MudBlazor
+@inject ITestDataService TestData
+@inject IFailureGroupingService Grouping
+@inject ISnackbar Snackbar
+@inject ILogger<FailureGroups> Logger
+@implements IDisposable
+
+<PageTitle>Failure Groups</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudPaper Class="pa-3 mb-3">
+        <MudText Typo="Typo.h5">Failure Grouping by Root Cause</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Default">Clusters failed tests by similar error messages to identify common root causes.</MudText>
+        <MudDivider Class="my-2" />
+        <MudGrid Class="mb-2">
+            <MudItem xs="12" sm="6" md="2">
+                <MudNumericField @bind-Value="similarityThresholdPercent" @bind-Value:after="OnFilterChanged" Min="50" Max="100" Label="Similarity Threshold (%)" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="2">
+                <MudNumericField @bind-Value="lastXDays" @bind-Value:after="OnFilterChanged" Min="1" Max="365" Label="Last X Days" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudButton Variant="Variant.Outlined" 
+                          Color="Color.Primary" 
+                          OnClick="OpenConfigurationDialog"
+                          FullWidth="true"
+                          Style="height: 56px; text-align: left; justify-content: flex-start;">
+                    <div style="width: 100%;">
+                        @{
+                            var configCount = string.IsNullOrEmpty(selectedConfiguration) 
+                                ? availableConfigurations.Count 
+                                : 1;
+                        }
+                        <div style="font-size: 0.75rem; color: #666;">Configuration [@configCount/@availableConfigurations.Count]</div>
+                        <div style="font-weight: 500;">@(string.IsNullOrEmpty(selectedConfiguration) ? "All Configurations" : selectedConfiguration)</div>
+                    </div>
+                </MudButton>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Refresh" Disabled="isLoading">
+                    @if (isLoading)
+                    {
+                        <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                    }
+                    else
+                    {
+                        <span>Refresh</span>
+                    }
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (groups is null || groups.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">No failed tests found or no groups at current threshold.</MudAlert>
+    }
+    else
+    {
+        <MudExpansionPanels MultiExpanded="true" Class="mt-3">
+            @foreach (var group in groups)
+            {
+                <MudExpansionPanel IsInitiallyExpanded="true" Text="@($"{group.TestCount} - {group.RepresentativeMessage}")">
+                    <ChildContent>
+                        <MudExpansionPanels MultiExpanded="true" Class="ms-4">
+                            @if (precomputedGroupings != null && precomputedGroupings.TryGetValue(group, out var testGroups))
+                            {
+                                @foreach (var test in testGroups)
+                                {
+                                    <MudExpansionPanel IsInitiallyExpanded="true" Text="@($"{test.TestName} ({test.Count} occurrences)")">
+                                        <ChildContent>
+                                            <MudExpansionPanels MultiExpanded="true" Class="ms-4">
+                                                @foreach (var dateGroup in test.DateGroups)
+                                                {
+                                                    <MudExpansionPanel IsInitiallyExpanded="true" Text="@($"{dateGroup.Date:yyyy-MM-dd} ({dateGroup.Count} failures)")">
+                                                        <ChildContent>
+                                                            @foreach (var testResult in dateGroup.Results)
+                                                        {
+                                                            <MudPaper Class="pa-3 mb-3">
+                                                                <MudText Typo="Typo.body2" Style="font-weight:bold;">@testResult.DomainId - @testResult.BuildId</MudText>
+                                                                <MudText Typo="Typo.caption" Color="Color.Default" Class="mt-1">
+                                                                    Feature @testResult.FeatureId | Configuration @testResult.ConfigurationId
+                                                                </MudText>
+                                                                @if (!string.IsNullOrWhiteSpace(testResult.ErrorMessage))
+                                                                {
+                                                                    <MudText Typo="Typo.caption" Color="Color.Error" Style="white-space: pre-wrap; word-break: break-word; margin-top: 8px;">
+                                                                        <strong>Last seen:</strong> @testResult.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")<br/>
+                                                                        @testResult.ErrorMessage
+                                                                    </MudText>
+                                                                }
+                                                            </MudPaper>
+                                                        }
+                                                    </ChildContent>
+                                                </MudExpansionPanel>
+                                                }
+                                            </MudExpansionPanels>
+                                        </ChildContent>
+                                    </MudExpansionPanel>
+                                }
+                            }
+                        </MudExpansionPanels>
+                    </ChildContent>
+                </MudExpansionPanel>
+            }
+        </MudExpansionPanels>
+    }
+</MudContainer>
+
+<ConfigurationSelector 
+    IsOpen="@showConfigurationDialog" 
+    IsOpenChanged="@((bool value) => showConfigurationDialog = value)"
+    SelectedConfiguration="@selectedConfiguration"
+    SelectedConfigurationChanged="@((string value) => SelectConfigurationFromDialog(value))"
+    AvailableConfigurations="@availableConfigurations" />
+
+@code {
+    private List<FailureGroup>? groups;
+    private Dictionary<FailureGroup, List<GroupedTest>>? precomputedGroupings; // Pre-compute nested groupings for performance
+    private bool isLoading = false;
+    private int similarityThresholdPercent = 80;
+    private int lastXDays = 30;
+    private string selectedConfiguration = string.Empty;
+    private List<string> availableConfigurations = new();
+    private bool showConfigurationDialog = false;
+    private Timer? _debounceTimer;
+
+    private class GroupedTest
+    {
+        public string TestName { get; set; } = string.Empty;
+        public int Count { get; set; }
+        public List<GroupedByDate> DateGroups { get; set; } = new();
+    }
+
+    private class GroupedByDate
+    {
+        public DateTime Date { get; set; }
+        public int Count { get; set; }
+        public List<TestResult> Results { get; set; } = new();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        availableConfigurations = TestData.GetAllConfigurationIds().ToList();
+        await Refresh();
+    }
+
+    private void OpenConfigurationDialog()
+    {
+        showConfigurationDialog = true;
+    }
+
+    private async Task SelectConfigurationFromDialog(string config)
+    {
+        selectedConfiguration = config;
+        showConfigurationDialog = false;
+        await Refresh();
+    }
+
+    private void OnFilterChanged()
+    {
+        // Debounce filter changes to avoid excessive re-grouping on large datasets
+        _debounceTimer?.Dispose();
+        _debounceTimer = new Timer(_ => InvokeAsync(async () => await Refresh()), null, 500, Timeout.Infinite);
+    }
+
+    private async Task Refresh()
+    {
+        isLoading = true;
+        await InvokeAsync(StateHasChanged); // Yield to render loading indicator before heavy processing
+        
+        try
+        {
+            var allFailed = TestData.GetAllTestResults().Where(tr => tr.Status == TestStatus.Fail);
+            
+            // Filter by date range (use UTC to match TestResult.Timestamp)
+            var cutoffDate = DateTime.UtcNow.AddDays(-lastXDays);
+            var filtered = allFailed.Where(tr => tr.Timestamp >= cutoffDate);
+            
+            // Filter by configuration if selected
+            if (!string.IsNullOrEmpty(selectedConfiguration))
+            {
+                filtered = filtered.Where(tr => tr.ConfigurationId == selectedConfiguration);
+            }
+            
+            // Materialize to avoid multiple enumeration
+            var filteredList = filtered.ToList();
+            
+            var threshold = Math.Clamp(similarityThresholdPercent, 50, 100) / 100.0;
+            groups = Grouping.GroupFailures(filteredList, threshold);
+            
+            // Pre-compute nested groupings to avoid re-computation in render loop
+            precomputedGroupings = groups?.ToDictionary(
+                g => g,
+                g => g.TestResults
+                    .GroupBy(t => t.TestFullName)
+                    .OrderByDescending(gr => gr.Count())
+                    .Select(testGroup => new GroupedTest
+                    {
+                        TestName = testGroup.Key,
+                        Count = testGroup.Count(),
+                        DateGroups = testGroup
+                            .GroupBy(t => t.Timestamp.Date)
+                            .OrderByDescending(dg => dg.Key)
+                            .Select(dateGroup => new GroupedByDate
+                            {
+                                Date = dateGroup.Key,
+                                Count = dateGroup.Count(),
+                                Results = dateGroup.OrderByDescending(t => t.Timestamp).ToList()
+                            })
+                            .ToList()
+                    })
+                    .ToList()
+            );
+            
+            Logger.LogInformation("Grouped {GroupCount} failure groups from {FailureCount} tests at {Threshold:P0} similarity", 
+                groups?.Count ?? 0, filteredList.Count, threshold);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error refreshing failure groups");
+            Snackbar.Add($"Error loading failures: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose()
+    {
+        _debounceTimer?.Dispose();
+    }
+}
