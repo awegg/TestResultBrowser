@@ -82,9 +82,9 @@ public class HierarchyNode
     public string? FirstErrorMessage { get; set; }
 
     /// <summary>
-    /// Polarion ticket references associated with this test node (empty for non-test nodes).
+    /// Work item references associated with this test node (empty for non-test nodes).
     /// </summary>
-    public List<PolarionTicketReference> PolarionTickets { get; set; } = new();
+    public List<WorkItemReference> WorkItemReferences { get; set; } = new();
 }
 
 /// <summary>
