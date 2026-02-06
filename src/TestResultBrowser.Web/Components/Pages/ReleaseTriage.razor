@@ -213,9 +213,9 @@ else
     private async Task LoadData()
     {
         isLoading = true;
-        var builds = TestDataService.GetAllTestResults()
-            .Select(r => r.BuildId)
-            .Distinct()
+
+        // Get available builds (efficient - doesn't load all test results)
+        var builds = TestDataService.GetAllBuildIds()
             .OrderByDescending(b => b)
             .ToList();
 

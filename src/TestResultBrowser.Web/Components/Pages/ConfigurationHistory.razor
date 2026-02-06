@@ -343,13 +343,23 @@
     private string currentUsername = "DefaultUser";  // Current user (can be from auth later)
     private int? lastAppliedFilterId;  // Tracks the last applied filter for sharing
 
+    // Expand All protection
+    private const int MAX_EXPAND_ALL_NODES = 5000;
+
     protected override async Task OnInitializedAsync()
     {
-        await LoadAvailableConfigurations();
+        var totalStopwatch = System.Diagnostics.Stopwatch.StartNew();
+        Console.WriteLine("🔍 [PERF] OnInitializedAsync started");
 
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        await LoadAvailableConfigurations();
+        Console.WriteLine($"🔍 [PERF] LoadAvailableConfigurations: {sw.ElapsedMilliseconds}ms");
+
+        sw.Restart();
         // Apply saved filter from URL (if provided)
         var filterApplied = await ApplyFilterFromUrlAsync();
-        
+        Console.WriteLine($"🔍 [PERF] ApplyFilterFromUrlAsync: {sw.ElapsedMilliseconds}ms");
+
         // Load from URL parameters if present (has priority)
         if (!string.IsNullOrEmpty(ConfigFromUrl) && availableConfigurations.Contains(ConfigFromUrl))
         {
@@ -360,18 +370,23 @@
             // Only set default if no URL parameter was provided
             selectedConfiguration = availableConfigurations[0];
         }
-        
+
         // Load from URL parameters if present
         if (BuildsFromUrl.HasValue && BuildsFromUrl.Value >= 1 && BuildsFromUrl.Value <= 20)
         {
             numberOfBuilds = BuildsFromUrl.Value;
         }
-        
+
         // Load data after selection is finalized
         if (!filterApplied && !string.IsNullOrEmpty(selectedConfiguration))
         {
+            sw.Restart();
             await RefreshData();
+            Console.WriteLine($"🔍 [PERF] RefreshData: {sw.ElapsedMilliseconds}ms");
         }
+
+        totalStopwatch.Stop();
+        Console.WriteLine($"🔍 [PERF] OnInitializedAsync TOTAL: {totalStopwatch.ElapsedMilliseconds}ms");
     }
 
     protected override async Task OnParametersSetAsync()
@@ -402,10 +417,15 @@
 
     private async Task LoadAvailableConfigurations()
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             configurationMetadata = await ConfigHistoryService.GetConfigurationsWithMetadataAsync();
+            Console.WriteLine($"  🔍 [PERF] GetConfigurationsWithMetadataAsync: {sw.ElapsedMilliseconds}ms, {configurationMetadata.Count} configs");
+
+            sw.Restart();
             availableConfigurations = configurationMetadata.Select(c => c.Id).ToList();
+            Console.WriteLine($"  🔍 [PERF] Select config IDs: {sw.ElapsedMilliseconds}ms");
             // Don't set default here - let OnInitializedAsync handle it to respect URL params
         }
         catch (Exception ex)
@@ -472,10 +492,20 @@
             return;
         }
 
+        var totalSw = System.Diagnostics.Stopwatch.StartNew();
+        Console.WriteLine($"  🔍 [PERF] RefreshData started for config: {selectedConfiguration}, builds: {numberOfBuilds}");
+
         try
         {
             isLoading = true;
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             historyResult = await ConfigHistoryService.GetConfigurationHistoryAsync(selectedConfiguration, numberOfBuilds);
+            Console.WriteLine($"  🔍 [PERF] GetConfigurationHistoryAsync: {sw.ElapsedMilliseconds}ms");
+            Console.WriteLine($"    - Total tests: {historyResult.TotalTests}");
+            Console.WriteLine($"    - Domains: {historyResult.HierarchyNodes.Count}");
+            Console.WriteLine($"    - History columns: {historyResult.HistoryColumns.Count}");
+
             Snackbar.Add("✅ Configuration history loaded", Severity.Success);
         }
         catch (Exception ex)
@@ -485,15 +515,30 @@
         finally
         {
             isLoading = false;
+            totalSw.Stop();
+            Console.WriteLine($"  🔍 [PERF] RefreshData TOTAL: {totalSw.ElapsedMilliseconds}ms");
         }
     }
 
     private void ExpandAll()
     {
-        if (historyResult?.HierarchyNodes != null)
+        if (historyResult?.HierarchyNodes == null)
+            return;
+
+        // Count total nodes before expanding
+        var totalNodes = CountAllNodes(historyResult.HierarchyNodes);
+
+        if (totalNodes > MAX_EXPAND_ALL_NODES)
         {
-            ExpandAllNodes(historyResult.HierarchyNodes);
+            Snackbar.Add($"Cannot expand all - too many items ({totalNodes:N0} found). Limit: {MAX_EXPAND_ALL_NODES:N0} nodes. Please use filters or expand sections individually.", Severity.Warning, config =>
+            {
+                config.VisibleStateDuration = 6000;
+            });
+            return;
         }
+
+        ExpandAllNodes(historyResult.HierarchyNodes);
+        Snackbar.Add($"Expanded {totalNodes:N0} nodes", Severity.Success);
     }
 
     private void CollapseAll()
@@ -501,7 +546,19 @@
         if (historyResult?.HierarchyNodes != null)
         {
             CollapseAllNodes(historyResult.HierarchyNodes);
+            Snackbar.Add("Collapsed all nodes", Severity.Success);
         }
+    }
+
+    private int CountAllNodes(List<HierarchyNode> nodes)
+    {
+        var count = 0;
+        foreach (var node in nodes)
+        {
+            count++; // Count this node
+            count += CountAllNodes(node.Children); // Count children recursively
+        }
+        return count;
     }
 
     private void ExpandAllNodes(List<HierarchyNode> nodes)

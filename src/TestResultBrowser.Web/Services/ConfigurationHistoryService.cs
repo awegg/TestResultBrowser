@@ -24,6 +24,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
     /// <inheritdoc/>
     public Task<ConfigurationHistoryResult> GetConfigurationHistoryAsync(string configurationId, int numberOfBuilds = 5)
     {
+        var totalSw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             _logger.LogInformation("Building configuration history for {ConfigurationId}, last {NumberOfBuilds} builds", configurationId, numberOfBuilds);
@@ -33,10 +34,12 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                 ConfigurationId = configurationId
             };
 
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             // Get all builds sorted descending (latest first)
             var allBuilds = _testDataService.GetAllBuildIds()
                 .OrderByDescending(b => BuildNumberExtractor.ExtractBuildNumber(b))
                 .ToList();
+            Console.WriteLine($"    🔍 [PERF-SVC] GetAllBuildIds + Sort: {sw.ElapsedMilliseconds}ms");
 
             if (!allBuilds.Any())
             {
@@ -51,6 +54,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
             var selectedBuildsList = allBuilds.Take(buildCount).ToList();
             var selectedBuilds = selectedBuildsList.ToHashSet();
 
+            sw.Restart();
             // Build history columns (selectedBuildsList is already sorted newest first for display)
             result.HistoryColumns = selectedBuildsList
                 .Select((buildId, index) => new HistoryColumn
@@ -60,6 +64,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                     ColumnIndex = index
                 })
                 .ToList();
+            Console.WriteLine($"    🔍 [PERF-SVC] Build history columns: {sw.ElapsedMilliseconds}ms");
 
             // Set latest build info
             if (selectedBuildsList.Any())
@@ -68,10 +73,13 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                 result.LatestBuildTime = GetBuildTime(result.LatestBuildId);
             }
 
+            sw.Restart();
             // Get all test results for this configuration across all selected builds
-            var testResults = _testDataService.GetAllTestResults()
-                .Where(t => t.ConfigurationId.Equals(configurationId, StringComparison.OrdinalIgnoreCase) && selectedBuilds.Contains(t.BuildId))
+            // USE INDEXED QUERY - critical for performance with 250k+ tests
+            var testResults = _testDataService.GetTestResultsByConfiguration(configurationId)
+                .Where(t => selectedBuilds.Contains(t.BuildId))
                 .ToList();
+            Console.WriteLine($"    🔍 [PERF-SVC] GetTestResultsByConfiguration: {sw.ElapsedMilliseconds}ms, {testResults.Count} tests");
 
             _logger.LogInformation("Retrieved {TestCount} test results for {ConfigurationId} across {BuildCount} builds",
                 testResults.Count, configurationId, selectedBuildsList.Count);
@@ -82,17 +90,24 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                 return Task.FromResult(result);
             }
 
+            sw.Restart();
             // Calculate latest build stats
             var latestBuildTests = testResults.Where(t => t.BuildId == result.LatestBuildId).ToList();
             result.TotalTests = latestBuildTests.Count;
             result.PassedTests = latestBuildTests.Count(t => t.Status == TestStatus.Pass);
             result.FailedTests = latestBuildTests.Count(t => t.Status == TestStatus.Fail);
             result.SkippedTests = latestBuildTests.Count(t => t.Status == TestStatus.Skip);
+            Console.WriteLine($"    🔍 [PERF-SVC] Calculate stats: {sw.ElapsedMilliseconds}ms");
 
+            sw.Restart();
             // Build hierarchical tree
             result.HierarchyNodes = BuildHierarchyTree(testResults, selectedBuildsList, result.HistoryColumns);
+            Console.WriteLine($"    🔍 [PERF-SVC] BuildHierarchyTree: {sw.ElapsedMilliseconds}ms");
 
             _logger.LogInformation("Configuration history built successfully: {DomainCount} domains", result.HierarchyNodes.Count);
+
+            totalSw.Stop();
+            Console.WriteLine($"    🔍 [PERF-SVC] GetConfigurationHistoryAsync TOTAL: {totalSw.ElapsedMilliseconds}ms");
 
             return Task.FromResult(result);
         }
@@ -144,10 +159,13 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
     /// <inheritdoc/>
     public Task<List<ConfigurationMetadata>> GetConfigurationsWithMetadataAsync()
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             var testResults = _testDataService.GetAllTestResults();
+            Console.WriteLine($"    🔍 [PERF-SVC] GetAllTestResults: {sw.ElapsedMilliseconds}ms");
 
+            sw.Restart();
             // Group by configuration and find latest timestamp for each
             var configMetadata = testResults
                 .GroupBy(t => t.ConfigurationId)
@@ -158,6 +176,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                 })
                 .OrderByDescending(c => c.LastUpdateTime)
                 .ToList();
+            Console.WriteLine($"    🔍 [PERF-SVC] GroupBy + Select: {sw.ElapsedMilliseconds}ms, {configMetadata.Count} configs");
 
             _logger.LogInformation("Found {ConfigCount} configurations with metadata", configMetadata.Count);
             return Task.FromResult(configMetadata);
@@ -177,6 +196,12 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
         List<string> selectedBuilds,
         List<HistoryColumn> historyColumns)
     {
+        // Pre-index test results by (TestFullName, BuildId) for O(1) lookup
+        // This eliminates O(N²) complexity in BuildHistoryCells
+        var testResultsIndex = testResults
+            .GroupBy(r => (r.TestFullName, r.BuildId))
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(t => t.Timestamp).ToList());
+
         // Group by Feature property from TestResult (extracted during import)
         var features = testResults
             .GroupBy(t => t.Feature)
@@ -261,7 +286,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                     };
 
                     // Build history cells for this test
-                    testNode.HistoryCells = BuildHistoryCells(test, selectedBuilds, historyColumns, testResults);
+                    testNode.HistoryCells = BuildHistoryCells(test, selectedBuilds, historyColumns, testResultsIndex);
 
                     // Extract error information from the latest build's HistoryCellData
                     // This ensures error messages match the result that determines the cell color
@@ -322,22 +347,19 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
         TestResult test,
         List<string> selectedBuilds,
         List<HistoryColumn> historyColumns,
-        List<TestResult> allResults)
+        Dictionary<(string TestFullName, string BuildId), List<TestResult>> testResultsIndex)
     {
         // Build cells using selectedBuilds to maintain consistent order with parent nodes
         var cells = selectedBuilds
             .Select(buildId =>
             {
-                // Get all results for this test in this build
-                var buildResults = allResults
-                    .Where(r => r.BuildId == buildId && r.TestFullName == test.TestFullName)
-                    .ToList();
+                // O(1) lookup using pre-built index instead of O(N) linear search
+                var buildResults = testResultsIndex.TryGetValue((test.TestFullName, buildId), out var results)
+                    ? results
+                    : new List<TestResult>();
 
-                // Take ONLY the latest result (handles retries, reruns, parametrized tests)
-                // Order by timestamp to get the most recent result
-                var latestResult = buildResults
-                    .OrderByDescending(r => r.Timestamp)
-                    .FirstOrDefault();
+                // Results are already sorted by timestamp descending in the index
+                var latestResult = buildResults.FirstOrDefault();
 
                 // Count based on the latest result only
                 var passed = latestResult?.Status == TestStatus.Pass ? 1 : 0;
