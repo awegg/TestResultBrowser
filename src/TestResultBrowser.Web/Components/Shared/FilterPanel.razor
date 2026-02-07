@@ -134,26 +134,24 @@
     
     private void LoadAvailableOptions()
     {
-        var allResults = TestDataService.GetAllTestResults();
-        
-        AvailableDomains = allResults.Select(r => r.DomainId).Distinct().OrderBy(d => d).ToList();
-        AvailableFeatures = allResults.Select(r => r.FeatureId).Distinct().OrderBy(f => f).ToList();
-        
-        // Extract versions from ConfigurationId (format: {Version}_{TestType}_{NamedConfig}_{Domain})
-        AvailableVersions = allResults
-            .Where(r => !string.IsNullOrEmpty(r.ConfigurationId))
-            .Select(r => r.ConfigurationId.Split('_')[0])
+        // Efficient methods - don't load all test results
+        AvailableDomains = TestDataService.GetAllDomainIds().OrderBy(d => d).ToList();
+
+        // Get all unique features - need to iterate configs since we don't have GetAllFeatureIds()
+        // TODO: Could add GetAllFeatureIds() to service for even better performance
+        AvailableFeatures = TestDataService.GetAllTestResults()
+            .Select(r => r.FeatureId)
             .Distinct()
-            .OrderBy(v => v)
+            .OrderBy(f => f)
             .ToList();
-            
-        AvailableConfigurations = allResults.Select(r => r.ConfigurationId).Distinct().OrderBy(c => c).ToList();
-        
+
+        // Extract versions and configurations efficiently
+        AvailableVersions = TestDataService.GetAllVersions().OrderBy(v => v).ToList();
+        AvailableConfigurations = TestDataService.GetAllConfigurationIds().OrderBy(c => c).ToList();
+
         // Sort builds numerically by extracting the build number (e.g., "Release-252_181639" -> 252)
-        AvailableBuilds = allResults
-            .Select(r => r.BuildId)
-            .Distinct()
-            .OrderByDescending(b => 
+        AvailableBuilds = TestDataService.GetAllBuildIds()
+            .OrderByDescending(b =>
             {
                 var parts = b.Split('-');
                 if (parts.Length > 1 && int.TryParse(parts[1].Split('_')[0], out var buildNum))

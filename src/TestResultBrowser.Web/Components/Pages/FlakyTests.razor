@@ -72,10 +72,11 @@
         <!-- Loading Indicator -->
         @if (IsLoading)
         {
-            <MudStack AlignItems="AlignItems.Center" Class="py-8">
-                <MudProgressCircular Indeterminate="true" Size="Size.Large" />
-                <MudText>Analyzing flaky tests...</MudText>
-            </MudStack>
+            <MudPaper Class="pa-6 d-flex flex-column align-center">
+                <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+                <MudText Typo="Typo.h6" Class="mt-4">Detecting flaky tests...</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Analyzing test history</MudText>
+            </MudPaper>
         }
         else if (FlakyTestList == null || FlakyTestList.Count == 0)
         {
@@ -91,7 +92,7 @@
                     @FlakyTestList.Count flaky @(FlakyTestList.Count == 1 ? "test" : "tests") found
                 </MudText>
 
-                @foreach (var test in FlakyTestList)
+                @foreach (var test in displayedTests)
                 {
                     <MudPaper Elevation="2" Class="pa-3 mb-3">
                         <MudStack>
@@ -200,6 +201,22 @@
                         </MudStack>
                     </MudPaper>
                 }
+
+                @if (totalPages > 1)
+                {
+                    <MudPaper Class="pa-3 mt-3 d-flex justify-center align-center">
+                        <MudPagination
+                            Count="@totalPages"
+                            Selected="@currentPage"
+                            SelectedChanged="(newPage) => currentPage = newPage"
+                            Color="Color.Primary"
+                            ShowFirstButton="true"
+                            ShowLastButton="true" />
+                        <MudText Class="ml-4" Typo="Typo.body2">
+                            Showing @((currentPage - 1) * itemsPerPage + 1)-@Math.Min(currentPage * itemsPerPage, FlakyTestList?.Count ?? 0) of @(FlakyTestList?.Count ?? 0) flaky tests
+                        </MudText>
+                    </MudPaper>
+                }
             </MudStack>
         }
     </MudStack>
@@ -224,6 +241,12 @@
     private string? SelectedConfiguration;
     private Timer? _debounceTimer;
 
+    // Pagination state
+    private int currentPage = 1;
+    private int itemsPerPage = 20;
+    private int totalPages => FlakyTestList != null ? (int)Math.Ceiling(FlakyTestList.Count / (double)itemsPerPage) : 0;
+    private List<FlakyTestReport> displayedTests => FlakyTestList?.Skip((currentPage - 1) * itemsPerPage).Take(itemsPerPage).ToList() ?? new();
+
     // Test Details Modal State
     private bool ShowTestDetailsModal = false;
     private TestResult? SelectedTestResult;
@@ -234,11 +257,8 @@
     {
         try
         {
-            // Load available configurations
-            var allResults = TestDataService.GetAllTestResults();
-            AvailableConfigurations = allResults
-                .Select(r => r.ConfigurationId)
-                .Distinct()
+            // Load available configurations (efficient - doesn't load all test results)
+            AvailableConfigurations = TestDataService.GetAllConfigurationIds()
                 .OrderBy(c => c)
                 .ToList();
 
@@ -272,6 +292,8 @@
                 configurationFilter: SelectedConfiguration,
                 dateRange: null,
                 trendFilter: SelectedTrend);
+
+            currentPage = 1; // Reset to first page
 
             Logger.LogInformation("Refreshed flaky tests: {Count} found, Threshold={Threshold:P0}, Trend={Trend}, Config={Config}",
                 FlakyTestList?.Count ?? 0, FailureRateThreshold, SelectedTrend ?? TrendDirection.Stable, SelectedConfiguration ?? "All");

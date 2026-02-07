@@ -8,6 +8,7 @@
 @inject ITestDataService TestDataService
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject ILogger<MorningTriage> Logger
 @implements IAsyncDisposable
 
 <PageTitle>Morning Triage - Test Results Browser</PageTitle>
@@ -24,8 +25,13 @@
 
 @if (isLoading)
 {
-    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
-    <MudText>Loading triage data...</MudText>
+    <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+        <MudPaper Class="pa-6 d-flex flex-column align-center">
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+            <MudText Typo="Typo.h6" Class="mt-4">Loading morning triage...</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Comparing recent builds</MudText>
+        </MudPaper>
+    </MudContainer>
 }
 else if (triageResult == null)
 {
@@ -87,33 +93,49 @@ else
     <!-- New Failures Section -->
     @if (triageResult.NewFailures.Any())
     {
-        <MudPaper Style="padding:0.25rem;margin-bottom:0.25rem;">
-            <MudText Typo="Typo.caption" Style="font-weight:600;margin:0 0 0.25rem 0;">🔴 New Failures (@triageResult.NewFailures.Count)</MudText>
-            
-            @foreach (var domainGroup in triageResult.NewFailures.GroupBy(f => f.DomainId))
-            {
-                <MudPaper Style="padding:0.25rem;margin-bottom:0.25rem;background-color:rgba(0,0,0,0.05);">
-                    <MudText Typo="Typo.caption" Style="font-weight:600;margin:0 0 0.25rem 0;">📁 <strong>@domainGroup.Key</strong> (@domainGroup.Count())</MudText>
-                    
-                    @foreach (var featureGroup in domainGroup.GroupBy(f => f.FeatureId))
+        <MudExpansionPanels>
+            <MudExpansionPanel IsExpanded="false" Text="@($"🔴 New Failures ({triageResult.NewFailures.Count})")">
+                <ChildContent>
+                    @foreach (var domainGroup in displayedDomainGroups)
                     {
-                        <div Style="padding:0.25rem;margin-bottom:0.25rem;border-left:2px solid #1976d2;">
-                            <MudText Typo="Typo.caption" Style="font-weight:600;margin:0 0 0.125rem 0.25rem;">@featureGroup.Key</MudText>
-                            <div>
-                                @foreach (var failure in featureGroup)
-                                {
-                                    <div Style="padding:0.125rem 0.25rem;margin-bottom:0.125rem;background-color:#ffebee;font-size:0.75rem;line-height:1.2;">
-                                        <div Style="font-weight:600;">@failure.TestFullName</div>
-                                        <div>Error: @failure.ErrorMessage</div>
-                                        <div>Configs: @string.Join(", ", failure.AffectedConfigs)</div>
+                        <MudPaper Style="padding:0.25rem;margin-bottom:0.25rem;background-color:rgba(0,0,0,0.05);">
+                            <MudText Typo="Typo.caption" Style="font-weight:600;margin:0 0 0.25rem 0;">📁 <strong>@domainGroup.Key</strong> (@domainGroup.Count())</MudText>
+
+                            @foreach (var featureGroup in domainGroup.GroupBy(f => f.FeatureId))
+                            {
+                                <div Style="padding:0.25rem;margin-bottom:0.25rem;border-left:2px solid #1976d2;">
+                                    <MudText Typo="Typo.caption" Style="font-weight:600;margin:0 0 0.125rem 0.25rem;">@featureGroup.Key</MudText>
+                                    <div>
+                                        @foreach (var failure in featureGroup)
+                                        {
+                                            <div Style="padding:0.125rem 0.25rem;margin-bottom:0.125rem;background-color:#ffebee;font-size:0.75rem;line-height:1.2;">
+                                                <div Style="font-weight:600;">@failure.TestFullName</div>
+                                                <div>Error: @failure.ErrorMessage</div>
+                                                <div>Configs: @string.Join(", ", failure.AffectedConfigs)</div>
+                                            </div>
+                                        }
                                     </div>
-                                }
-                            </div>
+                                </div>
+                            }
+                        </MudPaper>
+                    }
+
+                    @if (totalFailurePages > 1)
+                    {
+                        <div class="d-flex justify-center mt-3">
+                            <MudPagination
+                                Count="@totalFailurePages"
+                                Selected="@newFailuresPage"
+                                SelectedChanged="(newPage) => newFailuresPage = newPage"
+                                Color="Color.Primary" />
+                            <MudText Class="ml-3" Typo="Typo.body2">
+                                Showing domains @((newFailuresPage - 1) * domainsPerPage + 1)-@Math.Min(newFailuresPage * domainsPerPage, _cachedDomainGroups.Count) of @_cachedDomainGroups.Count (@triageResult.NewFailures.Count total failures)
+                            </MudText>
                         </div>
                     }
-                </MudPaper>
-            }
-        </MudPaper>
+                </ChildContent>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
     }
     else
     {
@@ -147,6 +169,14 @@ else
     private List<string> availableDomains = new();
     private IEnumerable<string> selectedDomains = new List<string>();
 
+    // Pagination for New Failures - paginate by domain groups to avoid splitting domains across pages
+    private int newFailuresPage = 1;
+    private int domainsPerPage = 10;
+    private List<IGrouping<string, TriageNewFailure>> _cachedDomainGroups = new();
+    private List<IGrouping<string, TriageNewFailure>> displayedDomainGroups =>
+        _cachedDomainGroups.Skip((newFailuresPage - 1) * domainsPerPage).Take(domainsPerPage).ToList();
+    private int totalFailurePages => _cachedDomainGroups.Count > 0 ? (int)Math.Ceiling(_cachedDomainGroups.Count / (double)domainsPerPage) : 0;
+
     protected override async Task OnInitializedAsync()
     {
         await LoadData();
@@ -176,7 +206,15 @@ else
             });
         });
 
-        await hubConnection.StartAsync();
+        try
+        {
+            await hubConnection.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "SignalR connection failed for morning triage updates");
+            Snackbar.Add("Real-time updates unavailable (failed to connect).", Severity.Warning);
+        }
     }
 
     private async Task LoadData()
@@ -184,14 +222,14 @@ else
         try
         {
             isLoading = true;
-            
-            // Get available domains
-            var allResults = TestDataService.GetAllTestResults();
-            availableDomains = allResults.Select(r => r.DomainId).Distinct().OrderBy(d => d).ToList();
-            
+
+            // Get available domains (efficient - doesn't load all test results)
+            availableDomains = TestDataService.GetAllDomainIds().OrderBy(d => d).ToList();
+
             // Load triage data
             var domains = selectedDomains.Any() ? selectedDomains.ToList() : null;
             triageResult = await TriageService.GetMorningTriageAsync(domains);
+            _cachedDomainGroups = triageResult?.NewFailures.GroupBy(f => f.DomainId).ToList() ?? new();
         }
         catch (Exception ex)
         {
@@ -200,6 +238,7 @@ else
         finally
         {
             isLoading = false;
+            newFailuresPage = 1; // Reset pagination
         }
     }
 

@@ -1,38 +1,40 @@
 @using TestResultBrowser.Web.Models
 @using Microsoft.JSInterop
+@using Microsoft.AspNetCore.Components.Web.Virtualization
 @inject IJSRuntime JS
 
 <CascadingValue Value="this">
 
 @if (IsRootNode)
 {
-    @* Root node - render the entire table *@
-    <table class="hierarchy-table">
-        <thead>
-            <tr>
-                <th style="text-align: left; padding: 8px; min-width: 300px;">Test Hierarchy</th>
-                @foreach (var (column, index) in HistoryColumns.Select((c, i) => (c, i)))
-                {
-                    var passRateCell = index < Node.HistoryCells.Count ? Node.HistoryCells[index] : null;
-                    var passRateText = passRateCell?.Total > 0 
-                        ? $"({passRateCell.Passed}/{passRateCell.Total}) {passRateCell.PassPercentage:F1}%"
-                        : "-";
-                    
-                    <th style="text-align: center; padding: 8px; min-width: 120px;">
-                        <div>@column.BuildId</div>
-                        <div style="font-size: 0.85rem; font-weight: normal;">@column.DisplayDate</div>
-                        <div style="font-size: 0.8rem; font-weight: normal; color: #666; margin-top: 2px;">@passRateText</div>
-                    </th>
-                }
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var child in Node.Children)
-            {
-                <HierarchyTreeView Node="child" HistoryColumns="HistoryColumns" IsRootNode="false" OnTestSelected="OnTestSelected" />
-            }
-        </tbody>
-    </table>
+    @* Root node - render the entire table in a scroll container for reliable Virtualize behavior *@
+    <div style="max-height: 80vh; overflow-y: auto;">
+        <table class="hierarchy-table">
+            <thead>
+                <tr>
+                    <th style="text-align: left; padding: 8px; min-width: 300px;">Test Hierarchy</th>
+                    @foreach (var (column, index) in HistoryColumns.Select((c, i) => (c, i)))
+                    {
+                        var passRateCell = index < Node.HistoryCells.Count ? Node.HistoryCells[index] : null;
+                        var passRateText = passRateCell?.Total > 0
+                            ? $"({passRateCell.Passed}/{passRateCell.Total}) {passRateCell.PassPercentage:F1}%"
+                            : "-";
+
+                        <th style="text-align: center; padding: 8px; min-width: 120px;">
+                            <div>@column.BuildId</div>
+                            <div style="font-size: 0.85rem; font-weight: normal;">@column.DisplayDate</div>
+                            <div style="font-size: 0.8rem; font-weight: normal; color: #666; margin-top: 2px;">@passRateText</div>
+                        </th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                <Virtualize Items="@Node.Children" Context="child" OverscanCount="10" SpacerElement="tr">
+                    <HierarchyTreeView Node="child" HistoryColumns="HistoryColumns" IsRootNode="false" OnTestSelected="OnTestSelected" />
+                </Virtualize>
+            </tbody>
+        </table>
+    </div>
 }
 else
 {
@@ -149,11 +151,22 @@ else
     </tr>
 
     @* Render children if expanded as additional rows *@
-    @if (Node.IsExpanded)
+    @if (Node.IsExpanded && Node.Children.Count > 0)
     {
-        @foreach (var child in Node.Children)
+        @* Use simple foreach for small child counts, Virtualize for large ones *@
+        @if (Node.Children.Count <= 100)
         {
-            <HierarchyTreeView Node="child" HistoryColumns="HistoryColumns" IsRootNode="false" OnTestSelected="OnTestSelected" />
+            @foreach (var child in Node.Children)
+            {
+                <HierarchyTreeView Node="child" HistoryColumns="HistoryColumns" IsRootNode="false" OnTestSelected="OnTestSelected" />
+            }
+        }
+        else
+        {
+            @* Use Virtualize directly without nested table to maintain column alignment *@
+            <Virtualize Items="@Node.Children" Context="child" OverscanCount="10" SpacerElement="tr">
+                <HierarchyTreeView Node="child" HistoryColumns="HistoryColumns" IsRootNode="false" OnTestSelected="OnTestSelected" />
+            </Virtualize>
         }
     }
 }
@@ -179,22 +192,11 @@ else
 
     private async Task OpenTestReport(string reportDirectoryPath)
     {
-        Console.WriteLine($"OpenTestReport called with path: '{reportDirectoryPath}'");
-        
         if (!string.IsNullOrEmpty(reportDirectoryPath))
         {
-            // Encode the path for URL
             var encodedPath = Uri.EscapeDataString(reportDirectoryPath);
             var reportUrl = $"/api/TestReport?path={encodedPath}";
-            
-            Console.WriteLine($"Opening report URL: {reportUrl}");
-            
-            // Open in new window using JavaScript
             await JS.InvokeVoidAsync("window.open", reportUrl, "_blank");
-        }
-        else
-        {
-            Console.WriteLine("ReportDirectoryPath is null or empty!");
         }
     }
 

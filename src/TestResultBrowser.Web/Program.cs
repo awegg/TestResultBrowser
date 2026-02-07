@@ -22,6 +22,9 @@ builder.Services.AddMudServices();
 // Add SignalR for real-time updates
 builder.Services.AddSignalR();
 
+// Add memory cache
+builder.Services.AddMemoryCache();
+
 // Register application services
 builder.Services.AddSingleton<ISettingsService, SettingsService>();
 builder.Services.AddSingleton<IVersionMapperService, VersionMapperService>();

@@ -2,10 +2,12 @@
 @rendermode InteractiveServer
 @using TestResultBrowser.Web.Models
 @using MudBlazor
+@using Microsoft.Extensions.Caching.Memory
 @inject ITestDataService TestData
 @inject IFailureGroupingService Grouping
 @inject ISnackbar Snackbar
 @inject ILogger<FailureGroups> Logger
+@inject IMemoryCache Cache
 @implements IDisposable
 
 <PageTitle>Failure Groups</PageTitle>
@@ -21,6 +23,14 @@
             </MudItem>
             <MudItem xs="12" sm="6" md="2">
                 <MudNumericField @bind-Value="lastXDays" @bind-Value:after="OnFilterChanged" Min="1" Max="365" Label="Last X Days" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="2">
+                <MudSelect @bind-Value="itemsPerPage" @bind-Value:after="OnPageSizeChanged" Label="Groups Per Page">
+                    <MudSelectItem Value="10">10</MudSelectItem>
+                    <MudSelectItem Value="25">25</MudSelectItem>
+                    <MudSelectItem Value="50">50</MudSelectItem>
+                    <MudSelectItem Value="100">100</MudSelectItem>
+                </MudSelect>
             </MudItem>
             <MudItem xs="12" sm="6" md="3">
                 <MudButton Variant="Variant.Outlined" 
@@ -54,28 +64,57 @@
         </MudGrid>
     </MudPaper>
 
-    @if (groups is null || groups.Count == 0)
+    @if (groups is null)
+    {
+        <MudPaper Class="pa-6 d-flex flex-column align-center">
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+            <MudText Typo="Typo.h6" Class="mt-4">Loading failure groups...</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Analyzing failed tests...
+            </MudText>
+        </MudPaper>
+    }
+    else if (groups.Count == 0)
     {
         <MudAlert Severity="Severity.Info">No failed tests found or no groups at current threshold.</MudAlert>
     }
     else
     {
         <MudExpansionPanels MultiExpanded="true" Class="mt-3">
-            @foreach (var group in groups)
+            @foreach (var group in displayedGroups)
             {
-                <MudExpansionPanel IsInitiallyExpanded="true" Text="@($"{group.TestCount} - {group.RepresentativeMessage}")">
+                <MudExpansionPanel IsInitiallyExpanded="false" Text="@($"{group.TestCount} - {group.RepresentativeMessage}")">
                     <ChildContent>
                         <MudExpansionPanels MultiExpanded="true" Class="ms-4">
-                            @if (precomputedGroupings != null && precomputedGroupings.TryGetValue(group, out var testGroups))
-                            {
-                                @foreach (var test in testGroups)
+                            @{
+                                var testGroups = group.TestResults
+                                    .GroupBy(t => t.TestFullName)
+                                    .OrderByDescending(gr => gr.Count())
+                                    .Select(testGroup => new GroupedTest
+                                    {
+                                        TestName = testGroup.Key,
+                                        Count = testGroup.Count(),
+                                        DateGroups = testGroup
+                                            .GroupBy(t => t.Timestamp.Date)
+                                            .OrderByDescending(dg => dg.Key)
+                                            .Select(dateGroup => new GroupedByDate
+                                            {
+                                                Date = dateGroup.Key,
+                                                Count = dateGroup.Count(),
+                                                Results = dateGroup.OrderByDescending(t => t.Timestamp).ToList()
+                                            })
+                                            .ToList()
+                                    })
+                                    .ToList();
+                            }
+                            @foreach (var test in testGroups)
                                 {
-                                    <MudExpansionPanel IsInitiallyExpanded="true" Text="@($"{test.TestName} ({test.Count} occurrences)")">
+                                    <MudExpansionPanel IsInitiallyExpanded="false" Text="@($"{test.TestName} ({test.Count} occurrences)")">
                                         <ChildContent>
                                             <MudExpansionPanels MultiExpanded="true" Class="ms-4">
                                                 @foreach (var dateGroup in test.DateGroups)
                                                 {
-                                                    <MudExpansionPanel IsInitiallyExpanded="true" Text="@($"{dateGroup.Date:yyyy-MM-dd} ({dateGroup.Count} failures)")">
+                                                    <MudExpansionPanel IsInitiallyExpanded="false" Text="@($"{dateGroup.Date:yyyy-MM-dd} ({dateGroup.Count} failures)")">
                                                         <ChildContent>
                                                             @foreach (var testResult in dateGroup.Results)
                                                         {
@@ -100,12 +139,27 @@
                                         </ChildContent>
                                     </MudExpansionPanel>
                                 }
-                            }
-                        </MudExpansionPanels>
+                            </MudExpansionPanels>
                     </ChildContent>
                 </MudExpansionPanel>
             }
         </MudExpansionPanels>
+
+        @if (totalPages > 1)
+        {
+            <MudPaper Class="pa-3 mt-3 d-flex justify-center align-center">
+                <MudPagination
+                    Count="@totalPages"
+                    Selected="@currentPage"
+                    SelectedChanged="OnPageChanged"
+                    Color="Color.Primary"
+                    ShowFirstButton="true"
+                    ShowLastButton="true" />
+                <MudText Class="ml-4" Typo="Typo.body2">
+                    Showing @((currentPage - 1) * itemsPerPage + 1)-@Math.Min(currentPage * itemsPerPage, groups?.Count ?? 0) of @(groups?.Count ?? 0) groups
+                </MudText>
+            </MudPaper>
+        }
     }
 </MudContainer>
 
@@ -117,8 +171,13 @@
     AvailableConfigurations="@availableConfigurations" />
 
 @code {
-    private List<FailureGroup>? groups;
-    private Dictionary<FailureGroup, List<GroupedTest>>? precomputedGroupings; // Pre-compute nested groupings for performance
+    // Cache key prefix for this component
+    private const string CacheKeyPrefix = "FailureGroups_";
+    private string _cacheKey => $"{CacheKeyPrefix}{selectedConfiguration}_{lastXDays}_{similarityThresholdPercent}";
+
+    // Use IMemoryCache instead of static dictionary to avoid cross-user data leakage
+    private List<FailureGroup>? groups => Cache.Get<List<FailureGroup>>(_cacheKey);
+
     private bool isLoading = false;
     private int similarityThresholdPercent = 80;
     private int lastXDays = 30;
@@ -126,6 +185,12 @@
     private List<string> availableConfigurations = new();
     private bool showConfigurationDialog = false;
     private Timer? _debounceTimer;
+
+    // Pagination state
+    private int currentPage = 1;
+    private int itemsPerPage = 25;
+    private int totalPages => groups != null ? (int)Math.Ceiling(groups.Count / (double)itemsPerPage) : 0;
+    private List<FailureGroup> displayedGroups => groups?.Skip((currentPage - 1) * itemsPerPage).Take(itemsPerPage).ToList() ?? new();
 
     private class GroupedTest
     {
@@ -189,34 +254,14 @@
             var filteredList = filtered.ToList();
             
             var threshold = Math.Clamp(similarityThresholdPercent, 50, 100) / 100.0;
-            groups = Grouping.GroupFailures(filteredList, threshold);
-            
-            // Pre-compute nested groupings to avoid re-computation in render loop
-            precomputedGroupings = groups?.ToDictionary(
-                g => g,
-                g => g.TestResults
-                    .GroupBy(t => t.TestFullName)
-                    .OrderByDescending(gr => gr.Count())
-                    .Select(testGroup => new GroupedTest
-                    {
-                        TestName = testGroup.Key,
-                        Count = testGroup.Count(),
-                        DateGroups = testGroup
-                            .GroupBy(t => t.Timestamp.Date)
-                            .OrderByDescending(dg => dg.Key)
-                            .Select(dateGroup => new GroupedByDate
-                            {
-                                Date = dateGroup.Key,
-                                Count = dateGroup.Count(),
-                                Results = dateGroup.OrderByDescending(t => t.Timestamp).ToList()
-                            })
-                            .ToList()
-                    })
-                    .ToList()
-            );
-            
-            Logger.LogInformation("Grouped {GroupCount} failure groups from {FailureCount} tests at {Threshold:P0} similarity", 
-                groups?.Count ?? 0, filteredList.Count, threshold);
+            var fullGroups = Grouping.GroupFailures(filteredList, threshold);
+
+            // Store in IMemoryCache with expiration to avoid unbounded growth
+            Cache.Set(_cacheKey, fullGroups, TimeSpan.FromMinutes(30));
+            currentPage = 1; // Reset to first page on refresh
+
+            Logger.LogInformation("Grouped {GroupCount} failure groups from {FailureCount} tests at {Threshold:P0} similarity",
+                fullGroups?.Count ?? 0, filteredList.Count, threshold);
         }
         catch (Exception ex)
         {
@@ -228,6 +273,16 @@
             isLoading = false;
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    private void OnPageChanged(int newPage)
+    {
+        currentPage = newPage;
+    }
+
+    private void OnPageSizeChanged()
+    {
+        currentPage = 1; // Reset to first page when page size changes
     }
 
     public void Dispose()
