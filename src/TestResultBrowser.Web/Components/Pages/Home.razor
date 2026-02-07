@@ -30,6 +30,17 @@
 			<MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Primary" OnClick="OpenConfigurationHistory">
 				Config History
 			</MudButton>
+				<MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Secondary" OnClick="OpenFeatureDialog" Disabled="@isLoading">
+					Select Features
+				</MudButton>
+				@if (selectedFeatureNames.Any())
+				{
+					<MudTooltip Text="@string.Join(", ", selectedFeatureNames)">
+						<MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">
+							Feature filter: @selectedFeatureNames.Count
+						</MudChip>
+					</MudTooltip>
+				}
 		</div>
 	</div>
 
@@ -251,6 +262,91 @@
 	}
 </MudContainer>
 
+@if (showFeatureDialog)
+{
+	<div class="modal-backdrop fade show" style="display: block; z-index: 9998;"></div>
+	<div class="modal fade show" style="display: block; z-index: 9999;" role="dialog">
+		<div class="modal-dialog modal-xl" style="max-width: 80vw;">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title">Select Features</h5>
+					<button type="button" class="btn-close" @onclick="() => showFeatureDialog = false"></button>
+				</div>
+				<div class="modal-body" style="max-height: 600px; overflow-y: auto;">
+					<input type="text" class="form-control mb-3" placeholder="Search features..."
+						   @bind="featureSearchText" @bind:event="oninput" />
+
+					@if (featureGroups.Count == 0)
+					{
+						<p>No features available</p>
+					}
+					else if (GetFilteredFeatureGroups().Count == 0)
+					{
+						<p>No features match your search.</p>
+					}
+					else
+					{
+						<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;">
+						@foreach (var group in GetFilteredFeatureGroups().OrderBy(g => g.Key))
+						{
+							var groupKey = group.Key;
+							var groupFeatures = group.Value;
+							var countInGroup = groupFeatures.Count(f => selectedFeatureNames.Contains(f));
+							<div>
+								<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+									<input type="checkbox"
+										   @onchange="@((ChangeEventArgs e) => {
+											   if (e.Value is bool value)
+											   {
+												   if (value)
+												   {
+													   foreach (var f in groupFeatures) selectedFeatureNames.Add(f);
+												   }
+												   else
+												   {
+													   foreach (var f in groupFeatures) selectedFeatureNames.Remove(f);
+												   }
+												   StateHasChanged();
+											   }
+										   })"
+										   checked="@(countInGroup == groupFeatures.Count)" />
+									<strong style="font-size: 0.95rem;">@groupKey</strong>
+								</div>
+								<div style="padding-left: 28px;">
+									@foreach (var feature in groupFeatures)
+									{
+										<div style="display: flex; align-items: center; gap: 6px; margin-bottom: 5px; font-size: 0.85rem;">
+											<input type="checkbox" style="min-width: 16px;"
+												   checked="@selectedFeatureNames.Contains(feature)"
+												   @onchange="@((ChangeEventArgs e) => {
+													   if (e.Value is bool value)
+													   {
+														   if (value)
+															   selectedFeatureNames.Add(feature);
+														   else
+															   selectedFeatureNames.Remove(feature);
+														   StateHasChanged();
+													   }
+												   })" />
+											<span>@feature</span>
+										</div>
+									}
+								</div>
+							</div>
+						}
+						</div>
+					}
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-info" @onclick="ClearAllFeatures">Clear All</button>
+					<button type="button" class="btn btn-secondary" @onclick="() => { featureSearchText = string.Empty; showFeatureDialog = false; }">Cancel</button>
+					<button type="button" class="btn btn-primary" @onclick="ApplyFeatureSelection">Apply</button>
+				</div>
+			</div>
+		</div>
+	</div>
+}
+
 @code {
 	private bool isLoading = true;
 	private DateTime rangeStart = DateTime.UtcNow.AddDays(-30);
@@ -264,6 +360,10 @@
 	private const double ChartViewWidth = 800;
 	private const double ChartViewHeight = 220;
 	private bool isChartObserverActive;
+	private string featureSearchText = string.Empty;
+	private bool showFeatureDialog;
+	private Dictionary<string, List<string>> featureGroups = new();
+	private HashSet<string> selectedFeatureNames = new(StringComparer.OrdinalIgnoreCase);
 
 	private DashboardMetrics metrics = new();
 	private List<TrendSeries> trendSeries = new();
@@ -330,15 +430,26 @@
 			.Where(r => r.Timestamp >= rangeStart && r.Timestamp < rangeEnd)
 			.ToList();
 
-		metrics.TotalTests = periodResults.Count;
-		metrics.PassedTests = periodResults.Count(r => r.Status == TestStatus.Pass);
-		metrics.FailedTests = periodResults.Count(r => r.Status == TestStatus.Fail);
-		metrics.SkippedTests = periodResults.Count(r => r.Status == TestStatus.Skip);
+		BuildFeatureGroups(periodResults);
+		if (selectedFeatureNames.Count > 0)
+		{
+			var validFeatures = featureGroups.SelectMany(g => g.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
+			selectedFeatureNames.RemoveWhere(f => !validFeatures.Contains(f));
+		}
+
+		var dashboardResults = selectedFeatureNames.Count == 0
+			? periodResults
+			: periodResults.Where(r => selectedFeatureNames.Contains(r.Feature)).ToList();
+
+		metrics.TotalTests = dashboardResults.Count;
+		metrics.PassedTests = dashboardResults.Count(r => r.Status == TestStatus.Pass);
+		metrics.FailedTests = dashboardResults.Count(r => r.Status == TestStatus.Fail);
+		metrics.SkippedTests = dashboardResults.Count(r => r.Status == TestStatus.Skip);
 		metrics.PassRate = metrics.TotalTests > 0
 			? (double)metrics.PassedTests / metrics.TotalTests * 100.0
 			: 0.0;
 
-		metrics.FailingConfigurations = periodResults
+		metrics.FailingConfigurations = dashboardResults
 			.Where(r => r.Status == TestStatus.Fail)
 			.Select(r => r.ConfigurationId)
 			.Distinct()
@@ -367,13 +478,13 @@
 			.ToList();
 		trendDays = rangeDays;
 
-		var overallSeries = BuildDailySeries(periodResults, rangeDays, r => true);
+		var overallSeries = BuildDailySeries(dashboardResults, rangeDays, r => true);
 		trendSeries = new List<TrendSeries>
 		{
 			new TrendSeries("Overall", "#38bdf8", overallSeries)
 		};
 
-		var topConfigs = periodResults
+		var topConfigs = dashboardResults
 			.Where(r => r.Status == TestStatus.Fail)
 			.GroupBy(r => r.ConfigurationId)
 			.OrderByDescending(g => g.Count())
@@ -385,7 +496,7 @@
 		for (var i = 0; i < topConfigs.Count; i++)
 		{
 			var configId = topConfigs[i];
-			var seriesValues = BuildDailySeries(periodResults, rangeDays, r => r.ConfigurationId == configId);
+			var seriesValues = BuildDailySeries(dashboardResults, rangeDays, r => r.ConfigurationId == configId);
 			trendSeries.Add(new TrendSeries(ShortenConfigName(configId), palette[i % palette.Length], seriesValues));
 		}
 
@@ -408,7 +519,7 @@
 			}
 		}
 
-		topDomains = periodResults
+		topDomains = dashboardResults
 			.GroupBy(r => r.DomainId)
 			.Select(g => new BreakdownItem(
 				g.Key,
@@ -419,7 +530,7 @@
 			.Take(6)
 			.ToList();
 
-		topFeatures = periodResults
+		topFeatures = dashboardResults
 			.GroupBy(r => r.Feature)
 			.Select(g => new BreakdownItem(
 				g.Key,
@@ -448,6 +559,12 @@
 			foreach (var (buildId, timestamp) in buildsInRange)
 			{
 				var buildResults = TestDataService.GetTestResultsByBuild(buildId).ToList();
+				if (selectedFeatureNames.Count > 0)
+				{
+					buildResults = buildResults
+						.Where(r => selectedFeatureNames.Contains(r.Feature))
+						.ToList();
+				}
 				var grouped = buildResults
 					.Where(r => r.ConfigurationId.Split('_').Length >= 4)
 					.GroupBy(r =>
@@ -538,6 +655,14 @@
 		NavigationManager.NavigateTo("/configuration-history");
 	}
 
+	private void OpenFeatureDialog()
+	{
+		BuildFeatureGroups(TestDataService.GetAllTestResults()
+			.Where(r => r.Timestamp >= rangeStart && r.Timestamp < rangeEnd)
+			.ToList());
+		showFeatureDialog = true;
+	}
+
 	private void NavigateToConfigHistory(string configId)
 	{
 		NavigationManager.NavigateTo($"/configuration-history?config={Uri.EscapeDataString(configId)}");
@@ -578,6 +703,110 @@
 	{
 		var rendered = trendSeries.Where(s => visibleSeries.Contains(s.Name)).ToList();
 		return rendered.Count > 0 ? rendered : trendSeries;
+	}
+
+	private void BuildFeatureGroups(List<TestResult> results)
+	{
+		featureGroups.Clear();
+		if (results.Count == 0)
+			return;
+
+		var allFeatures = results
+			.Select(r => r.Feature)
+			.Where(f => !string.IsNullOrWhiteSpace(f))
+			.Distinct(StringComparer.OrdinalIgnoreCase)
+			.OrderBy(f => f)
+			.ToList();
+
+		foreach (var feature in allFeatures)
+		{
+			var group = ExtractGroupFromFeatureName(feature);
+			if (!featureGroups.TryGetValue(group, out var list))
+			{
+				list = new List<string>();
+				featureGroups[group] = list;
+			}
+			list.Add(feature);
+		}
+
+		foreach (var key in featureGroups.Keys.ToList())
+		{
+			featureGroups[key] = featureGroups[key]
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.OrderBy(n => n)
+				.ToList();
+		}
+	}
+
+	private static string ExtractGroupFromFeatureName(string featureName)
+	{
+		if (string.IsNullOrEmpty(featureName))
+			return "Other";
+
+		var name = featureName.Trim();
+		var groupName = name;
+
+		var dashParts = name.Split(" - ");
+		if (dashParts.Length > 1)
+		{
+			groupName = dashParts[0].Trim();
+		}
+		else
+		{
+			var suffixes = new[] { "Regression", "Smoke", "Archive Viewer", "Public API" };
+			foreach (var suffix in suffixes)
+			{
+				if (name.EndsWith(" " + suffix, StringComparison.OrdinalIgnoreCase))
+				{
+					groupName = name.Substring(0, name.Length - (" " + suffix).Length).Trim();
+					break;
+				}
+			}
+		}
+
+		if (groupName.StartsWith("Px ", StringComparison.OrdinalIgnoreCase))
+		{
+			var withoutPx = groupName.Substring(3).Trim();
+			return "PX " + withoutPx;
+		}
+
+		return "Other";
+	}
+
+	private void ClearAllFeatures()
+	{
+		selectedFeatureNames.Clear();
+		StateHasChanged();
+	}
+
+	private async Task ApplyFeatureSelection()
+	{
+		showFeatureDialog = false;
+		Snackbar.Add($"Applied {selectedFeatureNames.Count} feature(s)", Severity.Info);
+		await RefreshAsync();
+	}
+
+	private Dictionary<string, List<string>> GetFilteredFeatureGroups()
+	{
+		if (string.IsNullOrEmpty(featureSearchText))
+		{
+			return featureGroups;
+		}
+
+		var filtered = new Dictionary<string, List<string>>();
+		foreach (var group in featureGroups)
+		{
+			var matchingFeatures = group.Value
+				.Where(f => f.Contains(featureSearchText, StringComparison.OrdinalIgnoreCase))
+				.ToList();
+
+			if (group.Key.Contains(featureSearchText, StringComparison.OrdinalIgnoreCase) || matchingFeatures.Count > 0)
+			{
+				filtered[group.Key] = matchingFeatures.Count > 0 ? matchingFeatures : group.Value;
+			}
+		}
+
+		return filtered;
 	}
 
 	private void OnChartMouseMove(Microsoft.AspNetCore.Components.Web.MouseEventArgs args)
