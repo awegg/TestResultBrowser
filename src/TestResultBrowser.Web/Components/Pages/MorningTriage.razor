@@ -182,12 +182,15 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        if (!string.IsNullOrEmpty(DomainFromUrl))
-        {
-            selectedDomains = new List<string> { DomainFromUrl };
-        }
-
         await LoadData();
+
+        // Apply domain filter from URL after LoadData populates availableDomains
+        if (!string.IsNullOrEmpty(DomainFromUrl) && availableDomains.Contains(DomainFromUrl, StringComparer.OrdinalIgnoreCase))
+        {
+            var matchedDomain = availableDomains.First(d => string.Equals(d, DomainFromUrl, StringComparison.OrdinalIgnoreCase));
+            selectedDomains = new List<string> { matchedDomain };
+            await RefreshTriage();
+        }
 
         // Initialize SignalR connection for real-time updates
         hubConnection = new HubConnectionBuilder()

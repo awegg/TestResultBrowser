@@ -76,6 +76,14 @@
                     <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ExpandAll">Expand All</MudButton>
                     <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="CollapseAll">Collapse All</MudButton>
                     <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="OpenFeatureDialog" Disabled="@(historyResult == null)">Select Features</MudButton>
+                    @if (selectedFeatureNames.Any())
+                    {
+                        <MudTooltip Text="@string.Join(", ", selectedFeatureNames)">
+                            <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">
+                                Filter active: @selectedFeatureNames.Count feature(s)
+                            </MudChip>
+                        </MudTooltip>
+                    }
                 </div>
             </MudPaper>
 
@@ -139,12 +147,6 @@
                     }
                     else
                     {
-                        @if (selectedFeatureNames.Any())
-                        {
-                            <MudText Typo="Typo.caption" Color="Color.Info">
-                                Filter active: @string.Join(", ", selectedFeatureNames)
-                            </MudText>
-                        }
                         <div class="table-container" style="overflow-x: auto;">
                             @* Render hierarchy tree with filtering *@
                             @foreach (var domainNode in historyResult.HierarchyNodes)

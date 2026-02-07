@@ -1,5 +1,6 @@
 @using TestResultBrowser.Web.Models
 @using MudBlazor
+@using System.Globalization
 
 @if (Matrix == null || Matrix.Versions.Count == 0)
 {
@@ -65,12 +66,15 @@ else
                                                 <table class="tooltip-table">
                                                     <thead><tr><th>Build</th><th>Date</th><th>Rate</th></tr></thead>
                                                     <tbody>
-                                                        @for (int i = 0; i < cell.BuildIds.Count && i < 8; i++)
+                                                        @{
+                                                            var minCount = Math.Min(cell.BuildIds.Count, Math.Min(cell.Timestamps.Count, Math.Min(cell.Trend?.Count ?? 0, 8)));
+                                                        }
+                                                        @for (int i = 0; i < minCount; i++)
                                                         {
                                                             <tr>
                                                                 <td>@ShortenBuildId(cell.BuildIds[i])</td>
                                                                 <td>@cell.Timestamps[i].ToString("MM/dd")</td>
-                                                                <td>@(cell.Trend[i]?.ToString("F1") ?? "-")%</td>
+                                                                <td>@(cell.Trend?[i]?.ToString("F1") ?? "-")%</td>
                                                             </tr>
                                                         }
                                                     </tbody>
@@ -120,7 +124,7 @@ else
             var x = values.Count == 1 ? width / 2 : (i / (double)(values.Count - 1)) * (width - 4) + 2;
             var normalized = (values[i]!.Value - yMin) / yRange;
             var y = height - (normalized * (height - 4)) - 2;
-            points.Add($"{x:F1},{y:F1}");
+            points.Add(string.Format(CultureInfo.InvariantCulture, "{0:F1},{1:F1}", x, y));
         }
 
         return points.Count >= 2 ? string.Join(" ", points) : string.Empty;
