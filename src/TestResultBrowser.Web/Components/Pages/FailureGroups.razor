@@ -2,11 +2,12 @@
 @rendermode InteractiveServer
 @using TestResultBrowser.Web.Models
 @using MudBlazor
+@using Microsoft.Extensions.Caching.Memory
 @inject ITestDataService TestData
 @inject IFailureGroupingService Grouping
 @inject ISnackbar Snackbar
 @inject ILogger<FailureGroups> Logger
-@inject NavigationManager Navigation
+@inject IMemoryCache Cache
 @implements IDisposable
 
 <PageTitle>Failure Groups</PageTitle>
@@ -170,12 +171,13 @@
     AvailableConfigurations="@availableConfigurations" />
 
 @code {
-    // Store all groups - we'll minimize what gets transferred
-    [NonSerialized]
-    private static Dictionary<string, List<FailureGroup>> _sessionGroupCache = new();
-    private string _sessionKey => $"{selectedConfiguration}_{lastXDays}_{similarityThresholdPercent}";
+    // Cache key prefix for this component
+    private const string CacheKeyPrefix = "FailureGroups_";
+    private string _cacheKey => $"{CacheKeyPrefix}{selectedConfiguration}_{lastXDays}_{similarityThresholdPercent}";
 
-    private List<FailureGroup>? groups => _sessionGroupCache.TryGetValue(_sessionKey, out var g) ? g : null;
+    // Use IMemoryCache instead of static dictionary to avoid cross-user data leakage
+    private List<FailureGroup>? groups => Cache.Get<List<FailureGroup>>(_cacheKey);
+
     private bool isLoading = false;
     private int similarityThresholdPercent = 80;
     private int lastXDays = 30;
@@ -254,8 +256,8 @@
             var threshold = Math.Clamp(similarityThresholdPercent, 50, 100) / 100.0;
             var fullGroups = Grouping.GroupFailures(filteredList, threshold);
 
-            // Store in static cache to avoid component serialization
-            _sessionGroupCache[_sessionKey] = fullGroups;
+            // Store in IMemoryCache with expiration to avoid unbounded growth
+            Cache.Set(_cacheKey, fullGroups, TimeSpan.FromMinutes(30));
             currentPage = 1; // Reset to first page on refresh
 
             Logger.LogInformation("Grouped {GroupCount} failure groups from {FailureCount} tests at {Threshold:P0} similarity",

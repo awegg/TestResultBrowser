@@ -39,7 +39,6 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
             var allBuilds = _testDataService.GetAllBuildIds()
                 .OrderByDescending(b => BuildNumberExtractor.ExtractBuildNumber(b))
                 .ToList();
-            Console.WriteLine($"    🔍 [PERF-SVC] GetAllBuildIds + Sort: {sw.ElapsedMilliseconds}ms");
 
             if (!allBuilds.Any())
             {
@@ -64,7 +63,6 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                     ColumnIndex = index
                 })
                 .ToList();
-            Console.WriteLine($"    🔍 [PERF-SVC] Build history columns: {sw.ElapsedMilliseconds}ms");
 
             // Set latest build info
             if (selectedBuildsList.Any())
@@ -79,7 +77,6 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
             var testResults = _testDataService.GetTestResultsByConfiguration(configurationId)
                 .Where(t => selectedBuilds.Contains(t.BuildId))
                 .ToList();
-            Console.WriteLine($"    🔍 [PERF-SVC] GetTestResultsByConfiguration: {sw.ElapsedMilliseconds}ms, {testResults.Count} tests");
 
             _logger.LogInformation("Retrieved {TestCount} test results for {ConfigurationId} across {BuildCount} builds",
                 testResults.Count, configurationId, selectedBuildsList.Count);
@@ -97,17 +94,14 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
             result.PassedTests = latestBuildTests.Count(t => t.Status == TestStatus.Pass);
             result.FailedTests = latestBuildTests.Count(t => t.Status == TestStatus.Fail);
             result.SkippedTests = latestBuildTests.Count(t => t.Status == TestStatus.Skip);
-            Console.WriteLine($"    🔍 [PERF-SVC] Calculate stats: {sw.ElapsedMilliseconds}ms");
 
             sw.Restart();
             // Build hierarchical tree
             result.HierarchyNodes = BuildHierarchyTree(testResults, selectedBuildsList, result.HistoryColumns);
-            Console.WriteLine($"    🔍 [PERF-SVC] BuildHierarchyTree: {sw.ElapsedMilliseconds}ms");
 
             _logger.LogInformation("Configuration history built successfully: {DomainCount} domains", result.HierarchyNodes.Count);
 
             totalSw.Stop();
-            Console.WriteLine($"    🔍 [PERF-SVC] GetConfigurationHistoryAsync TOTAL: {totalSw.ElapsedMilliseconds}ms");
 
             return Task.FromResult(result);
         }
@@ -163,7 +157,6 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
         try
         {
             var testResults = _testDataService.GetAllTestResults();
-            Console.WriteLine($"    🔍 [PERF-SVC] GetAllTestResults: {sw.ElapsedMilliseconds}ms");
 
             sw.Restart();
             // Group by configuration and find latest timestamp for each
@@ -176,7 +169,6 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                 })
                 .OrderByDescending(c => c.LastUpdateTime)
                 .ToList();
-            Console.WriteLine($"    🔍 [PERF-SVC] GroupBy + Select: {sw.ElapsedMilliseconds}ms, {configMetadata.Count} configs");
 
             _logger.LogInformation("Found {ConfigCount} configurations with metadata", configMetadata.Count);
             return Task.FromResult(configMetadata);

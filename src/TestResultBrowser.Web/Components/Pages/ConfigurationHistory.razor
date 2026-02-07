@@ -349,16 +349,13 @@
     protected override async Task OnInitializedAsync()
     {
         var totalStopwatch = System.Diagnostics.Stopwatch.StartNew();
-        Console.WriteLine("🔍 [PERF] OnInitializedAsync started");
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
         await LoadAvailableConfigurations();
-        Console.WriteLine($"🔍 [PERF] LoadAvailableConfigurations: {sw.ElapsedMilliseconds}ms");
 
         sw.Restart();
         // Apply saved filter from URL (if provided)
         var filterApplied = await ApplyFilterFromUrlAsync();
-        Console.WriteLine($"🔍 [PERF] ApplyFilterFromUrlAsync: {sw.ElapsedMilliseconds}ms");
 
         // Load from URL parameters if present (has priority)
         if (!string.IsNullOrEmpty(ConfigFromUrl) && availableConfigurations.Contains(ConfigFromUrl))
@@ -382,11 +379,9 @@
         {
             sw.Restart();
             await RefreshData();
-            Console.WriteLine($"🔍 [PERF] RefreshData: {sw.ElapsedMilliseconds}ms");
         }
 
         totalStopwatch.Stop();
-        Console.WriteLine($"🔍 [PERF] OnInitializedAsync TOTAL: {totalStopwatch.ElapsedMilliseconds}ms");
     }
 
     protected override async Task OnParametersSetAsync()
@@ -421,11 +416,9 @@
         try
         {
             configurationMetadata = await ConfigHistoryService.GetConfigurationsWithMetadataAsync();
-            Console.WriteLine($"  🔍 [PERF] GetConfigurationsWithMetadataAsync: {sw.ElapsedMilliseconds}ms, {configurationMetadata.Count} configs");
 
             sw.Restart();
             availableConfigurations = configurationMetadata.Select(c => c.Id).ToList();
-            Console.WriteLine($"  🔍 [PERF] Select config IDs: {sw.ElapsedMilliseconds}ms");
             // Don't set default here - let OnInitializedAsync handle it to respect URL params
         }
         catch (Exception ex)
@@ -493,7 +486,6 @@
         }
 
         var totalSw = System.Diagnostics.Stopwatch.StartNew();
-        Console.WriteLine($"  🔍 [PERF] RefreshData started for config: {selectedConfiguration}, builds: {numberOfBuilds}");
 
         try
         {
@@ -501,10 +493,6 @@
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
             historyResult = await ConfigHistoryService.GetConfigurationHistoryAsync(selectedConfiguration, numberOfBuilds);
-            Console.WriteLine($"  🔍 [PERF] GetConfigurationHistoryAsync: {sw.ElapsedMilliseconds}ms");
-            Console.WriteLine($"    - Total tests: {historyResult.TotalTests}");
-            Console.WriteLine($"    - Domains: {historyResult.HierarchyNodes.Count}");
-            Console.WriteLine($"    - History columns: {historyResult.HistoryColumns.Count}");
 
             Snackbar.Add("✅ Configuration history loaded", Severity.Success);
         }
@@ -516,7 +504,6 @@
         {
             isLoading = false;
             totalSw.Stop();
-            Console.WriteLine($"  🔍 [PERF] RefreshData TOTAL: {totalSw.ElapsedMilliseconds}ms");
         }
     }
 

@@ -8,6 +8,7 @@
 @inject ITestDataService TestDataService
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject ILogger<MorningTriage> Logger
 @implements IAsyncDisposable
 
 <PageTitle>Morning Triage - Test Results Browser</PageTitle>
@@ -95,7 +96,7 @@ else
         <MudExpansionPanels>
             <MudExpansionPanel IsExpanded="false" Text="@($"🔴 New Failures ({triageResult.NewFailures.Count})")">
                 <ChildContent>
-                    @foreach (var domainGroup in displayedNewFailures.GroupBy(f => f.DomainId))
+                    @foreach (var domainGroup in displayedDomainGroups)
                     {
                         <MudPaper Style="padding:0.25rem;margin-bottom:0.25rem;background-color:rgba(0,0,0,0.05);">
                             <MudText Typo="Typo.caption" Style="font-weight:600;margin:0 0 0.25rem 0;">📁 <strong>@domainGroup.Key</strong> (@domainGroup.Count())</MudText>
@@ -128,7 +129,7 @@ else
                                 SelectedChanged="(newPage) => newFailuresPage = newPage"
                                 Color="Color.Primary" />
                             <MudText Class="ml-3" Typo="Typo.body2">
-                                Showing @((newFailuresPage - 1) * failuresPerPage + 1)-@Math.Min(newFailuresPage * failuresPerPage, triageResult.NewFailures.Count) of @triageResult.NewFailures.Count
+                                Showing domains @((newFailuresPage - 1) * domainsPerPage + 1)-@Math.Min(newFailuresPage * domainsPerPage, allDomainGroups.Count) of @allDomainGroups.Count (@triageResult.NewFailures.Count total failures)
                             </MudText>
                         </div>
                     }
@@ -168,12 +169,14 @@ else
     private List<string> availableDomains = new();
     private IEnumerable<string> selectedDomains = new List<string>();
 
-    // Pagination for New Failures
+    // Pagination for New Failures - paginate by domain groups to avoid splitting domains across pages
     private int newFailuresPage = 1;
-    private int failuresPerPage = 20;
-    private List<TriageNewFailure> displayedNewFailures =>
-        triageResult?.NewFailures.Skip((newFailuresPage - 1) * failuresPerPage).Take(failuresPerPage).ToList() ?? new();
-    private int totalFailurePages => triageResult != null ? (int)Math.Ceiling(triageResult.NewFailures.Count / (double)failuresPerPage) : 0;
+    private int domainsPerPage = 10;
+    private List<IGrouping<string, TriageNewFailure>> allDomainGroups =>
+        triageResult?.NewFailures.GroupBy(f => f.DomainId).ToList() ?? new();
+    private List<IGrouping<string, TriageNewFailure>> displayedDomainGroups =>
+        allDomainGroups.Skip((newFailuresPage - 1) * domainsPerPage).Take(domainsPerPage).ToList();
+    private int totalFailurePages => allDomainGroups.Count > 0 ? (int)Math.Ceiling(allDomainGroups.Count / (double)domainsPerPage) : 0;
 
     protected override async Task OnInitializedAsync()
     {
@@ -204,7 +207,15 @@ else
             });
         });
 
-        await hubConnection.StartAsync();
+        try
+        {
+            await hubConnection.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "SignalR connection failed for morning triage updates");
+            Snackbar.Add("Real-time updates unavailable (failed to connect).", Severity.Warning);
+        }
     }
 
     private async Task LoadData()
