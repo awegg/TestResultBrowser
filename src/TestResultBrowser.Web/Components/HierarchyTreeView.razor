@@ -192,22 +192,11 @@ else
 
     private async Task OpenTestReport(string reportDirectoryPath)
     {
-        Console.WriteLine($"OpenTestReport called with path: '{reportDirectoryPath}'");
-        
         if (!string.IsNullOrEmpty(reportDirectoryPath))
         {
-            // Encode the path for URL
             var encodedPath = Uri.EscapeDataString(reportDirectoryPath);
             var reportUrl = $"/api/TestReport?path={encodedPath}";
-            
-            Console.WriteLine($"Opening report URL: {reportUrl}");
-            
-            // Open in new window using JavaScript
             await JS.InvokeVoidAsync("window.open", reportUrl, "_blank");
-        }
-        else
-        {
-            Console.WriteLine("ReportDirectoryPath is null or empty!");
         }
     }
 

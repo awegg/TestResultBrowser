@@ -19,23 +19,23 @@ public class FilterPanelTests
     private static (TestContext ctx, Mock<ITestDataService> dataServiceMock) CreateContext()
     {
         var ctx = new TestContext();
+
+        // Use Loose mode so all MudBlazor JS interop calls succeed without explicit setup.
+        // Strict mode misses calls (e.g. mudScrollManager, mudElementRef.removeOnBlurEvent)
+        // which causes MudSelect to reset SelectedValues during render.
+        ctx.JSInterop.Mode = JSRuntimeMode.Loose;
         ctx.Services.AddMudServices();
 
-        // Configure MudBlazor JS interop used by PopoverService
-        ctx.JSInterop.SetupVoid("mudPopover.initialize", _ => true);
-        ctx.JSInterop.SetupVoid("mudPopover.connect", _ => true);
-        ctx.JSInterop.SetupVoid("mudPopover.reposition", _ => true);
-        ctx.JSInterop.SetupVoid("mudPopover.dispose", _ => true);
-        // Configure MudBlazor input blur event
-        ctx.JSInterop.SetupVoid("mudElementRef.addOnBlurEvent", _ => true);
-        // Configure MudBlazor key interceptor
-        ctx.JSInterop.SetupVoid("mudKeyInterceptor.connect", _ => true);
-        ctx.JSInterop.SetupVoid("mudKeyInterceptor.disconnect", _ => true);
-        // Provide result for popover provider count
+        // MudPopoverProvider check must still return 1 (provider exists)
         ctx.JSInterop.Setup<int>("mudpopoverHelper.countProviders", _ => true).SetResult(1);
 
         var mock = new Mock<ITestDataService>();
-        mock.Setup(s => s.GetAllTestResults()).Returns(CreateSampleResults());
+        var sampleResults = CreateSampleResults().ToList();
+        mock.Setup(s => s.GetAllTestResults()).Returns(sampleResults);
+        mock.Setup(s => s.GetAllDomainIds()).Returns(sampleResults.Select(r => r.DomainId).Distinct().ToList());
+        mock.Setup(s => s.GetAllVersions()).Returns(sampleResults.Select(r => r.ConfigurationId.Split('_')[0]).Distinct().ToList());
+        mock.Setup(s => s.GetAllConfigurationIds()).Returns(sampleResults.Select(r => r.ConfigurationId).Distinct().ToList());
+        mock.Setup(s => s.GetAllBuildIds()).Returns(sampleResults.Select(r => r.BuildId).Distinct().ToList());
         ctx.Services.AddSingleton(mock.Object);
 
         return (ctx, mock);

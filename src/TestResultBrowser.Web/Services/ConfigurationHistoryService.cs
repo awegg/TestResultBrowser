@@ -295,13 +295,13 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                     suiteNode.Children.Add(testNode);
                 }
 
-                // Calculate suite stats
-                CalculateNodeStats(suiteNode, selectedBuilds, testResults);
+                // Calculate suite stats using index for O(1) lookups
+                CalculateNodeStats(suiteNode, selectedBuilds, testResultsIndex);
                 featureNode.Children.Add(suiteNode);
             }
 
             // Calculate feature stats
-            CalculateNodeStats(featureNode, selectedBuilds, testResults);
+            CalculateNodeStats(featureNode, selectedBuilds, testResultsIndex);
             featureNodes.Add(featureNode);
         }
 
@@ -317,7 +317,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
         };
 
         // Calculate root node stats (including HistoryCells)
-        CalculateNodeStats(rootNode, selectedBuilds, testResults);
+        CalculateNodeStats(rootNode, selectedBuilds, testResultsIndex);
 
         return new List<HierarchyNode> { rootNode };
     }
@@ -372,46 +372,60 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
 
     /// <summary>
     /// Calculate aggregated stats for a parent node (Suite/Feature/Domain)
+    /// Uses the pre-built index for O(1) lookups instead of repeated O(N) linear scans.
     /// </summary>
     private void CalculateNodeStats(
         HierarchyNode node,
         List<string> selectedBuilds,
-        List<TestResult> allResults)
+        Dictionary<(string TestFullName, string BuildId), List<TestResult>> testResultsIndex)
     {
         // Get all unique test full names under this node (handles deduplication)
         var allTestFullNames = GetAllTestFullNamesUnderNode(node);
 
-        // Latest build stats - deduplicate by TestFullName, selecting latest by timestamp
+        // Latest build stats using index - O(T) where T = tests under this node
         // Note: selectedBuilds is sorted descending, so First() is the latest
         var latestBuild = selectedBuilds.First();
-        var latestTests = allResults
-            .Where(r => r.BuildId == latestBuild && allTestFullNames.Contains(r.TestFullName))
-            .GroupBy(r => r.TestFullName)
-            .Select(g => g.OrderByDescending(r => r.Timestamp).First())  // Take latest by timestamp
-            .ToList();
+        int latestPassed = 0, latestFailed = 0, latestSkipped = 0;
+        foreach (var testName in allTestFullNames)
+        {
+            if (testResultsIndex.TryGetValue((testName, latestBuild), out var results))
+            {
+                // Results are pre-sorted by timestamp descending, so First() is latest
+                var status = results[0].Status;
+                if (status == TestStatus.Pass) latestPassed++;
+                else if (status == TestStatus.Fail) latestFailed++;
+                else if (status == TestStatus.Skip) latestSkipped++;
+            }
+        }
 
         node.LatestStats = new TestNodeStats
         {
-            Passed = latestTests.Count(t => t.Status == TestStatus.Pass),
-            Failed = latestTests.Count(t => t.Status == TestStatus.Fail),
-            Skipped = latestTests.Count(t => t.Status == TestStatus.Skip)
+            Passed = latestPassed,
+            Failed = latestFailed,
+            Skipped = latestSkipped
         };
 
-        // History cells - deduplicate by TestFullName per build, selecting latest by timestamp
+        // History cells using index - O(T * B) where B = number of builds
         node.HistoryCells = selectedBuilds
             .Select(buildId =>
             {
-                var buildTests = allResults
-                    .Where(r => r.BuildId == buildId && allTestFullNames.Contains(r.TestFullName))
-                    .GroupBy(r => r.TestFullName)
-                    .Select(g => g.OrderByDescending(r => r.Timestamp).First())  // Take latest by timestamp
-                    .ToList();
+                int p = 0, f = 0, s = 0;
+                foreach (var testName in allTestFullNames)
+                {
+                    if (testResultsIndex.TryGetValue((testName, buildId), out var results))
+                    {
+                        var status = results[0].Status;
+                        if (status == TestStatus.Pass) p++;
+                        else if (status == TestStatus.Fail) f++;
+                        else if (status == TestStatus.Skip) s++;
+                    }
+                }
 
                 return new HistoryCellData
                 {
-                    Passed = buildTests.Count(t => t.Status == TestStatus.Pass),
-                    Failed = buildTests.Count(t => t.Status == TestStatus.Fail),
-                    Skipped = buildTests.Count(t => t.Status == TestStatus.Skip),
+                    Passed = p,
+                    Failed = f,
+                    Skipped = s,
                     ReportDirectoryPath = null  // Parent nodes don't have a single report path
                 };
             })
@@ -420,17 +434,40 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
         // Totals across all builds - count unique test names
         node.TotalTestsAcrossAllBuilds = allTestFullNames.Count;
 
-        node.TotalFailuresAcrossAllBuilds = allResults
-            .Where(r => selectedBuilds.Contains(r.BuildId) && allTestFullNames.Contains(r.TestFullName) && r.Status == TestStatus.Fail)
-            .GroupBy(r => new { r.TestFullName, r.BuildId })
-            .Count();  // Count unique test+build combinations with failures
+        // Total failures using index
+        int totalFailures = 0;
+        foreach (var testName in allTestFullNames)
+        {
+            foreach (var buildId in selectedBuilds)
+            {
+                if (testResultsIndex.TryGetValue((testName, buildId), out var results)
+                    && results[0].Status == TestStatus.Fail)
+                {
+                    totalFailures++;
+                }
+            }
+        }
+        node.TotalFailuresAcrossAllBuilds = totalFailures;
 
-        // Use the first available report path from descendants so parent rows can link to report
-        var firstReportPath = allResults
-            .Where(r => selectedBuilds.Contains(r.BuildId) && allTestFullNames.Contains(r.TestFullName))
-            .OrderByDescending(r => BuildNumberExtractor.ExtractBuildNumber(r.BuildId))
-            .Select(r => r.ReportDirectoryPath)
-            .FirstOrDefault(path => !string.IsNullOrEmpty(path));
+        // Use the first available report path from the latest build's descendants
+        // selectedBuilds is already sorted descending by build number
+        string? firstReportPath = null;
+        foreach (var buildId in selectedBuilds)
+        {
+            foreach (var testName in allTestFullNames)
+            {
+                if (testResultsIndex.TryGetValue((testName, buildId), out var results))
+                {
+                    var path = results[0].ReportDirectoryPath;
+                    if (!string.IsNullOrEmpty(path))
+                    {
+                        firstReportPath = path;
+                        break;
+                    }
+                }
+            }
+            if (firstReportPath != null) break;
+        }
 
         if (!string.IsNullOrEmpty(firstReportPath))
         {
@@ -440,18 +477,27 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
         // For parent nodes, capture the first error message from any failed child test
         if (node.NodeType != HierarchyNodeType.Test)
         {
-            var firstFailedTest = allResults
-                .Where(r => selectedBuilds.Contains(r.BuildId)
-                    && allTestFullNames.Contains(r.TestFullName)
-                    && r.Status == TestStatus.Fail
-                    && !string.IsNullOrEmpty(r.ErrorMessage))
-                .OrderByDescending(r => BuildNumberExtractor.ExtractBuildNumber(r.BuildId))
-                .ThenByDescending(r => r.Timestamp)  // For same build, get latest timestamp
-                .FirstOrDefault();
-
-            if (firstFailedTest != null)
+            TestResult? firstFailed = null;
+            foreach (var buildId in selectedBuilds) // Latest build first
             {
-                node.FirstErrorMessage = firstFailedTest.ErrorMessage;
+                foreach (var testName in allTestFullNames)
+                {
+                    if (testResultsIndex.TryGetValue((testName, buildId), out var results))
+                    {
+                        var latest = results[0];
+                        if (latest.Status == TestStatus.Fail && !string.IsNullOrEmpty(latest.ErrorMessage))
+                        {
+                            if (firstFailed == null || latest.Timestamp > firstFailed.Timestamp)
+                                firstFailed = latest;
+                        }
+                    }
+                }
+                if (firstFailed != null) break; // Found in latest build, no need to check older
+            }
+
+            if (firstFailed != null)
+            {
+                node.FirstErrorMessage = firstFailed.ErrorMessage;
             }
         }
     }
