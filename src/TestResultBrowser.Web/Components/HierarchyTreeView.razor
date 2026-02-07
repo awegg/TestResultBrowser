@@ -29,7 +29,7 @@
                 </tr>
             </thead>
             <tbody>
-                <Virtualize Items="@Node.Children" Context="child" OverscanCount="10">
+                <Virtualize Items="@Node.Children" Context="child" OverscanCount="10" SpacerElement="tr">
                     <HierarchyTreeView Node="child" HistoryColumns="HistoryColumns" IsRootNode="false" OnTestSelected="OnTestSelected" />
                 </Virtualize>
             </tbody>
@@ -164,7 +164,7 @@ else
         else
         {
             @* Use Virtualize directly without nested table to maintain column alignment *@
-            <Virtualize Items="@Node.Children" Context="child" OverscanCount="10">
+            <Virtualize Items="@Node.Children" Context="child" OverscanCount="10" SpacerElement="tr">
                 <HierarchyTreeView Node="child" HistoryColumns="HistoryColumns" IsRootNode="false" OnTestSelected="OnTestSelected" />
             </Virtualize>
         }
@@ -188,7 +188,6 @@ else
     private void ToggleExpanded()
     {
         Node.IsExpanded = !Node.IsExpanded;
-        StateHasChanged(); // Force immediate UI update
     }
 
     private async Task OpenTestReport(string reportDirectoryPath)

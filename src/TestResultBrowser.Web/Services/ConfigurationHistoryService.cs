@@ -24,7 +24,6 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
     /// <inheritdoc/>
     public Task<ConfigurationHistoryResult> GetConfigurationHistoryAsync(string configurationId, int numberOfBuilds = 5)
     {
-        var totalSw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             _logger.LogInformation("Building configuration history for {ConfigurationId}, last {NumberOfBuilds} builds", configurationId, numberOfBuilds);
@@ -34,7 +33,6 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                 ConfigurationId = configurationId
             };
 
-            var sw = System.Diagnostics.Stopwatch.StartNew();
             // Get all builds sorted descending (latest first)
             var allBuilds = _testDataService.GetAllBuildIds()
                 .OrderByDescending(b => BuildNumberExtractor.ExtractBuildNumber(b))
@@ -53,7 +51,6 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
             var selectedBuildsList = allBuilds.Take(buildCount).ToList();
             var selectedBuilds = selectedBuildsList.ToHashSet();
 
-            sw.Restart();
             // Build history columns (selectedBuildsList is already sorted newest first for display)
             result.HistoryColumns = selectedBuildsList
                 .Select((buildId, index) => new HistoryColumn
@@ -71,7 +68,6 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                 result.LatestBuildTime = GetBuildTime(result.LatestBuildId);
             }
 
-            sw.Restart();
             // Get all test results for this configuration across all selected builds
             // USE INDEXED QUERY - critical for performance with 250k+ tests
             var testResults = _testDataService.GetTestResultsByConfiguration(configurationId)
@@ -87,7 +83,6 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                 return Task.FromResult(result);
             }
 
-            sw.Restart();
             // Calculate latest build stats
             var latestBuildTests = testResults.Where(t => t.BuildId == result.LatestBuildId).ToList();
             result.TotalTests = latestBuildTests.Count;
@@ -95,13 +90,10 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
             result.FailedTests = latestBuildTests.Count(t => t.Status == TestStatus.Fail);
             result.SkippedTests = latestBuildTests.Count(t => t.Status == TestStatus.Skip);
 
-            sw.Restart();
             // Build hierarchical tree
             result.HierarchyNodes = BuildHierarchyTree(testResults, selectedBuildsList, result.HistoryColumns);
 
             _logger.LogInformation("Configuration history built successfully: {DomainCount} domains", result.HierarchyNodes.Count);
-
-            totalSw.Stop();
 
             return Task.FromResult(result);
         }
@@ -153,12 +145,10 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
     /// <inheritdoc/>
     public Task<List<ConfigurationMetadata>> GetConfigurationsWithMetadataAsync()
     {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             var testResults = _testDataService.GetAllTestResults();
 
-            sw.Restart();
             // Group by configuration and find latest timestamp for each
             var configMetadata = testResults
                 .GroupBy(t => t.ConfigurationId)

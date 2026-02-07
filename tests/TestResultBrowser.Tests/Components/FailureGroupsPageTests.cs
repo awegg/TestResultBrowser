@@ -9,6 +9,7 @@ using TestResultBrowser.Web.Components.Pages;
 using TestResultBrowser.Web.Models;
 using TestResultBrowser.Web.Services;
 using Xunit;
+using Microsoft.Extensions.Caching.Memory;
 using MudBlazor.Services;
 using MudBlazor;
 using Microsoft.AspNetCore.Components;
@@ -54,6 +55,10 @@ public class FailureGroupsPageTests
         ctx.Services.AddSingleton(groupingServiceMock.Object);
         ctx.Services.AddSingleton<ISnackbar>(new SnackbarService(navManager));
         ctx.Services.AddSingleton<ILogger<FailureGroups>>(new MockLogger<FailureGroups>());
+        ctx.Services.AddSingleton<IMemoryCache>(new MemoryCache(new MemoryCacheOptions()));
+
+        // MudBlazor requires a MudPopoverProvider in the component tree
+        ctx.RenderComponent<MudPopoverProvider>();
 
         return (ctx, dataServiceMock, groupingServiceMock);
     }
