@@ -1,8 +1,1021 @@
 ﻿@page "/"
 @rendermode InteractiveServer
+@using TestResultBrowser.Web.Models
+@using TestResultBrowser.Web.Services
+@using MudBlazor
+@inject ITestDataService TestDataService
+@inject ITriageService TriageService
+@inject NavigationManager NavigationManager
 
 <PageTitle>Home</PageTitle>
 
-<h1>Hello, world!</h1>
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="dashboard-shell">
+	<div class="dashboard-hero">
+		<h1>Quality Pulse</h1>
+		<div class="hero-actions">
+			<span class="hero-range">@rangeStart.ToString("MMM dd") – @rangeEnd.AddDays(-1).ToString("MMM dd, yyyy")</span>
+			<MudButton Variant="Variant.Filled" Size="Size.Small" Color="Color.Primary" OnClick="RefreshAsync" Disabled="@isLoading">
+				@if (isLoading)
+				{
+					<MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+				}
+				Refresh
+			</MudButton>
+			<MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Primary" OnClick="OpenConfigurationHistory">
+				Config History
+			</MudButton>
+		</div>
+	</div>
 
-Welcome to your new app.
+	@if (isLoading)
+	{
+		<MudPaper Class="pa-6 d-flex flex-column align-center">
+			<MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+			<MudText Typo="Typo.h6" Class="mt-4">Building dashboard...</MudText>
+			<MudText Typo="Typo.body2" Color="Color.Secondary">Scanning cached test results</MudText>
+		</MudPaper>
+	}
+	else
+	{
+		@* KPI Strip *@
+		<div class="kpi-strip">
+			<div class="kpi-item">
+				<div class="kpi-label">Pass Rate</div>
+				<div class="kpi-val">@metrics.PassRate.ToString("F1")%</div>
+				<div class="kpi-detail">@metrics.TotalTests.ToString("N0") tests</div>
+			</div>
+			<div class="kpi-divider"></div>
+			<div class="kpi-item">
+				<div class="kpi-label">Failed</div>
+				<div class="kpi-val kpi-val--bad">@metrics.FailedTests.ToString("N0")</div>
+				<div class="kpi-detail">@metrics.FailingConfigurations configs
+					<span class="delta @(metrics.FailingConfigurationsDelta >= 0 ? "delta-up" : "delta-down")">
+						@(metrics.FailingConfigurationsDelta >= 0 ? "+" : "")@metrics.FailingConfigurationsDelta
+					</span>
+				</div>
+			</div>
+			<div class="kpi-divider"></div>
+			<div class="kpi-item">
+				<div class="kpi-label">Passed</div>
+				<div class="kpi-val kpi-val--good">@metrics.PassedTests.ToString("N0")</div>
+				<div class="kpi-detail">@metrics.SkippedTests.ToString("N0") skipped</div>
+			</div>
+			<div class="kpi-divider"></div>
+			<div class="kpi-item">
+				<div class="kpi-label">24h Change</div>
+				<div class="kpi-val">@metrics.NewFailures / @metrics.FixedTests</div>
+				<div class="kpi-detail">new / fixed &middot; @metrics.LatestBuild</div>
+			</div>
+		</div>
+
+		@* Full-Width Sparkline Chart *@
+		<div class="chart-card">
+			<div class="chart-header">
+				<span class="chart-title">Pass Rate Trend (30 days)</span>
+				<div class="sparkline-legend">
+					@foreach (var series in trendSeries)
+					{
+						<div class="legend-item">
+							<span class="legend-dot" style="background:@series.Color"></span>
+							<span>@series.Name</span>
+						</div>
+					}
+				</div>
+			</div>
+			<div class="chart-body">
+				@if (trendSeries.Count > 0)
+				{
+					var yMin = trendSeries.Count > 0 ? trendSeries.Min(s => s.YMin) : 0;
+					var yMax = trendSeries.Count > 0 ? trendSeries.Max(s => s.YMax) : 100;
+					var yRange = yMax - yMin;
+					if (yRange < 1) yRange = 1;
+					<div class="chart-container">
+						<div class="chart-y-axis">
+							<span>@yMax.ToString("F1")%</span>
+							<span>@((yMin + yRange / 2).ToString("F1"))%</span>
+							<span>@yMin.ToString("F1")%</span>
+						</div>
+						<div class="chart-svg-area">
+							<svg width="100%" height="160" viewBox="0 0 800 160" preserveAspectRatio="none">
+								<rect x="0" y="0" width="800" height="160" rx="8" ry="8" fill="#0f172a" />
+								@* Grid lines *@
+								<line x1="0" y1="40" x2="800" y2="40" stroke="#1e293b" stroke-width="1" />
+								<line x1="0" y1="80" x2="800" y2="80" stroke="#1e293b" stroke-width="1" />
+								<line x1="0" y1="120" x2="800" y2="120" stroke="#1e293b" stroke-width="1" />
+								@foreach (var series in trendSeries)
+								{
+									foreach (var segment in series.Segments)
+									{
+										<polyline fill="none" stroke="@series.Color" stroke-width="2.5" points="@segment" />
+									}
+								}
+							</svg>
+						</div>
+					</div>
+				}
+				else
+				{
+					<div class="sparkline-empty">No trend data available</div>
+				}
+			</div>
+		</div>
+
+		<MudGrid Class="mt-1" GutterSize="GutterSize.Small">
+			<MudItem xs="12" md="6">
+				<MudPaper Class="panel-card">
+					<div class="panel-header">Top Domains (Failures)</div>
+					<div class="panel-list">
+						@if (topDomains.Count == 0)
+						{
+							<div class="panel-empty">No domain data in range.</div>
+						}
+						else
+						{
+							@foreach (var item in topDomains)
+							{
+								<div class="panel-row">
+									<div class="panel-name">@item.Name</div>
+									<div class="panel-metric">@item.Failed.ToString("N0") / @item.Total.ToString("N0")</div>
+									<div class="panel-rate">@item.PassRate.ToString("F1")%</div>
+								</div>
+							}
+						}
+					</div>
+				</MudPaper>
+			</MudItem>
+
+			<MudItem xs="12" md="6">
+				<MudPaper Class="panel-card">
+					<div class="panel-header">Top Features (Failures)</div>
+					<div class="panel-list">
+						@if (topFeatures.Count == 0)
+						{
+							<div class="panel-empty">No feature data in range.</div>
+						}
+						else
+						{
+							@foreach (var item in topFeatures)
+							{
+								<div class="panel-row">
+									<div class="panel-name">@item.Name</div>
+									<div class="panel-metric">@item.Failed.ToString("N0") / @item.Total.ToString("N0")</div>
+									<div class="panel-rate">@item.PassRate.ToString("F1")%</div>
+								</div>
+							}
+						}
+					</div>
+				</MudPaper>
+			</MudItem>
+
+			@* Worst Performing Configurations *@
+			<MudItem xs="12" md="6">
+				<MudPaper Class="panel-card">
+					<div class="panel-header">Worst Performing Configurations</div>
+					<div class="panel-list">
+						@if (worstConfigs.Count == 0)
+						{
+							<div class="panel-empty">No failing configurations in range.</div>
+						}
+						else
+						{
+							@foreach (var (cfg, rank) in worstConfigs.Select((c, i) => (c, i + 1)))
+							{
+								<div class="worst-row" @onclick="@(() => NavigateToConfigHistory(cfg.ConfigId))">
+									<div class="rank-badge">@rank</div>
+									<div class="worst-details">
+										<div class="worst-name">@cfg.Version / @cfg.NamedConfig</div>
+										<div class="worst-metrics">
+											<span>@cfg.PassRate.ToString("F1")%</span>
+											<span class="@(cfg.Delta >= 0 ? "delta-indicator-up" : "delta-indicator-down")">
+												@(cfg.Delta >= 0 ? "+" : "")@cfg.Delta.ToString("F1")%
+											</span>
+											<span>@cfg.FailedTests.ToString("N0") / @cfg.TotalTests.ToString("N0") failed</span>
+										</div>
+									</div>
+								</div>
+							}
+						}
+					</div>
+				</MudPaper>
+			</MudItem>
+
+			@* Domain Health Cards *@
+			<MudItem xs="12" md="6">
+				<MudPaper Class="panel-card">
+					<div class="panel-header">Domain Health</div>
+					@if (domainCards.Count == 0)
+					{
+						<div class="panel-empty">No domain data in range.</div>
+					}
+					else
+					{
+						<div class="domain-grid">
+							@foreach (var d in domainCards)
+							{
+								<div class="domain-card" @onclick="@(() => NavigateToDomain(d.DomainId))">
+									<div class="domain-card-name">@d.DomainId</div>
+									<div class="domain-card-rate">@d.PassRate.ToString("F1")%</div>
+									@if (d.Delta.HasValue)
+									{
+										<div class="domain-card-delta @(d.Delta.Value >= 0 ? "delta-indicator-up" : "delta-indicator-down")">
+											@(d.Delta.Value >= 0 ? "+" : "")@d.Delta.Value.ToString("F1")%
+										</div>
+									}
+									else
+									{
+										<div class="domain-card-delta" style="color:#94a3b8">—</div>
+									}
+									<div class="domain-card-count">@d.TotalTests.ToString("N0") tests / @d.FailedTests.ToString("N0") failed</div>
+								</div>
+							}
+						</div>
+					}
+				</MudPaper>
+			</MudItem>
+
+			@* Configuration Matrix with Sparklines *@
+			<MudItem xs="12">
+				<MudPaper Class="panel-card" Style="min-height: auto;">
+					<div class="panel-header">Configuration Matrix (Last 30 Days)</div>
+					<MatrixWithSparklines Matrix="configMatrix" OnCellClick="NavigateToConfigHistory" />
+				</MudPaper>
+			</MudItem>
+		</MudGrid>
+
+		<div class="dashboard-footer">
+			Last updated: @(lastUpdated.HasValue ? lastUpdated.Value.ToString("MMM dd, yyyy HH:mm") : "-")
+		</div>
+	}
+</MudContainer>
+
+@code {
+	private bool isLoading = true;
+	private DateTime rangeStart = DateTime.UtcNow.AddDays(-30);
+	private DateTime rangeEnd = DateTime.UtcNow;
+	private DateTime? lastUpdated;
+
+	private DashboardMetrics metrics = new();
+	private List<TrendSeries> trendSeries = new();
+	private List<BreakdownItem> topDomains = new();
+	private List<BreakdownItem> topFeatures = new();
+	private DashboardMatrix? configMatrix;
+	private List<WorstConfig> worstConfigs = new();
+	private List<DomainCard> domainCards = new();
+
+	protected override async Task OnInitializedAsync()
+	{
+		await RefreshAsync();
+	}
+
+	private async Task RefreshAsync()
+	{
+		isLoading = true;
+		await InvokeAsync(StateHasChanged);
+
+		rangeEnd = DateTime.UtcNow.Date.AddDays(1);
+		rangeStart = rangeEnd.AddDays(-30);
+
+		var allResults = TestDataService.GetAllTestResults().ToList();
+		lastUpdated = allResults.Count > 0 ? allResults.Max(r => r.Timestamp) : null;
+
+		var periodResults = allResults
+			.Where(r => r.Timestamp >= rangeStart && r.Timestamp < rangeEnd)
+			.ToList();
+
+		metrics.TotalTests = periodResults.Count;
+		metrics.PassedTests = periodResults.Count(r => r.Status == TestStatus.Pass);
+		metrics.FailedTests = periodResults.Count(r => r.Status == TestStatus.Fail);
+		metrics.SkippedTests = periodResults.Count(r => r.Status == TestStatus.Skip);
+		metrics.PassRate = metrics.TotalTests > 0
+			? (double)metrics.PassedTests / metrics.TotalTests * 100.0
+			: 0.0;
+
+		metrics.FailingConfigurations = periodResults
+			.Where(r => r.Status == TestStatus.Fail)
+			.Select(r => r.ConfigurationId)
+			.Distinct()
+			.Count();
+
+		var previousStart = rangeStart.AddDays(-30);
+		var previousEnd = rangeStart;
+		var previousFailingConfigs = allResults
+			.Where(r => r.Timestamp >= previousStart && r.Timestamp < previousEnd && r.Status == TestStatus.Fail)
+			.Select(r => r.ConfigurationId)
+			.Distinct()
+			.Count();
+		metrics.FailingConfigurationsDelta = metrics.FailingConfigurations - previousFailingConfigs;
+
+		var triage = await TriageService.GetMorningTriageAsync();
+		if (triage != null)
+		{
+			metrics.NewFailures = triage.NewFailures.Count;
+			metrics.FixedTests = triage.FixedTests.Count;
+			metrics.LatestBuild = triage.TodayBuildId;
+			metrics.PreviousBuild = triage.YesterdayBuildId;
+		}
+
+		var rangeDays = Enumerable.Range(0, 30)
+			.Select(offset => rangeStart.AddDays(offset).Date)
+			.ToList();
+
+		var overallSeries = BuildDailySeries(periodResults, rangeDays, r => true);
+		trendSeries = new List<TrendSeries>
+		{
+			new TrendSeries("Overall", "#38bdf8", overallSeries)
+		};
+
+		var topConfigs = periodResults
+			.Where(r => r.Status == TestStatus.Fail)
+			.GroupBy(r => r.ConfigurationId)
+			.OrderByDescending(g => g.Count())
+			.Take(3)
+			.Select(g => g.Key)
+			.ToList();
+
+		var palette = new[] { "#f97316", "#a78bfa", "#22c55e" };
+		for (var i = 0; i < topConfigs.Count; i++)
+		{
+			var configId = topConfigs[i];
+			var seriesValues = BuildDailySeries(periodResults, rangeDays, r => r.ConfigurationId == configId);
+			trendSeries.Add(new TrendSeries(ShortenConfigName(configId), palette[i % palette.Length], seriesValues));
+		}
+
+		foreach (var series in trendSeries)
+		{
+			series.BuildSegments(800, 160);
+		}
+
+		topDomains = periodResults
+			.GroupBy(r => r.DomainId)
+			.Select(g => new BreakdownItem(
+				g.Key,
+				g.Count(r => r.Status == TestStatus.Fail),
+				g.Count(),
+				g.Count() > 0 ? (double)g.Count(r => r.Status == TestStatus.Pass) / g.Count() * 100.0 : 0.0))
+			.OrderByDescending(b => b.Failed)
+			.Take(6)
+			.ToList();
+
+		topFeatures = periodResults
+			.GroupBy(r => r.Feature)
+			.Select(g => new BreakdownItem(
+				g.Key,
+				g.Count(r => r.Status == TestStatus.Fail),
+				g.Count(),
+				g.Count() > 0 ? (double)g.Count(r => r.Status == TestStatus.Pass) / g.Count() * 100.0 : 0.0))
+			.OrderByDescending(b => b.Failed)
+			.Take(6)
+			.ToList();
+
+		// Build configuration matrix with sparkline trends
+		var buildsInRange = TestDataService.GetAllBuildIds()
+			.Select(bid => (BuildId: bid, Timestamp: TestDataService.GetBuildTimestamp(bid)))
+			.Where(b => b.Timestamp.HasValue && b.Timestamp.Value >= rangeStart && b.Timestamp.Value < rangeEnd)
+			.OrderByDescending(b => b.Timestamp!.Value)
+			.Take(10)
+			.Select(b => (b.BuildId, Timestamp: b.Timestamp!.Value))
+			.ToList();
+
+		if (buildsInRange.Count > 0)
+		{
+			var versions = new SortedSet<string>();
+			var namedConfigs = new SortedSet<string>();
+			var cellHistory = new Dictionary<(string Version, string NamedConfig), List<(string BuildId, double? PassRate, DateTime Timestamp, int Total, int Passed, int Failed, string ConfigId)>>();
+
+			foreach (var (buildId, timestamp) in buildsInRange)
+			{
+				var buildResults = TestDataService.GetTestResultsByBuild(buildId).ToList();
+				var grouped = buildResults
+					.Where(r => r.ConfigurationId.Split('_').Length >= 4)
+					.GroupBy(r =>
+					{
+						var parts = r.ConfigurationId.Split('_');
+						return (Version: parts[0], NamedConfig: parts[2]);
+					});
+
+				foreach (var g in grouped)
+				{
+					versions.Add(g.Key.Version);
+					namedConfigs.Add(g.Key.NamedConfig);
+
+					if (!cellHistory.ContainsKey(g.Key))
+						cellHistory[g.Key] = new();
+
+					var total = g.Count();
+					var passed = g.Count(r => r.Status == TestStatus.Pass);
+					var failed = g.Count(r => r.Status == TestStatus.Fail);
+					var passRate = total > 0 ? (double)passed / total * 100.0 : (double?)null;
+					var configId = g.Select(r => r.ConfigurationId).Distinct().OrderBy(c => c).First();
+
+					cellHistory[g.Key].Add((buildId, passRate, timestamp, total, passed, failed, configId));
+				}
+			}
+
+			var matrixCells = new Dictionary<string, Dictionary<string, MatrixCell>>();
+			foreach (var kvp in cellHistory)
+			{
+				var (version, namedConfig) = kvp.Key;
+				var history = kvp.Value;
+				var latest = history[0];
+
+				if (!matrixCells.ContainsKey(version))
+					matrixCells[version] = new();
+
+				matrixCells[version][namedConfig] = new MatrixCell(
+					latest.ConfigId,
+					latest.PassRate ?? 0,
+					latest.Total,
+					latest.Passed,
+					latest.Failed,
+					history.Select(h => h.PassRate).ToList(),
+					history.Select(h => h.BuildId).ToList(),
+					history.Select(h => h.Timestamp).ToList());
+			}
+
+			configMatrix = new DashboardMatrix(versions.ToList(), namedConfigs.ToList(), matrixCells);
+
+			// Build worst-performing configs from matrix
+			worstConfigs = cellHistory
+				.Select(kvp =>
+				{
+					var (version, namedConfig) = kvp.Key;
+					var history = kvp.Value;
+					var latest = history[0];
+					var oldest = history[^1];
+					var delta = (latest.PassRate ?? 0) - (oldest.PassRate ?? 0);
+					return new WorstConfig(latest.ConfigId, version, namedConfig, latest.PassRate ?? 0, delta, latest.Failed, latest.Total);
+				})
+				.Where(w => w.FailedTests > 0)
+				.OrderBy(w => w.PassRate)
+				.ThenByDescending(w => w.FailedTests)
+				.Take(5)
+				.ToList();
+		}
+		else
+		{
+			configMatrix = null;
+			worstConfigs = new();
+		}
+
+		// Build domain summary cards with delta vs previous period
+		var previousPeriodResults = allResults
+			.Where(r => r.Timestamp >= previousStart && r.Timestamp < previousEnd)
+			.ToList();
+
+		var previousDomainRates = previousPeriodResults
+			.GroupBy(r => r.DomainId)
+			.ToDictionary(
+				g => g.Key,
+				g =>
+				{
+					var t = g.Count();
+					var p = g.Count(r => r.Status == TestStatus.Pass);
+					return t > 0 ? (double)p / t * 100.0 : 0.0;
+				});
+
+		domainCards = periodResults
+			.GroupBy(r => r.DomainId)
+			.Select(g =>
+			{
+				var total = g.Count();
+				var passed = g.Count(r => r.Status == TestStatus.Pass);
+				var failed = g.Count(r => r.Status == TestStatus.Fail);
+				var rate = total > 0 ? (double)passed / total * 100.0 : 0.0;
+				double? delta = previousDomainRates.TryGetValue(g.Key, out var pr) ? rate - pr : null;
+				return new DomainCard(g.Key, rate, delta, total, failed);
+			})
+			.OrderBy(d => d.PassRate)
+			.ToList();
+
+		isLoading = false;
+	}
+
+	private void OpenConfigurationHistory()
+	{
+		NavigationManager.NavigateTo("/configuration-history");
+	}
+
+	private void NavigateToConfigHistory(string configId)
+	{
+		NavigationManager.NavigateTo($"/configuration-history?config={Uri.EscapeDataString(configId)}");
+	}
+
+	private void NavigateToDomain(string domainId)
+	{
+		NavigationManager.NavigateTo($"/morning-triage?domain={Uri.EscapeDataString(domainId)}");
+	}
+
+	private static List<double?> BuildDailySeries(List<TestResult> results, List<DateTime> days, Func<TestResult, bool> predicate)
+	{
+		var totals = new Dictionary<DateTime, (int Passed, int Total)>();
+		foreach (var day in days)
+		{
+			totals[day] = (0, 0);
+		}
+
+		foreach (var result in results)
+		{
+			if (!predicate(result))
+				continue;
+
+			var date = result.Timestamp.Date;
+			if (!totals.ContainsKey(date))
+				continue;
+
+			var current = totals[date];
+			current.Total += 1;
+			if (result.Status == TestStatus.Pass)
+				current.Passed += 1;
+			totals[date] = current;
+		}
+
+		return days.Select(day =>
+		{
+			var current = totals[day];
+			if (current.Total == 0)
+				return (double?)null;
+			return (double)current.Passed / current.Total * 100.0;
+		}).ToList();
+	}
+
+	private static string ShortenConfigName(string configId)
+	{
+		if (string.IsNullOrWhiteSpace(configId))
+			return "Config";
+
+		if (configId.Length <= 20)
+			return configId;
+
+		return configId.Substring(0, 10) + "..." + configId.Substring(configId.Length - 6);
+	}
+
+	private record BreakdownItem(string Name, int Failed, int Total, double PassRate);
+
+	private class TrendSeries
+	{
+		public TrendSeries(string name, string color, List<double?> values)
+		{
+			Name = name;
+			Color = color;
+			Values = values;
+		}
+
+		public string Name { get; }
+		public string Color { get; }
+		public List<double?> Values { get; }
+		public List<string> Segments { get; } = new();
+
+		public double YMin { get; private set; }
+		public double YMax { get; private set; }
+
+		public void BuildSegments(double width, double height)
+		{
+			Segments.Clear();
+			if (Values.Count == 0)
+				return;
+
+			// Auto-scale Y-axis to data range with padding
+			var validValues = Values.Where(v => v.HasValue).Select(v => v!.Value).ToList();
+			if (validValues.Count == 0)
+				return;
+
+			var dataMin = validValues.Min();
+			var dataMax = validValues.Max();
+			var range = dataMax - dataMin;
+			if (range < 1.0) range = 1.0; // Avoid division by zero for flat lines
+			var padding = range * 0.15;
+			YMin = Math.Max(0, dataMin - padding);
+			YMax = Math.Min(100, dataMax + padding);
+			var yRange = YMax - YMin;
+			if (yRange < 1.0) yRange = 1.0;
+
+			var segmentPoints = new List<string>();
+			for (var i = 0; i < Values.Count; i++)
+			{
+				var value = Values[i];
+				if (!value.HasValue)
+				{
+					FlushSegment(segmentPoints);
+					continue;
+				}
+
+				var x = Values.Count == 1 ? 0 : (i / (double)(Values.Count - 1)) * (width - 8) + 4;
+				var normalized = (value.Value - YMin) / yRange;
+				var y = height - (normalized * (height - 8)) - 4;
+				segmentPoints.Add($"{x:F1},{y:F1}");
+			}
+			FlushSegment(segmentPoints);
+
+			void FlushSegment(List<string> points)
+			{
+				if (points.Count >= 2)
+				{
+					Segments.Add(string.Join(" ", points));
+				}
+				points.Clear();
+			}
+		}
+	}
+
+	private class DashboardMetrics
+	{
+		public int TotalTests { get; set; }
+		public int PassedTests { get; set; }
+		public int FailedTests { get; set; }
+		public int SkippedTests { get; set; }
+		public double PassRate { get; set; }
+		public int FailingConfigurations { get; set; }
+		public int FailingConfigurationsDelta { get; set; }
+		public int NewFailures { get; set; }
+		public int FixedTests { get; set; }
+		public string LatestBuild { get; set; } = "-";
+		public string PreviousBuild { get; set; } = "-";
+	}
+}
+
+<style>
+	.dashboard-shell {
+		padding: 8px 0 16px;
+		font-family: "Space Grotesk", "IBM Plex Sans", "Segoe UI", sans-serif;
+	}
+
+	/* Hero - compact */
+	.dashboard-hero {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 10px 16px;
+		border-radius: 10px;
+		background: linear-gradient(120deg, #0f172a, #1e293b 55%, #334155);
+		color: #f8fafc;
+	}
+
+	.dashboard-hero h1 {
+		margin: 0;
+		font-size: 1.3rem;
+		letter-spacing: -0.02em;
+	}
+
+	.hero-actions {
+		display: flex;
+		gap: 10px;
+		align-items: center;
+	}
+
+	.hero-range {
+		font-size: 0.78rem;
+		color: #94a3b8;
+		white-space: nowrap;
+	}
+
+	/* KPI Strip */
+	.kpi-strip {
+		display: flex;
+		align-items: center;
+		gap: 0;
+		margin-top: 6px;
+		padding: 8px 16px;
+		background: #fff;
+		border: 1px solid #e2e8f0;
+		border-radius: 10px;
+	}
+
+	.kpi-item {
+		flex: 1;
+		text-align: center;
+		padding: 4px 8px;
+	}
+
+	.kpi-divider {
+		width: 1px;
+		height: 40px;
+		background: #e2e8f0;
+		flex-shrink: 0;
+	}
+
+	.kpi-label {
+		font-size: 0.7rem;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: #64748b;
+	}
+
+	.kpi-val {
+		font-size: 1.4rem;
+		font-weight: 700;
+		color: #0f172a;
+		line-height: 1.2;
+	}
+
+	.kpi-val--bad { color: #dc2626; }
+	.kpi-val--good { color: #16a34a; }
+
+	.kpi-detail {
+		font-size: 0.72rem;
+		color: #94a3b8;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	/* Chart Card */
+	.chart-card {
+		margin-top: 6px;
+		background: #fff;
+		border: 1px solid #e2e8f0;
+		border-radius: 10px;
+		overflow: hidden;
+	}
+
+	.chart-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 6px 12px;
+		border-bottom: 1px solid #f1f5f9;
+	}
+
+	.chart-title {
+		font-size: 0.82rem;
+		font-weight: 600;
+		color: #0f172a;
+	}
+
+	.chart-body {
+		border-radius: 0 0 10px 10px;
+		overflow: hidden;
+	}
+
+	.chart-container {
+		display: flex;
+		align-items: stretch;
+	}
+
+	.chart-y-axis {
+		display: flex;
+		flex-direction: column;
+		justify-content: space-between;
+		padding: 4px 6px 4px 4px;
+		background: #0f172a;
+		min-width: 48px;
+		border-radius: 0 0 0 10px;
+	}
+
+	.chart-y-axis span {
+		font-size: 0.65rem;
+		color: #64748b;
+		text-align: right;
+		white-space: nowrap;
+	}
+
+	.chart-svg-area {
+		flex: 1;
+		min-width: 0;
+		border-radius: 0 0 10px 0;
+		overflow: hidden;
+	}
+
+	.sparkline-empty {
+		background: #0f172a;
+		color: #94a3b8;
+		padding: 20px;
+		text-align: center;
+		font-size: 0.85rem;
+	}
+
+	.sparkline-legend {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		font-size: 0.72rem;
+		color: #475569;
+	}
+
+	.legend-item {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+	}
+
+	.legend-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+	}
+
+	/* Delta badges */
+	.delta {
+		display: inline-flex;
+		align-items: center;
+		padding: 1px 5px;
+		border-radius: 999px;
+		font-weight: 600;
+		font-size: 0.72rem;
+	}
+
+	.delta-up { background: #fee2e2; color: #991b1b; }
+	.delta-down { background: #dcfce7; color: #14532d; }
+
+	/* Panels - compact */
+	.panel-card {
+		padding: 10px 12px;
+		border-radius: 10px;
+		background: #ffffff;
+		border: 1px solid #e2e8f0;
+		min-height: 0;
+	}
+
+	.panel-header {
+		font-size: 0.82rem;
+		font-weight: 600;
+		color: #0f172a;
+		margin-bottom: 6px;
+	}
+
+	.panel-list {
+		display: grid;
+		gap: 3px;
+	}
+
+	.panel-row {
+		display: grid;
+		grid-template-columns: 1.5fr 0.9fr 0.6fr;
+		gap: 4px;
+		align-items: center;
+		font-size: 0.78rem;
+		padding: 4px 6px;
+		border-radius: 6px;
+		background: #f8fafc;
+	}
+
+	.panel-name {
+		font-weight: 600;
+		color: #1f2937;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.panel-metric {
+		color: #475569;
+		text-align: right;
+		white-space: nowrap;
+	}
+
+	.panel-rate {
+		color: #0f172a;
+		text-align: right;
+		font-weight: 600;
+	}
+
+	.panel-empty {
+		color: #94a3b8;
+		font-size: 0.82rem;
+	}
+
+	/* Footer */
+	.dashboard-footer {
+		margin-top: 8px;
+		text-align: right;
+		color: #94a3b8;
+		font-size: 0.72rem;
+	}
+
+	/* Worst Performers */
+	.worst-row {
+		display: grid;
+		grid-template-columns: 28px 1fr;
+		gap: 6px;
+		align-items: center;
+		padding: 5px 6px;
+		border-radius: 6px;
+		background: #f8fafc;
+		cursor: pointer;
+		transition: background 0.1s;
+	}
+
+	.worst-row:hover {
+		background: #e2e8f0;
+	}
+
+	.rank-badge {
+		width: 24px;
+		height: 24px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 50%;
+		background: linear-gradient(135deg, #ef4444, #dc2626);
+		color: #fff;
+		font-weight: 700;
+		font-size: 0.7rem;
+	}
+
+	.worst-details {
+		display: grid;
+		gap: 0;
+	}
+
+	.worst-name {
+		font-weight: 600;
+		color: #0f172a;
+		font-size: 0.78rem;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.worst-metrics {
+		display: flex;
+		gap: 8px;
+		font-size: 0.72rem;
+		color: #64748b;
+	}
+
+	.delta-indicator-up { color: #16a34a; font-weight: 600; }
+	.delta-indicator-down { color: #dc2626; font-weight: 600; }
+
+	/* Domain Health Cards */
+	.domain-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+		gap: 6px;
+	}
+
+	.domain-card {
+		padding: 8px 6px;
+		border-radius: 8px;
+		background: #f8fafc;
+		border: 1px solid #e2e8f0;
+		cursor: pointer;
+		transition: all 0.1s;
+		text-align: center;
+	}
+
+	.domain-card:hover {
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+		transform: translateY(-1px);
+	}
+
+	.domain-card-name {
+		font-size: 0.68rem;
+		font-weight: 600;
+		color: #64748b;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		margin-bottom: 2px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.domain-card-rate {
+		font-size: 1.2rem;
+		font-weight: 700;
+		color: #0f172a;
+		line-height: 1.2;
+	}
+
+	.domain-card-delta {
+		font-size: 0.72rem;
+	}
+
+	.domain-card-count {
+		font-size: 0.68rem;
+		color: #94a3b8;
+	}
+
+	@@media (max-width: 960px) {
+		.dashboard-hero {
+			flex-direction: column;
+			gap: 8px;
+			align-items: flex-start;
+		}
+
+		.kpi-strip {
+			flex-wrap: wrap;
+		}
+
+		.kpi-divider {
+			display: none;
+		}
+
+		.kpi-item {
+			min-width: 45%;
+		}
+
+		.panel-row {
+			grid-template-columns: 1fr;
+			text-align: left;
+		}
+
+		.panel-metric,
+		.panel-rate {
+			text-align: left;
+		}
+
+		.domain-grid {
+			grid-template-columns: repeat(2, 1fr);
+		}
+	}
+</style>

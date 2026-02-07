@@ -200,7 +200,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                 NodeType = HierarchyNodeType.Feature,
                 NodeId = featureName,
                 IndentLevel = 0,
-                IsExpanded = featureGroup.Any(t => t.Status == TestStatus.Fail)
+                IsExpanded = false
             };
 
             // Test Suites under feature
@@ -312,7 +312,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
             NodeType = HierarchyNodeType.Domain,
             NodeId = "root",
             IndentLevel = -1,
-            IsExpanded = true,
+            IsExpanded = false,
             Children = featureNodes
         };
 

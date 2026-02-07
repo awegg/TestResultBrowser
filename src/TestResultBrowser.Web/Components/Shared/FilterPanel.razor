@@ -9,7 +9,8 @@
             <MudSelect T="string" Label="Domain" MultiSelection="true" 
                        @bind-SelectedValues="SelectedDomains" 
                        SelectAll="true" 
-                       SelectAllText="All Domains">
+                       SelectAllText="All Domains"
+                       MultiSelectionTextFunc="@(values => GetSelectionText(values, AvailableDomains, "Domains"))">
                 @foreach (var domain in AvailableDomains)
                 {
                     <MudSelectItem T="string" Value="@domain">@domain</MudSelectItem>
@@ -21,7 +22,8 @@
             <MudSelect T="string" Label="Feature" MultiSelection="true" 
                        @bind-SelectedValues="SelectedFeatures"
                        SelectAll="true"
-                       SelectAllText="All Features">
+                       SelectAllText="All Features"
+                       MultiSelectionTextFunc="@(values => GetSelectionText(values, AvailableFeatures, "Features"))">
                 @foreach (var feature in AvailableFeatures)
                 {
                     <MudSelectItem T="string" Value="@feature">@feature</MudSelectItem>
@@ -33,7 +35,8 @@
             <MudSelect T="string" Label="Version" MultiSelection="true" 
                        @bind-SelectedValues="SelectedVersions"
                        SelectAll="true"
-                       SelectAllText="All Versions">
+                       SelectAllText="All Versions"
+                       MultiSelectionTextFunc="@(values => GetSelectionText(values, AvailableVersions, "Versions"))">
                 @foreach (var version in AvailableVersions)
                 {
                     <MudSelectItem T="string" Value="@version">@version</MudSelectItem>
@@ -45,7 +48,8 @@
             <MudSelect T="string" Label="Configuration" MultiSelection="true" 
                        @bind-SelectedValues="SelectedConfigurations"
                        SelectAll="true"
-                       SelectAllText="All Configurations">
+                       SelectAllText="All Configurations"
+                       MultiSelectionTextFunc="@(values => GetSelectionText(values, AvailableConfigurations, "Configurations"))">
                 @foreach (var config in AvailableConfigurations)
                 {
                     <MudSelectItem T="string" Value="@config">@config</MudSelectItem>
@@ -59,7 +63,8 @@
                            @bind-SelectedValues="SelectedBuilds"
                            SelectAll="true"
                            SelectAllText="All Builds (Historical + Current)"
-                           HelperText="@GetBuildHelperText()">
+                           HelperText="@GetBuildHelperText()"
+                           MultiSelectionTextFunc="@(values => GetSelectionText(values, AvailableBuilds, "Builds"))">
                     @foreach (var build in AvailableBuilds)
                     {
                         var isLatest = build == AvailableBuilds.FirstOrDefault();
@@ -91,7 +96,8 @@
             <MudSelect T="string" Label="Status" MultiSelection="true" 
                        @bind-SelectedValues="SelectedStatuses"
                        SelectAll="true"
-                       SelectAllText="All Statuses">
+                       SelectAllText="All Statuses"
+                       MultiSelectionTextFunc="@(values => GetSelectionText(values, new List<string> { "Pass", "Fail", "Skip" }, "Statuses"))">
                 <MudSelectItem T="string" Value="@("Pass")">Pass</MudSelectItem>
                 <MudSelectItem T="string" Value="@("Fail")">Fail</MudSelectItem>
                 <MudSelectItem T="string" Value="@("Skip")">Skip</MudSelectItem>
@@ -212,5 +218,21 @@
         }
         
         return $"Showing {SelectedBuilds.Count()} builds (includes historical data)";
+    }
+
+    private static string GetSelectionText(IEnumerable<string> selected, List<string> available, string label)
+    {
+        var selectedList = selected?.ToList() ?? new List<string>();
+        if (available.Count > 0 && selectedList.Count >= available.Count)
+        {
+            return $"All {label}";
+        }
+
+        if (selectedList.Count == 0)
+        {
+            return $"No {label.ToLowerInvariant()}";
+        }
+
+        return $"{selectedList.Count} selected";
     }
 }

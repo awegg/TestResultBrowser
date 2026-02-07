@@ -163,6 +163,9 @@ else
 }
 
 @code {
+    [SupplyParameterFromQuery(Name = "domain")]
+    public string? DomainFromUrl { get; set; }
+
     private HubConnection? hubConnection;
     private MorningTriageResult? triageResult;
     private bool isLoading = true;
@@ -179,6 +182,11 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        if (!string.IsNullOrEmpty(DomainFromUrl))
+        {
+            selectedDomains = new List<string> { DomainFromUrl };
+        }
+
         await LoadData();
 
         // Initialize SignalR connection for real-time updates

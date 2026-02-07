@@ -57,13 +57,21 @@
 
                     <!-- Configuration Filter -->
                     <MudItem xs="12" sm="6" md="3">
-                        <MudSelect @bind-Value="SelectedConfiguration" @bind-Value:after="OnSelectedConfigurationChanged" T="string" Label="Configuration" Clearable="true" AnchorOrigin="Origin.BottomCenter">
-                            <MudSelectItem T="string" Value="null">All Configurations</MudSelectItem>
-                            @foreach (var config in AvailableConfigurations)
-                            {
-                                <MudSelectItem T="string" Value="@config">@config</MudSelectItem>
-                            }
-                        </MudSelect>
+                        <MudButton Variant="Variant.Outlined" 
+                                  Color="Color.Primary" 
+                                  OnClick="OpenConfigurationDialog"
+                                  FullWidth="true"
+                                  Style="height: 56px; text-align: left; justify-content: flex-start;">
+                            <div style="width: 100%;">
+                                @{
+                                    var configCount = string.IsNullOrEmpty(SelectedConfiguration)
+                                        ? AvailableConfigurations.Count
+                                        : 1;
+                                }
+                                <div style="font-size: 0.75rem; color: #666;">Configuration [@configCount/@AvailableConfigurations.Count]</div>
+                                <div style="font-weight: 500;">@(string.IsNullOrEmpty(SelectedConfiguration) ? "All Configurations" : SelectedConfiguration)</div>
+                            </div>
+                        </MudButton>
                     </MudItem>
                 </MudGrid>
             </MudStack>
@@ -222,6 +230,13 @@
     </MudStack>
 </MudContainer>
 
+<ConfigurationSelector 
+    IsOpen="@showConfigurationDialog" 
+    IsOpenChanged="@((bool value) => showConfigurationDialog = value)"
+    SelectedConfiguration="@SelectedConfiguration"
+    SelectedConfigurationChanged="@((string value) => SelectConfigurationFromDialog(value))"
+    AvailableConfigurations="@AvailableConfigurations" />
+
 <!-- Test Details Modal -->
 <TestDetailsModal IsOpen="@ShowTestDetailsModal" 
                   TestResult="@SelectedTestResult"
@@ -238,8 +253,9 @@
     private double FailureRateThreshold = 0.20;
     private int RecentRunWindow = 20;
     private TrendDirection? SelectedTrend;
-    private string? SelectedConfiguration;
+    private string SelectedConfiguration = string.Empty;
     private Timer? _debounceTimer;
+    private bool showConfigurationDialog = false;
 
     // Pagination state
     private int currentPage = 1;
@@ -278,11 +294,20 @@
         {
             await InvokeAsync(StateHasChanged); // Yield to ensure loading indicator is visible
             
-            var allResults = TestDataService.GetAllTestResults();
+            var allResults = TestDataService.GetAllTestResults().ToList();
+            if (AvailableConfigurations.Count == 0)
+            {
+                AvailableConfigurations = allResults
+                    .Select(r => r.ConfigurationId)
+                    .Where(id => !string.IsNullOrWhiteSpace(id))
+                    .Distinct()
+                    .OrderBy(id => id)
+                    .ToList();
+            }
             
             // Detect flaky tests
             var detected = FlakyTestDetectionService.DetectFlakyTests(
-                allResults.ToList(),
+                allResults,
                 failureRateThreshold: FailureRateThreshold,
                 recentRunWindow: RecentRunWindow);
 
@@ -378,9 +403,16 @@
         InvokeAsync(RefreshAsync);
     }
 
-    private void OnSelectedConfigurationChanged()
+    private void OpenConfigurationDialog()
     {
-        InvokeAsync(RefreshAsync);
+        showConfigurationDialog = true;
+    }
+
+    private async Task SelectConfigurationFromDialog(string config)
+    {
+        SelectedConfiguration = config;
+        showConfigurationDialog = false;
+        await RefreshAsync();
     }
 
     async ValueTask IAsyncDisposable.DisposeAsync()

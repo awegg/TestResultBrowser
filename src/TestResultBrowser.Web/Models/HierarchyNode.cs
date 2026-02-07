@@ -37,9 +37,9 @@ public class HierarchyNode
     public int IndentLevel { get; set; }
 
     /// <summary>
-    /// Whether this node is initially expanded (true for parent nodes with failures)
+    /// Whether this node is initially expanded
     /// </summary>
-    public bool IsExpanded { get; set; } = true;
+    public bool IsExpanded { get; set; } = false;
 
     /// <summary>
     /// Summary statistics for this node in latest build
