@@ -4,11 +4,14 @@
 @using TestResultBrowser.Web.Services
 @using MudBlazor
 @using System.Globalization
+@using Microsoft.JSInterop
 @inject ITestDataService TestDataService
 @inject ITriageService TriageService
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
 @inject ILogger<Home> Logger
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
 <PageTitle>Home</PageTitle>
 
@@ -75,21 +78,26 @@
 		<div class="chart-card">
 			<div class="chart-header">
 				<span class="chart-title">Pass Rate Trend (30 days)</span>
+				<div class="chart-controls">
+					<button type="button" class="chart-toggle" @onclick="ShowAllSeries">All</button>
+					<button type="button" class="chart-toggle" @onclick="ShowOverallOnly">Overall only</button>
+				</div>
 				<div class="sparkline-legend">
 					@foreach (var series in trendSeries)
 					{
-						<div class="legend-item">
+						<button type="button" class="legend-toggle @(IsSeriesVisible(series.Name) ? "is-active" : "is-muted")" @onclick="(() => ToggleSeries(series.Name))">
 							<span class="legend-dot" style="background:@series.Color"></span>
 							<span>@series.Name</span>
-						</div>
+						</button>
 					}
 				</div>
 			</div>
 			<div class="chart-body">
 				@if (trendSeries.Count > 0)
 				{
-					var yMin = trendSeries.Count > 0 ? trendSeries.Min(s => s.YMin) : 0;
-					var yMax = trendSeries.Count > 0 ? trendSeries.Max(s => s.YMax) : 100;
+					var renderedSeries = GetRenderedSeries();
+					var yMin = renderedSeries.Min(s => s.YMin);
+					var yMax = renderedSeries.Max(s => s.YMax);
 					var yRange = yMax - yMin;
 					if (yRange < 1) yRange = 1;
 					<div class="chart-container">
@@ -98,22 +106,48 @@
 							<span>@((yMin + yRange / 2).ToString("F1"))%</span>
 							<span>@yMin.ToString("F1")%</span>
 						</div>
-						<div class="chart-svg-area">
-							<svg width="100%" height="160" viewBox="0 0 800 160" preserveAspectRatio="none">
-								<rect x="0" y="0" width="800" height="160" rx="8" ry="8" fill="#0f172a" />
+						<div class="chart-svg-area" @ref="chartAreaRef" @onmousemove="OnChartMouseMove" @onmouseleave="OnChartMouseLeave">
+							<svg width="100%" height="220" viewBox="0 0 800 220" preserveAspectRatio="none" @onmousemove="OnChartMouseMove" @onmouseleave="OnChartMouseLeave">
+								<rect x="0" y="0" width="800" height="220" rx="10" ry="10" fill="#0f172a" />
 								@* Grid lines *@
-								<line x1="0" y1="40" x2="800" y2="40" stroke="#1e293b" stroke-width="1" />
-								<line x1="0" y1="80" x2="800" y2="80" stroke="#1e293b" stroke-width="1" />
-								<line x1="0" y1="120" x2="800" y2="120" stroke="#1e293b" stroke-width="1" />
-								@foreach (var series in trendSeries)
+								<line x1="0" y1="55" x2="800" y2="55" stroke="#1e293b" stroke-width="1" />
+								<line x1="0" y1="110" x2="800" y2="110" stroke="#1e293b" stroke-width="1" />
+								<line x1="0" y1="165" x2="800" y2="165" stroke="#1e293b" stroke-width="1" />
+								@foreach (var series in renderedSeries)
 								{
 									foreach (var segment in series.Segments)
 									{
 										<polyline fill="none" stroke="@series.Color" stroke-width="2.5" points="@segment" />
 									}
 								}
+								@if (hoverIndex.HasValue && trendDays.Count > 1)
+								{
+									var hoverX = GetHoverX();
+									<line x1="@hoverX" y1="0" x2="@hoverX" y2="220" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4 4" />
+								}
 							</svg>
+							@if (hoverIndex.HasValue && trendDays.Count > 0)
+							{
+								<div class="chart-hover-label" style="@GetHoverLabelStyle()">
+									<div class="chart-hover-date">@GetHoverDateLabel()</div>
+									<div class="chart-hover-values">
+										@foreach (var item in GetHoverValues())
+										{
+											<span class="chart-hover-item">
+												<span class="legend-dot" style="background:@item.Color"></span>
+												<span>@item.Name: @item.DisplayValue</span>
+											</span>
+										}
+									</div>
+								</div>
+							}
 						</div>
+					</div>
+					<div class="chart-x-axis">
+						@foreach (var tick in GetXAxisTicks())
+						{
+							<span class="chart-x-tick" style="left:@tick.Percent%">@tick.Label</span>
+						}
 					</div>
 				}
 				else
@@ -202,40 +236,6 @@
 				</MudPaper>
 			</MudItem>
 
-			@* Domain Health Cards *@
-			<MudItem xs="12" md="6">
-				<MudPaper Class="panel-card">
-					<div class="panel-header">Domain Health</div>
-					@if (domainCards.Count == 0)
-					{
-						<div class="panel-empty">No domain data in range.</div>
-					}
-					else
-					{
-						<div class="domain-grid">
-							@foreach (var d in domainCards)
-							{
-								<div class="domain-card" @onclick="@(() => NavigateToDomain(d.DomainId))">
-									<div class="domain-card-name">@d.DomainId</div>
-									<div class="domain-card-rate">@d.PassRate.ToString("F1")%</div>
-									@if (d.Delta.HasValue)
-									{
-										<div class="domain-card-delta @(d.Delta.Value >= 0 ? "delta-indicator-up" : "delta-indicator-down")">
-											@(d.Delta.Value >= 0 ? "+" : "")@d.Delta.Value.ToString("F1")%
-										</div>
-									}
-									else
-									{
-										<div class="domain-card-delta" style="color:#94a3b8">—</div>
-									}
-									<div class="domain-card-count">@d.TotalTests.ToString("N0") tests / @d.FailedTests.ToString("N0") failed</div>
-								</div>
-							}
-						</div>
-					}
-				</MudPaper>
-			</MudItem>
-
 			@* Configuration Matrix with Sparklines *@
 			<MudItem xs="12">
 				<MudPaper Class="panel-card" Style="min-height: auto;">
@@ -256,6 +256,14 @@
 	private DateTime rangeStart = DateTime.UtcNow.AddDays(-30);
 	private DateTime rangeEnd = DateTime.UtcNow;
 	private DateTime? lastUpdated;
+	private ElementReference chartAreaRef;
+	private DotNetObjectReference<Home>? sizeObserverRef;
+	private double chartPixelWidth;
+	private int? hoverIndex;
+	private List<DateTime> trendDays = new();
+	private const double ChartViewWidth = 800;
+	private const double ChartViewHeight = 220;
+	private bool isChartObserverActive;
 
 	private DashboardMetrics metrics = new();
 	private List<TrendSeries> trendSeries = new();
@@ -263,11 +271,46 @@
 	private List<BreakdownItem> topFeatures = new();
 	private DashboardMatrix? configMatrix;
 	private List<WorstConfig> worstConfigs = new();
-	private List<DomainCard> domainCards = new();
+	private HashSet<string> visibleSeries = new(StringComparer.OrdinalIgnoreCase);
 
 	protected override async Task OnInitializedAsync()
 	{
 		await RefreshAsync();
+	}
+
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		if (firstRender)
+		{
+			sizeObserverRef = DotNetObjectReference.Create(this);
+		}
+
+		if (!isChartObserverActive && trendSeries.Count > 0)
+		{
+			await JS.InvokeVoidAsync("trb.observeSize", chartAreaRef, sizeObserverRef);
+			isChartObserverActive = true;
+		}
+	}
+
+	[JSInvokable]
+	public Task OnChartSizeChanged(double width)
+	{
+		chartPixelWidth = width;
+		StateHasChanged();
+		return Task.CompletedTask;
+	}
+
+	public async ValueTask DisposeAsync()
+	{
+		try
+		{
+			await JS.InvokeVoidAsync("trb.unobserveSize", chartAreaRef);
+		}
+		catch
+		{
+			// Ignore dispose exceptions from shutdown.
+		}
+		sizeObserverRef?.Dispose();
 	}
 
 	private async Task RefreshAsync()
@@ -322,6 +365,7 @@
 		var rangeDays = Enumerable.Range(0, 30)
 			.Select(offset => rangeStart.AddDays(offset).Date)
 			.ToList();
+		trendDays = rangeDays;
 
 		var overallSeries = BuildDailySeries(periodResults, rangeDays, r => true);
 		trendSeries = new List<TrendSeries>
@@ -347,7 +391,21 @@
 
 		foreach (var series in trendSeries)
 		{
-			series.BuildSegments(800, 160);
+			series.BuildSegments(ChartViewWidth, ChartViewHeight);
+		}
+
+		var seriesNames = trendSeries.Select(s => s.Name).ToList();
+		if (visibleSeries.Count == 0)
+		{
+			visibleSeries = new HashSet<string>(seriesNames, StringComparer.OrdinalIgnoreCase);
+		}
+		else
+		{
+			visibleSeries = new HashSet<string>(visibleSeries.Intersect(seriesNames, StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase);
+			if (visibleSeries.Count == 0 && trendSeries.Count > 0)
+			{
+				visibleSeries.Add(trendSeries[0].Name);
+			}
 		}
 
 		topDomains = periodResults
@@ -462,35 +520,6 @@
 			worstConfigs = new();
 		}
 
-		// Build domain summary cards with delta vs previous period
-		var previousPeriodResults = allResults
-			.Where(r => r.Timestamp >= previousStart && r.Timestamp < previousEnd)
-			.ToList();
-
-		var previousDomainRates = previousPeriodResults
-			.GroupBy(r => r.DomainId)
-			.ToDictionary(
-				g => g.Key,
-				g =>
-				{
-					var t = g.Count();
-					var p = g.Count(r => r.Status == TestStatus.Pass);
-					return t > 0 ? (double)p / t * 100.0 : 0.0;
-				});
-
-		domainCards = periodResults
-			.GroupBy(r => r.DomainId)
-			.Select(g =>
-			{
-				var total = g.Count();
-				var passed = g.Count(r => r.Status == TestStatus.Pass);
-				var failed = g.Count(r => r.Status == TestStatus.Fail);
-				var rate = total > 0 ? (double)passed / total * 100.0 : 0.0;
-				double? delta = previousDomainRates.TryGetValue(g.Key, out var pr) ? rate - pr : null;
-				return new DomainCard(g.Key, rate, delta, total, failed);
-			})
-			.OrderBy(d => d.PassRate)
-			.ToList();
 		}
 		catch (Exception ex)
 		{
@@ -514,10 +543,134 @@
 		NavigationManager.NavigateTo($"/configuration-history?config={Uri.EscapeDataString(configId)}");
 	}
 
-	private void NavigateToDomain(string domainId)
+	private void ToggleSeries(string name)
 	{
-		NavigationManager.NavigateTo($"/morning-triage?domain={Uri.EscapeDataString(domainId)}");
+		if (!visibleSeries.Add(name))
+		{
+			visibleSeries.Remove(name);
+		}
+
+		if (visibleSeries.Count == 0 && trendSeries.Count > 0)
+		{
+			visibleSeries.Add(trendSeries[0].Name);
+		}
 	}
+
+	private void ShowAllSeries()
+	{
+		visibleSeries = new HashSet<string>(trendSeries.Select(s => s.Name), StringComparer.OrdinalIgnoreCase);
+	}
+
+	private void ShowOverallOnly()
+	{
+		var overallName = trendSeries.FirstOrDefault(s => s.Name == "Overall")?.Name
+			?? trendSeries.FirstOrDefault()?.Name;
+		visibleSeries = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		if (!string.IsNullOrEmpty(overallName))
+		{
+			visibleSeries.Add(overallName);
+		}
+	}
+
+	private bool IsSeriesVisible(string name) => visibleSeries.Contains(name);
+
+	private List<TrendSeries> GetRenderedSeries()
+	{
+		var rendered = trendSeries.Where(s => visibleSeries.Contains(s.Name)).ToList();
+		return rendered.Count > 0 ? rendered : trendSeries;
+	}
+
+	private void OnChartMouseMove(Microsoft.AspNetCore.Components.Web.MouseEventArgs args)
+	{
+		if (trendDays.Count == 0)
+		{
+			hoverIndex = null;
+			return;
+		}
+
+		if (chartPixelWidth <= 0)
+		{
+			chartPixelWidth = ChartViewWidth;
+		}
+
+		var normalizedX = (args.OffsetX / chartPixelWidth) * ChartViewWidth;
+		var ratio = Math.Clamp((normalizedX - 4) / (ChartViewWidth - 8), 0, 1);
+		var index = (int)Math.Round(ratio * (trendDays.Count - 1));
+		hoverIndex = Math.Clamp(index, 0, trendDays.Count - 1);
+	}
+
+	private void OnChartMouseLeave()
+	{
+		hoverIndex = null;
+	}
+
+	private double GetHoverX()
+	{
+		if (!hoverIndex.HasValue || trendDays.Count <= 1)
+			return 0;
+
+		var index = hoverIndex.Value;
+		return (index / (double)(trendDays.Count - 1)) * (ChartViewWidth - 8) + 4;
+	}
+
+	private string GetHoverLabelStyle()
+	{
+		if (!hoverIndex.HasValue || trendDays.Count <= 1)
+			return "";
+
+		var percent = (hoverIndex.Value / (double)(trendDays.Count - 1)) * 100.0;
+		return string.Format(CultureInfo.InvariantCulture, "left: {0:F2}%;", percent);
+	}
+
+	private string GetHoverDateLabel()
+	{
+		if (!hoverIndex.HasValue || hoverIndex.Value >= trendDays.Count)
+			return string.Empty;
+
+		return trendDays[hoverIndex.Value].ToString("MMM d", CultureInfo.InvariantCulture);
+	}
+
+	private IEnumerable<HoverValue> GetHoverValues()
+	{
+		if (!hoverIndex.HasValue)
+			return Enumerable.Empty<HoverValue>();
+
+		var index = hoverIndex.Value;
+		return GetRenderedSeries().Select(series =>
+		{
+			var value = index < series.Values.Count ? series.Values[index] : null;
+			var display = value.HasValue ? $"{value.Value:F1}%" : "-";
+			return new HoverValue(series.Name, series.Color, display);
+		}).ToList();
+	}
+
+	private IEnumerable<XAxisTick> GetXAxisTicks()
+	{
+		if (trendDays.Count == 0)
+			return Enumerable.Empty<XAxisTick>();
+
+		const int step = 5;
+		var ticks = new List<XAxisTick>();
+		for (var i = 0; i < trendDays.Count; i += step)
+		{
+			ticks.Add(CreateTick(i));
+		}
+
+		if (ticks.Count == 0 || ticks[^1].Index != trendDays.Count - 1)
+		{
+			ticks.Add(CreateTick(trendDays.Count - 1));
+		}
+
+		return ticks;
+
+		XAxisTick CreateTick(int index)
+		{
+			var percent = trendDays.Count <= 1 ? 0 : (index / (double)(trendDays.Count - 1)) * 100.0;
+			var label = trendDays[index].ToString("MMM d", CultureInfo.InvariantCulture);
+			return new XAxisTick(index, label, percent.ToString("F2", CultureInfo.InvariantCulture));
+		}
+	}
+
 
 	private static List<double?> BuildDailySeries(List<TestResult> results, List<DateTime> days, Func<TestResult, bool> predicate)
 	{
@@ -630,6 +783,9 @@
 			}
 		}
 	}
+
+	private record HoverValue(string Name, string Color, string DisplayValue);
+	private record XAxisTick(int Index, string Label, string Percent);
 
 	private class DashboardMetrics
 	{
@@ -747,6 +903,23 @@
 		justify-content: space-between;
 		padding: 6px 12px;
 		border-bottom: 1px solid #f1f5f9;
+		gap: 10px;
+	}
+
+	.chart-controls {
+		display: inline-flex;
+		gap: 6px;
+	}
+
+	.chart-toggle {
+		border: 1px solid #cbd5f5;
+		background: #f8fafc;
+		color: #0f172a;
+		padding: 2px 8px;
+		border-radius: 999px;
+		font-size: 0.7rem;
+		font-weight: 600;
+		cursor: pointer;
 	}
 
 	.chart-title {
@@ -758,6 +931,7 @@
 	.chart-body {
 		border-radius: 0 0 10px 10px;
 		overflow: hidden;
+		background: #0f172a;
 	}
 
 	.chart-container {
@@ -787,6 +961,58 @@
 		min-width: 0;
 		border-radius: 0 0 10px 0;
 		overflow: hidden;
+		position: relative;
+	}
+
+	.chart-hover-label {
+		position: absolute;
+		top: 6px;
+		transform: translateX(-50%);
+		background: rgba(15, 23, 42, 0.95);
+		border: 1px solid #1e293b;
+		color: #e2e8f0;
+		padding: 6px 8px;
+		border-radius: 8px;
+		font-size: 0.7rem;
+		line-height: 1.2;
+		max-width: 220px;
+		pointer-events: none;
+		z-index: 2;
+	}
+
+	.chart-hover-date {
+		font-weight: 600;
+		margin-bottom: 4px;
+		color: #f8fafc;
+	}
+
+	.chart-hover-values {
+		display: grid;
+		gap: 4px;
+	}
+
+	.chart-hover-item {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		white-space: nowrap;
+	}
+
+	.chart-x-axis {
+		position: relative;
+		height: 20px;
+		background: transparent;
+		border-radius: 0 0 10px 10px;
+		margin-left: 48px;
+	}
+
+	.chart-x-tick {
+		position: absolute;
+		top: 2px;
+		transform: translateX(-50%);
+		font-size: 0.65rem;
+		color: #64748b;
+		white-space: nowrap;
 	}
 
 	.sparkline-empty {
@@ -800,15 +1026,32 @@
 	.sparkline-legend {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 8px;
+		gap: 6px;
 		font-size: 0.72rem;
 		color: #475569;
 	}
 
-	.legend-item {
+	.legend-toggle {
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
+		border: 1px solid transparent;
+		background: transparent;
+		color: #475569;
+		padding: 2px 6px;
+		border-radius: 999px;
+		cursor: pointer;
+		font-size: 0.72rem;
+	}
+
+	.legend-toggle.is-active {
+		color: #0f172a;
+		background: #e2e8f0;
+		border-color: #cbd5f5;
+	}
+
+	.legend-toggle.is-muted {
+		opacity: 0.45;
 	}
 
 	.legend-dot {
@@ -949,55 +1192,6 @@
 	.delta-indicator-up { color: #16a34a; font-weight: 600; }
 	.delta-indicator-down { color: #dc2626; font-weight: 600; }
 
-	/* Domain Health Cards */
-	.domain-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-		gap: 6px;
-	}
-
-	.domain-card {
-		padding: 8px 6px;
-		border-radius: 8px;
-		background: #f8fafc;
-		border: 1px solid #e2e8f0;
-		cursor: pointer;
-		transition: all 0.1s;
-		text-align: center;
-	}
-
-	.domain-card:hover {
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-		transform: translateY(-1px);
-	}
-
-	.domain-card-name {
-		font-size: 0.68rem;
-		font-weight: 600;
-		color: #64748b;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		margin-bottom: 2px;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.domain-card-rate {
-		font-size: 1.2rem;
-		font-weight: 700;
-		color: #0f172a;
-		line-height: 1.2;
-	}
-
-	.domain-card-delta {
-		font-size: 0.72rem;
-	}
-
-	.domain-card-count {
-		font-size: 0.68rem;
-		color: #94a3b8;
-	}
 
 	@@media (max-width: 960px) {
 		.dashboard-hero {
@@ -1028,8 +1222,5 @@
 			text-align: left;
 		}
 
-		.domain-grid {
-			grid-template-columns: repeat(2, 1fr);
-		}
 	}
 </style>
