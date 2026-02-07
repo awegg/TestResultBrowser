@@ -104,7 +104,7 @@
                             @if (!string.IsNullOrEmpty(TestResult.ReportDirectoryPath))
                             {
                                 <div class="media-preview">
-                                    <iframe title="Test report preview" src="@GetReportUrl()"></iframe>
+                                    <iframe title="Test report preview" src="@GetReportUrl()" sandbox="allow-same-origin allow-scripts"></iframe>
                                 </div>
                                 <div class="mt-2">
                                     <a class="btn btn-outline-secondary" target="_blank" href="@GetReportUrl()">Open Full Report</a>

@@ -115,8 +115,10 @@ jobs:
 
     - name: Export Docker image as tar (for download)
       if: github.event_name == 'pull_request'
+      env:
+        TAGS: ${{ steps.meta.outputs.tags }}
       run: |
-        FIRST_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+        FIRST_TAG=$(echo "$TAGS" | head -n1)
         docker save "$FIRST_TAG" | gzip > /tmp/testresultbrowser-image.tar.gz
 
     - name: Upload Docker image artifact
@@ -128,18 +130,22 @@ jobs:
         retention-days: 14
 
     - name: Docker image summary
+      env:
+        TAGS: ${{ steps.meta.outputs.tags }}
+        EVENT_NAME: ${{ github.event_name }}
+        REPO: ${{ github.repository }}
       run: |
         echo "### Docker Build Successful" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
-        echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+        echo "$TAGS" >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
-        if [ "${{ github.event_name }}" = "push" ]; then
+        if [ "$EVENT_NAME" = "push" ]; then
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Pushed to GHCR:** ghcr.io/${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Pushed to GHCR:** ghcr.io/$REPO" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Pull with: \`docker pull ghcr.io/${{ github.repository }}:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "Pull with: \`docker pull ghcr.io/$REPO:latest\`" >> $GITHUB_STEP_SUMMARY
         else
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Download:** Docker image available as build artifact (retained 14 days)" >> $GITHUB_STEP_SUMMARY
