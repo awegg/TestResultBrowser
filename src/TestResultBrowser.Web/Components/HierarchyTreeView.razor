@@ -1,7 +1,9 @@
 @using TestResultBrowser.Web.Models
+@using TestResultBrowser.Web.Services
 @using Microsoft.JSInterop
 @using Microsoft.AspNetCore.Components.Web.Virtualization
 @inject IJSRuntime JS
+@inject ITestReportUrlService TestReportUrlService
 
 <CascadingValue Value="this">
 
@@ -192,10 +194,14 @@ else
 
     private async Task OpenTestReport(string reportDirectoryPath)
     {
-        if (!string.IsNullOrEmpty(reportDirectoryPath))
+        if (string.IsNullOrEmpty(reportDirectoryPath))
         {
-            var encodedPath = Uri.EscapeDataString(reportDirectoryPath);
-            var reportUrl = $"/api/TestReport?path={encodedPath}";
+            return;
+        }
+
+        var reportUrl = TestReportUrlService.GetReportUrl(reportDirectoryPath);
+        if (!string.IsNullOrEmpty(reportUrl))
+        {
             await JS.InvokeVoidAsync("window.open", reportUrl, "_blank");
         }
     }
