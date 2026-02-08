@@ -1,25 +1,31 @@
 namespace TestResultBrowser.Web.Models;
 
 /// <summary>
-/// Config matrix cell with historical trend data for sparklines
+/// Release matrix cell for a single build and configuration
 /// </summary>
-public record MatrixCell(
+public record ReleaseMatrixCell(
     string ConfigId,
+    string BuildId,
+    DateTime Timestamp,
     double PassRate,
     int Total,
     int Passed,
-    int Failed,
-    List<double?> Trend,
-    List<string> BuildIds,
-    List<DateTime> Timestamps);
+    int Failed);
 
 /// <summary>
-/// Version x NamedConfig matrix for dashboard display
+/// Build info for release columns
+/// </summary>
+public record BuildInfo(
+    string BuildId,
+    DateTime Timestamp);
+
+/// <summary>
+/// Release x Configuration matrix for dashboard display
 /// </summary>
 public record DashboardMatrix(
-    List<string> Versions,
-    List<string> NamedConfigs,
-    Dictionary<string, Dictionary<string, MatrixCell>> Cells);
+    List<BuildInfo> Builds,
+    List<string> Configurations,
+    Dictionary<string, Dictionary<string, ReleaseMatrixCell>> Cells);
 
 /// <summary>
 /// A poorly performing configuration with regression metrics

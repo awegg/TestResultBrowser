@@ -1,8 +1,9 @@
 @using TestResultBrowser.Web.Models
 @using MudBlazor
 @using System.Globalization
+@using TestResultBrowser.Web.Services
 
-@if (Matrix == null || Matrix.Versions.Count == 0)
+@if (Matrix == null || Matrix.Configurations.Count == 0)
 {
     <div class="matrix-empty">No configuration data available for this period.</div>
 }
@@ -12,23 +13,26 @@ else
         <table class="matrix-table">
             <thead>
                 <tr>
-                    <th class="matrix-header-version">Version</th>
-                    @foreach (var nc in Matrix.NamedConfigs)
+                    <th class="matrix-header-version">Configuration</th>
+                    @foreach (var build in Matrix.Builds)
                     {
-                        <th class="matrix-header-config">@nc</th>
+                        <th class="matrix-header-config">
+                            <div>@ShortenBuildId(build.BuildId)</div>
+                            <div class="matrix-header-date">@build.Timestamp.ToString("MM/dd")</div>
+                        </th>
                     }
                 </tr>
             </thead>
             <tbody>
-                @foreach (var version in Matrix.Versions)
+                @foreach (var config in Matrix.Configurations)
                 {
                     <tr>
-                        <td class="matrix-version-cell">@version</td>
-                        @foreach (var nc in Matrix.NamedConfigs)
+                        <td class="matrix-version-cell">@GetConfigLabel(config)</td>
+                        @foreach (var build in Matrix.Builds)
                         {
                             <td>
                                 @{
-                                    var cell = Matrix.Cells.TryGetValue(version, out var row) && row.TryGetValue(nc, out var c) ? c : null;
+                                    var cell = Matrix.Cells.TryGetValue(config, out var row) && row.TryGetValue(build.BuildId, out var c) ? c : null;
                                 }
                                 @if (cell == null)
                                 {
@@ -39,8 +43,6 @@ else
                                 else
                                 {
                                     var isFail = cell.Failed > 0;
-                                    var sparkPoints = BuildSparklinePoints(cell.Trend, 60, 20);
-                                    var strokeColor = isFail ? "#dc2626" : "#16a34a";
 
                                     <MudTooltip Placement="Placement.Top">
                                         <ChildContent>
@@ -50,35 +52,13 @@ else
                                                 <span class="matrix-cell-badge @(isFail ? "badge-fail" : "badge-pass")">
                                                     @(isFail ? "FAIL" : "PASS")
                                                 </span>
-                                                @if (!string.IsNullOrEmpty(sparkPoints))
-                                                {
-                                                    <svg width="60" height="20" viewBox="0 0 60 20" preserveAspectRatio="none" class="cell-sparkline">
-                                                        <rect x="0" y="0" width="60" height="20" rx="3" ry="3" fill="#f1f5f9" />
-                                                        <polyline fill="none" stroke="@strokeColor" stroke-width="1.5" points="@sparkPoints" />
-                                                    </svg>
-                                                }
                                             </div>
                                         </ChildContent>
                                         <TooltipContent>
                                             <div class="matrix-tooltip">
-                                                <div class="tooltip-title">@cell.ConfigId</div>
+                                                <div class="tooltip-title">@GetConfigLabel(cell.ConfigId)</div>
+                                                <div class="tooltip-subtitle">@cell.BuildId · @cell.Timestamp.ToString("MM/dd/yyyy HH:mm")</div>
                                                 <div class="tooltip-stat">@cell.Passed passed / @cell.Failed failed / @cell.Total total</div>
-                                                <table class="tooltip-table">
-                                                    <thead><tr><th>Build</th><th>Date</th><th>Rate</th></tr></thead>
-                                                    <tbody>
-                                                        @{
-                                                            var minCount = Math.Min(cell.BuildIds.Count, Math.Min(cell.Timestamps.Count, Math.Min(cell.Trend?.Count ?? 0, 8)));
-                                                        }
-                                                        @for (int i = 0; i < minCount; i++)
-                                                        {
-                                                            <tr>
-                                                                <td>@ShortenBuildId(cell.BuildIds[i])</td>
-                                                                <td>@cell.Timestamps[i].ToString("MM/dd")</td>
-                                                                <td>@(cell.Trend?[i]?.ToString("F1") ?? "-")%</td>
-                                                            </tr>
-                                                        }
-                                                    </tbody>
-                                                </table>
                                             </div>
                                         </TooltipContent>
                                     </MudTooltip>
@@ -96,40 +76,6 @@ else
     [Parameter] public DashboardMatrix? Matrix { get; set; }
     [Parameter] public EventCallback<string> OnCellClick { get; set; }
 
-    private static string BuildSparklinePoints(List<double?> values, double width, double height)
-    {
-        if (values == null || values.Count < 2)
-            return string.Empty;
-
-        var validValues = values.Where(v => v.HasValue).Select(v => v!.Value).ToList();
-        if (validValues.Count < 2)
-            return string.Empty;
-
-        var dataMin = validValues.Min();
-        var dataMax = validValues.Max();
-        var range = dataMax - dataMin;
-        if (range < 0.5) range = 0.5;
-        var padding = range * 0.15;
-        var yMin = Math.Max(0, dataMin - padding);
-        var yMax = Math.Min(100, dataMax + padding);
-        var yRange = yMax - yMin;
-        if (yRange < 0.5) yRange = 0.5;
-
-        var points = new List<string>();
-        for (var i = 0; i < values.Count; i++)
-        {
-            if (!values[i].HasValue)
-                continue;
-
-            var x = values.Count == 1 ? width / 2 : (i / (double)(values.Count - 1)) * (width - 4) + 2;
-            var normalized = (values[i]!.Value - yMin) / yRange;
-            var y = height - (normalized * (height - 4)) - 2;
-            points.Add(string.Format(CultureInfo.InvariantCulture, "{0:F1},{1:F1}", x, y));
-        }
-
-        return points.Count >= 2 ? string.Join(" ", points) : string.Empty;
-    }
-
     private static string ShortenBuildId(string buildId)
     {
         if (string.IsNullOrEmpty(buildId)) return "-";
@@ -139,6 +85,13 @@ else
             return $"R-{num}";
         }
         return buildId.Length > 12 ? buildId[..12] + "..." : buildId;
+    }
+
+    private static string GetConfigLabel(string configId)
+    {
+        return string.Equals(configId, ConfigurationHistoryService.AllConfigurationsId, StringComparison.OrdinalIgnoreCase)
+            ? "All configurations"
+            : configId;
     }
 }
 
@@ -167,7 +120,13 @@ else
 
     .matrix-header-version {
         text-align: left;
-        min-width: 100px;
+        min-width: 180px;
+    }
+
+    .matrix-header-date {
+        font-size: 0.72rem;
+        color: #94a3b8;
+        font-weight: 500;
     }
 
     .matrix-version-cell {
@@ -256,6 +215,12 @@ else
         border: 1px solid #e2e8f0;
         border-radius: 8px;
         box-shadow: 0 10px 20px rgba(15, 23, 42, 0.18);
+    }
+
+    .tooltip-subtitle {
+        font-size: 0.72rem;
+        color: #64748b;
+        margin-bottom: 4px;
     }
 
     .tooltip-title {

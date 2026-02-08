@@ -31,7 +31,7 @@
                 }
                 else
                 {
-                    <span>@selectedConfiguration</span>
+                    <span>@GetConfigurationLabel(selectedConfiguration)</span>
                 }
                 <MudSpacer />
                 <MudIcon Icon="@Icons.Material.Filled.MoreVert"></MudIcon>
@@ -197,7 +197,7 @@
                             <div style="padding: 12px; cursor: pointer; background-color: @(configMeta.Id == selectedConfiguration ? "#e3f2fd" : "transparent"); border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;"
                                  @onclick="@(() => SelectConfigurationFromDialog(configMeta.Id))">
                                 <div style="flex: 1;">
-                                    <div style="font-weight: 500;">@configMeta.Id</div>
+                                    <div style="font-weight: 500;">@GetConfigurationLabel(configMeta.Id)</div>
                                     <div style="font-size: 0.85rem; color: #666; margin-top: 2px;">Last updated: @configMeta.LastUpdateDisplay</div>
                                 </div>
                                 @if (configMeta.Id == selectedConfiguration)
@@ -324,6 +324,8 @@
 
     [SupplyParameterFromQuery(Name = "filterId")]
     public int? FilterIdFromUrl { get; set; }
+
+    private string? FeatureFromUrl { get; set; }
     
     private List<string> availableConfigurations = new();
     private List<ConfigurationMetadata> configurationMetadata = new();
@@ -344,6 +346,8 @@
     private LoadFilterDropdown? loadFilterDropdown;  // Reference to load filter dropdown
     private string currentUsername = "DefaultUser";  // Current user (can be from auth later)
     private int? lastAppliedFilterId;  // Tracks the last applied filter for sharing
+    private bool featureFromUrlApplied = false;
+    private string? lastFeatureFromUrl;
 
     // Expand All protection
     private const int MAX_EXPAND_ALL_NODES = 5000;
@@ -405,6 +409,18 @@
             numberOfBuilds = BuildsFromUrl.Value;
             needsRefresh = true;
         }
+
+        FeatureFromUrl = ReadFeatureFromQuery();
+
+        if (!string.Equals(FeatureFromUrl, lastFeatureFromUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            lastFeatureFromUrl = FeatureFromUrl;
+            featureFromUrlApplied = false;
+            if (historyResult != null)
+            {
+                ApplyFeatureFromUrlIfNeeded();
+            }
+        }
         
         if (needsRefresh)
         {
@@ -465,6 +481,25 @@
         NavigationManager.NavigateTo(uri, replace: true);
     }
 
+    private string? ReadFeatureFromQuery()
+    {
+        var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        if (string.IsNullOrWhiteSpace(uri.Query))
+        {
+            return null;
+        }
+
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+        return query.TryGetValue("feature", out var feature) ? feature.ToString() : null;
+    }
+
+    private static string GetConfigurationLabel(string configId)
+    {
+        return string.Equals(configId, ConfigurationHistoryService.AllConfigurationsId, StringComparison.OrdinalIgnoreCase)
+            ? "All configurations"
+            : configId;
+    }
+
     private async Task OnConfigurationChanged(string newConfig)
     {
         selectedConfiguration = newConfig;
@@ -495,6 +530,8 @@
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
             historyResult = await ConfigHistoryService.GetConfigurationHistoryAsync(selectedConfiguration, numberOfBuilds);
+
+            ApplyFeatureFromUrlIfNeeded();
 
             Snackbar.Add("✅ Configuration history loaded", Severity.Success);
         }
@@ -630,6 +667,36 @@
     {
         BuildFeatureGroups();
         showFeatureDialog = true;
+    }
+
+    private void ApplyFeatureFromUrlIfNeeded()
+    {
+        if (featureFromUrlApplied || string.IsNullOrWhiteSpace(FeatureFromUrl) || historyResult == null)
+        {
+            return;
+        }
+
+        BuildFeatureGroups();
+
+        selectedFeatureNames.Clear();
+        var knownFeatures = featureGroups.SelectMany(g => g.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var requested = FeatureFromUrl
+            .Split(new[] { ',', '|' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        foreach (var feature in requested)
+        {
+            if (knownFeatures.Contains(feature))
+            {
+                selectedFeatureNames.Add(feature);
+            }
+        }
+
+        if (selectedFeatureNames.Count == 0)
+        {
+            Snackbar.Add($"Feature not found in this view: {FeatureFromUrl}", Severity.Warning);
+        }
+
+        featureFromUrlApplied = true;
     }
 
     private void BuildFeatureGroups()

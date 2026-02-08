@@ -6,9 +6,18 @@ window.trb.observeSize = (element, dotNetRef) => {
         return;
     }
 
+    const existing = window.trb._sizeObservers.get(element);
+    if (existing) {
+        existing.disconnect();
+        window.trb._sizeObservers.delete(element);
+    }
+
     const notify = () => {
         const rect = element.getBoundingClientRect();
-        dotNetRef.invokeMethodAsync("OnChartSizeChanged", rect.width);
+        if (!dotNetRef) {
+            return;
+        }
+        dotNetRef.invokeMethodAsync("OnChartSizeChanged", rect.width).catch(() => {});
     };
 
     notify();

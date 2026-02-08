@@ -20,7 +20,7 @@
                             <!-- Build -->
                             <div class="mb-3">
                                 <h6>Build</h6>
-                                <p><strong>@(BuildId ?? TestResult.BuildId ?? "Unknown")</strong></p>
+                                <p><strong>@(ActiveTest?.BuildId ?? BuildId ?? TestResult.BuildId ?? "Unknown")</strong></p>
                             </div>
 
                             <!-- Test Name -->
@@ -30,23 +30,12 @@
                             </div>
 
                             <!-- Error Message -->
-                            @if (!string.IsNullOrEmpty(TestResult.ErrorMessage))
+                            @if (!string.IsNullOrEmpty(ActiveTest?.ErrorMessage))
                             {
                                 <div class="mb-3">
                                     <h6>Error Message</h6>
                                     <div style="background-color: #fff3cd; padding: 10px; border-radius: 4px; border-left: 4px solid #ff6b6b;">
-                                        <p style="margin: 0; white-space: pre-wrap; word-break: break-word;">@TestResult.ErrorMessage</p>
-                                    </div>
-                                </div>
-                            }
-
-                            <!-- Stack Trace -->
-                            @if (!string.IsNullOrEmpty(TestResult.StackTrace))
-                            {
-                                <div class="mb-3">
-                                    <h6>Stack Trace</h6>
-                                    <div style="background-color: #f8f9fa; padding: 10px; border-radius: 4px; max-height: 300px; overflow-y: auto;">
-                                        <pre style="margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 0.85rem;">@TestResult.StackTrace</pre>
+                                        <p style="margin: 0; white-space: pre-wrap; word-break: break-word;">@ActiveTest.ErrorMessage</p>
                                     </div>
                                 </div>
                             }
@@ -68,7 +57,7 @@
                                         <tbody>
                                             @foreach (var item in History)
                                             {
-                                                <tr>
+                                                <tr class="history-row @(IsActiveHistory(item) ? "is-active" : string.Empty)" @onclick="(() => SelectHistory(item))">
                                                     <td style="width: 120px;"><strong>@item.BuildId</strong></td>
                                                     <td style="width: 140px;">@item.Timestamp.ToString("MM/dd/yyyy HH:mm")</td>
                                                     <td style="width: 80px;">
@@ -97,11 +86,28 @@
                                     </table>
                                 </div>
                             }
+
+                            <!-- Stack Trace -->
+                            @if (!string.IsNullOrEmpty(ActiveTest?.StackTrace))
+                            {
+                                <div class="mb-3">
+                                    <h6>Stack Trace</h6>
+                                    <div style="background-color: #f8f9fa; padding: 10px; border-radius: 4px; max-height: 300px; overflow-y: auto;">
+                                        <pre style="margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 0.85rem;">@ActiveTest.StackTrace</pre>
+                                    </div>
+                                </div>
+                            }
                         </div>
 
                         <div class="test-details-media">
-                            <h6>Media / Report</h6>
-                            @if (!string.IsNullOrEmpty(TestResult.ReportDirectoryPath))
+                            <h6>
+                                Media / Report
+                                @if (ActiveTest != null)
+                                {
+                                    <span class="media-meta">@ActiveTest.BuildId · @ActiveTest.Timestamp.ToString("MM/dd/yyyy HH:mm")</span>
+                                }
+                            </h6>
+                            @if (!string.IsNullOrEmpty(ActiveTest?.ReportDirectoryPath))
                             {
                                 <div class="media-preview">
                                     <iframe title="Test report preview" src="@GetReportUrl()" sandbox="allow-same-origin allow-scripts"></iframe>
@@ -145,6 +151,10 @@
     [Parameter]
     public EventCallback OnClose { get; set; }
 
+    private string? selectedHistoryId;
+
+    private TestResult? ActiveTest => GetActiveTestResult();
+
     private async Task Close()
     {
         await OnClose.InvokeAsync();
@@ -152,10 +162,39 @@
 
     private string GetReportUrl()
     {
-        var reportPath = TestResult?.ReportDirectoryPath ?? string.Empty;
+        var reportPath = ActiveTest?.ReportDirectoryPath ?? string.Empty;
         return string.IsNullOrEmpty(reportPath)
             ? string.Empty
             : $"/api/TestReport?path={Uri.EscapeDataString(reportPath)}";
+    }
+
+    private void SelectHistory(TestResult item)
+    {
+        selectedHistoryId = item.Id;
+    }
+
+    private bool IsActiveHistory(TestResult item)
+    {
+        return string.Equals(selectedHistoryId, item.Id, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private TestResult? GetActiveTestResult()
+    {
+        if (History == null || History.Count == 0)
+        {
+            return TestResult;
+        }
+
+        if (!string.IsNullOrEmpty(selectedHistoryId))
+        {
+            var match = History.FirstOrDefault(h => string.Equals(h.Id, selectedHistoryId, StringComparison.OrdinalIgnoreCase));
+            if (match != null)
+            {
+                return match;
+            }
+        }
+
+        return History[0];
     }
 }
 
@@ -192,6 +231,22 @@
         border-radius: 6px;
         padding: 16px;
         color: #666;
+    }
+
+    .media-meta {
+        font-size: 0.78rem;
+        font-weight: 500;
+        color: #6b7280;
+        margin-left: 6px;
+    }
+
+    .history-row {
+        cursor: pointer;
+    }
+
+    .history-row.is-active {
+        outline: 2px solid #5b67f2;
+        outline-offset: -2px;
     }
 
     @@media (max-width: 1000px) {

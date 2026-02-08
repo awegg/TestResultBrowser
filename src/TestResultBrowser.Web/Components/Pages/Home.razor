@@ -118,7 +118,7 @@
 							<span>@yMin.ToString("F1")%</span>
 						</div>
 						<div class="chart-svg-area" @ref="chartAreaRef" @onmousemove="OnChartMouseMove" @onmouseleave="OnChartMouseLeave">
-							<svg width="100%" height="220" viewBox="0 0 800 220" preserveAspectRatio="none" @onmousemove="OnChartMouseMove" @onmouseleave="OnChartMouseLeave">
+							<svg width="100%" height="220" viewBox="0 0 800 220" preserveAspectRatio="none">
 								<rect x="0" y="0" width="800" height="220" rx="10" ry="10" fill="#0f172a" />
 								@* Grid lines *@
 								<line x1="0" y1="55" x2="800" y2="55" stroke="#1e293b" stroke-width="1" />
@@ -194,7 +194,7 @@
 
 			<MudItem xs="12" md="6">
 				<MudPaper Class="panel-card">
-					<div class="panel-header">Top Features (Failures)</div>
+					<div class="panel-header">Top Features (Failures) · @topFeaturesBuildId</div>
 					<div class="panel-list">
 						@if (topFeatures.Count == 0)
 						{
@@ -204,7 +204,7 @@
 						{
 							@foreach (var item in topFeatures)
 							{
-								<div class="panel-row">
+								<div class="panel-row panel-row--link" @onclick="(() => NavigateToFeatureHistory(item.Name))">
 									<div class="panel-name">@item.Name</div>
 									<div class="panel-metric">@item.Failed.ToString("N0") / @item.Total.ToString("N0")</div>
 									<div class="panel-rate">@item.PassRate.ToString("F1")%</div>
@@ -250,7 +250,16 @@
 			@* Configuration Matrix with Sparklines *@
 			<MudItem xs="12">
 				<MudPaper Class="panel-card" Style="min-height: auto;">
-					<div class="panel-header">Configuration Matrix (Last 30 Days)</div>
+					<div class="matrix-header-row">
+						<div class="panel-header">Configuration Matrix (Last @matrixDays Days)</div>
+						<div class="matrix-controls">
+							<MudSelect T="int" Dense="true" Variant="Variant.Outlined" Value="@matrixDays" ValueChanged="OnMatrixDaysChanged" Class="matrix-days-select">
+								<MudSelectItem Value="7">7 days</MudSelectItem>
+								<MudSelectItem Value="14">14 days</MudSelectItem>
+								<MudSelectItem Value="30">30 days</MudSelectItem>
+							</MudSelect>
+						</div>
+					</div>
 					<MatrixWithSparklines Matrix="configMatrix" OnCellClick="NavigateToConfigHistory" />
 				</MudPaper>
 			</MudItem>
@@ -360,6 +369,7 @@
 	private const double ChartViewWidth = 800;
 	private const double ChartViewHeight = 220;
 	private bool isChartObserverActive;
+	private int matrixDays = 14;
 	private string featureSearchText = string.Empty;
 	private bool showFeatureDialog;
 	private Dictionary<string, List<string>> featureGroups = new();
@@ -369,6 +379,7 @@
 	private List<TrendSeries> trendSeries = new();
 	private List<BreakdownItem> topDomains = new();
 	private List<BreakdownItem> topFeatures = new();
+	private string topFeaturesBuildId = "-";
 	private DashboardMatrix? configMatrix;
 	private List<WorstConfig> worstConfigs = new();
 	private HashSet<string> visibleSeries = new(StringComparer.OrdinalIgnoreCase);
@@ -457,8 +468,17 @@
 
 		var previousStart = rangeStart.AddDays(-30);
 		var previousEnd = rangeStart;
-		var previousFailingConfigs = allResults
-			.Where(r => r.Timestamp >= previousStart && r.Timestamp < previousEnd && r.Status == TestStatus.Fail)
+		var previousResults = allResults
+			.Where(r => r.Timestamp >= previousStart && r.Timestamp < previousEnd)
+			.ToList();
+		if (selectedFeatureNames.Count > 0)
+		{
+			previousResults = previousResults
+				.Where(r => selectedFeatureNames.Contains(r.Feature))
+				.ToList();
+		}
+		var previousFailingConfigs = previousResults
+			.Where(r => r.Status == TestStatus.Fail)
 			.Select(r => r.ConfigurationId)
 			.Distinct()
 			.Count();
@@ -530,7 +550,15 @@
 			.Take(6)
 			.ToList();
 
-		topFeatures = dashboardResults
+		var latestBuildResult = dashboardResults
+			.OrderByDescending(r => r.Timestamp)
+			.FirstOrDefault();
+		topFeaturesBuildId = latestBuildResult?.BuildId ?? "-";
+		var latestBuildResults = latestBuildResult == null
+			? new List<TestResult>()
+			: dashboardResults.Where(r => r.BuildId == latestBuildResult.BuildId).ToList();
+
+		topFeatures = latestBuildResults
 			.GroupBy(r => r.Feature)
 			.Select(g => new BreakdownItem(
 				g.Key,
@@ -541,90 +569,112 @@
 			.Take(6)
 			.ToList();
 
-		// Build configuration matrix with sparkline trends
-		var buildsInRange = TestDataService.GetAllBuildIds()
+		// Build configuration matrix with releases on X axis
+		var matrixRangeStart = rangeEnd.AddDays(-matrixDays);
+		var buildsInRange = dashboardResults
+			.Select(r => r.BuildId)
+			.Distinct()
 			.Select(bid => (BuildId: bid, Timestamp: TestDataService.GetBuildTimestamp(bid)))
-			.Where(b => b.Timestamp.HasValue && b.Timestamp.Value >= rangeStart && b.Timestamp.Value < rangeEnd)
+			.Where(b => b.Timestamp.HasValue && b.Timestamp.Value >= matrixRangeStart && b.Timestamp.Value < rangeEnd)
 			.OrderByDescending(b => b.Timestamp!.Value)
-			.Take(10)
-			.Select(b => (b.BuildId, Timestamp: b.Timestamp!.Value))
+			.Select(b => new BuildInfo(b.BuildId, b.Timestamp!.Value))
 			.ToList();
 
 		if (buildsInRange.Count > 0)
 		{
-			var versions = new SortedSet<string>();
-			var namedConfigs = new SortedSet<string>();
-			var cellHistory = new Dictionary<(string Version, string NamedConfig), List<(string BuildId, double? PassRate, DateTime Timestamp, int Total, int Passed, int Failed, string ConfigId)>>();
+			var configIds = dashboardResults
+				.Select(r => r.ConfigurationId)
+				.Distinct()
+				.OrderBy(c => c)
+				.ToList();
+			configIds.Insert(0, ConfigurationHistoryService.AllConfigurationsId);
 
-			foreach (var (buildId, timestamp) in buildsInRange)
+			var matrixCells = new Dictionary<string, Dictionary<string, ReleaseMatrixCell>>(StringComparer.OrdinalIgnoreCase);
+			var configHistory = new Dictionary<string, List<(double? PassRate, int Total, int Passed, int Failed)>>(StringComparer.OrdinalIgnoreCase);
+
+			foreach (var build in buildsInRange)
 			{
-				var buildResults = TestDataService.GetTestResultsByBuild(buildId).ToList();
-				if (selectedFeatureNames.Count > 0)
-				{
-					buildResults = buildResults
-						.Where(r => selectedFeatureNames.Contains(r.Feature))
-						.ToList();
-				}
-				var grouped = buildResults
-					.Where(r => r.ConfigurationId.Split('_').Length >= 4)
-					.GroupBy(r =>
-					{
-						var parts = r.ConfigurationId.Split('_');
-						return (Version: parts[0], NamedConfig: parts[2]);
-					});
+				var buildResults = dashboardResults
+					.Where(r => r.BuildId == build.BuildId)
+					.ToList();
 
+				// All configurations row
+				if (!matrixCells.ContainsKey(ConfigurationHistoryService.AllConfigurationsId))
+					matrixCells[ConfigurationHistoryService.AllConfigurationsId] = new();
+
+				var totalAll = buildResults.Count;
+				var passedAll = buildResults.Count(r => r.Status == TestStatus.Pass);
+				var failedAll = buildResults.Count(r => r.Status == TestStatus.Fail);
+				if (totalAll > 0)
+				{
+					var passRateAll = (double)passedAll / totalAll * 100.0;
+					matrixCells[ConfigurationHistoryService.AllConfigurationsId][build.BuildId] = new ReleaseMatrixCell(
+						ConfigurationHistoryService.AllConfigurationsId,
+						build.BuildId,
+						build.Timestamp,
+						passRateAll,
+						totalAll,
+						passedAll,
+						failedAll);
+				}
+
+				var grouped = buildResults.GroupBy(r => r.ConfigurationId);
 				foreach (var g in grouped)
 				{
-					versions.Add(g.Key.Version);
-					namedConfigs.Add(g.Key.NamedConfig);
-
-					if (!cellHistory.ContainsKey(g.Key))
-						cellHistory[g.Key] = new();
+					if (!matrixCells.ContainsKey(g.Key))
+						matrixCells[g.Key] = new();
 
 					var total = g.Count();
 					var passed = g.Count(r => r.Status == TestStatus.Pass);
 					var failed = g.Count(r => r.Status == TestStatus.Fail);
-					var passRate = total > 0 ? (double)passed / total * 100.0 : (double?)null;
-					var configId = g.Select(r => r.ConfigurationId).Distinct().OrderBy(c => c).First();
+					var passRate = total > 0 ? (double)passed / total * 100.0 : 0.0;
 
-					cellHistory[g.Key].Add((buildId, passRate, timestamp, total, passed, failed, configId));
+					matrixCells[g.Key][build.BuildId] = new ReleaseMatrixCell(
+						g.Key,
+						build.BuildId,
+						build.Timestamp,
+						passRate,
+						total,
+						passed,
+						failed);
+
+					if (!configHistory.ContainsKey(g.Key))
+						configHistory[g.Key] = new();
+					configHistory[g.Key].Add((passRate, total, passed, failed));
 				}
 			}
 
-			var matrixCells = new Dictionary<string, Dictionary<string, MatrixCell>>();
-			foreach (var kvp in cellHistory)
-			{
-				var (version, namedConfig) = kvp.Key;
-				var history = kvp.Value;
-				var latest = history[0];
+			configMatrix = new DashboardMatrix(buildsInRange, configIds, matrixCells);
 
-				if (!matrixCells.ContainsKey(version))
-					matrixCells[version] = new();
-
-				matrixCells[version][namedConfig] = new MatrixCell(
-					latest.ConfigId,
-					latest.PassRate ?? 0,
-					latest.Total,
-					latest.Passed,
-					latest.Failed,
-					history.Select(h => h.PassRate).ToList(),
-					history.Select(h => h.BuildId).ToList(),
-					history.Select(h => h.Timestamp).ToList());
-			}
-
-			configMatrix = new DashboardMatrix(versions.ToList(), namedConfigs.ToList(), matrixCells);
-
-			// Build worst-performing configs from matrix
-			worstConfigs = cellHistory
+			// Build worst-performing configs from latest/oldest pass rates
+			worstConfigs = configHistory
 				.Select(kvp =>
 				{
-					var (version, namedConfig) = kvp.Key;
+					var configId = kvp.Key;
+					if (string.Equals(configId, ConfigurationHistoryService.AllConfigurationsId, StringComparison.OrdinalIgnoreCase))
+					{
+						return null;
+					}
 					var history = kvp.Value;
+					if (history == null || history.Count == 0)
+					{
+						return null;
+					}
 					var latest = history[0];
 					var oldest = history[^1];
-					var delta = (latest.PassRate ?? 0) - (oldest.PassRate ?? 0);
-					return new WorstConfig(latest.ConfigId, version, namedConfig, latest.PassRate ?? 0, delta, latest.Failed, latest.Total);
+					if (latest == default || oldest == default)
+					{
+						return null;
+					}
+					var latestPass = latest.PassRate ?? 0;
+					var oldestPass = oldest.PassRate ?? 0;
+					var delta = latestPass - oldestPass;
+					var parts = configId.Split('_');
+					var version = parts.Length > 0 ? parts[0] : configId;
+					var namedConfig = parts.Length > 2 ? parts[2] : configId;
+					return new WorstConfig(configId, version, namedConfig, latestPass, delta, latest.Failed, latest.Total);
 				})
+				.OfType<WorstConfig>()
 				.Where(w => w.FailedTests > 0)
 				.OrderBy(w => w.PassRate)
 				.ThenByDescending(w => w.FailedTests)
@@ -666,6 +716,21 @@
 	private void NavigateToConfigHistory(string configId)
 	{
 		NavigationManager.NavigateTo($"/configuration-history?config={Uri.EscapeDataString(configId)}");
+	}
+
+	private void NavigateToFeatureHistory(string featureName)
+	{
+		if (string.IsNullOrWhiteSpace(featureName))
+			return;
+
+		var url = $"/configuration-history?config={Uri.EscapeDataString(ConfigurationHistoryService.AllConfigurationsId)}&feature={Uri.EscapeDataString(featureName)}";
+		NavigationManager.NavigateTo(url);
+	}
+
+	private async Task OnMatrixDaysChanged(int value)
+	{
+		matrixDays = value;
+		await RefreshAsync();
 	}
 
 	private void ToggleSeries(string name)
@@ -770,7 +835,7 @@
 			return "PX " + withoutPx;
 		}
 
-		return "Other";
+		return groupName;
 	}
 
 	private void ClearAllFeatures()
@@ -1180,7 +1245,7 @@
 
 	.chart-y-axis span {
 		font-size: 0.65rem;
-		color: #64748b;
+		color: #cbd5f5;
 		text-align: right;
 		white-space: nowrap;
 	}
@@ -1212,7 +1277,7 @@
 	.chart-hover-date {
 		font-weight: 600;
 		margin-bottom: 4px;
-		color: #f8fafc;
+		color: #ffffff;
 	}
 
 	.chart-hover-values {
@@ -1240,7 +1305,7 @@
 		top: 2px;
 		transform: translateX(-50%);
 		font-size: 0.65rem;
-		color: #64748b;
+		color: #cbd5f5;
 		white-space: nowrap;
 	}
 
@@ -1318,6 +1383,23 @@
 		margin-bottom: 6px;
 	}
 
+	.matrix-header-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	.matrix-controls {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.matrix-days-select {
+		min-width: 120px;
+	}
+
 	.panel-list {
 		display: grid;
 		gap: 3px;
@@ -1332,6 +1414,15 @@
 		padding: 4px 6px;
 		border-radius: 6px;
 		background: #f8fafc;
+	}
+
+	.panel-row--link {
+		cursor: pointer;
+		transition: background 0.12s ease-in-out;
+	}
+
+	.panel-row--link:hover {
+		background: #e2e8f0;
 	}
 
 	.panel-name {
