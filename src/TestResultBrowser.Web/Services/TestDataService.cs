@@ -141,6 +141,117 @@ public class TestDataService : ITestDataService
     }
 
     /// <inheritdoc/>
+    public TestResult? GetTestResultFast(string buildId, string testName, string configId)
+    {
+        if (!_byBuild.TryGetValue(buildId, out var buildIds) ||
+            !_byTestName.TryGetValue(testName, out var testNameIds))
+        {
+            return null;
+        }
+
+        List<string> buildSnapshot;
+        List<string> testNameSnapshot;
+        lock (_indexLock)
+        {
+            buildSnapshot = new List<string>(buildIds);
+            testNameSnapshot = new List<string>(testNameIds);
+        }
+
+        var testNameSet = new HashSet<string>(testNameSnapshot);
+        foreach (var id in buildSnapshot)
+        {
+            if (!testNameSet.Contains(id))
+            {
+                continue;
+            }
+
+            if (_testResults.TryGetValue(id, out var result) &&
+                result.ConfigurationId.Equals(configId, StringComparison.OrdinalIgnoreCase))
+            {
+                return result;
+            }
+        }
+
+        return null;
+    }
+
+    /// <inheritdoc/>
+    public IEnumerable<TestResult> GetTestResultsByBuildAndDomains(string buildId, List<string> domainIds)
+    {
+        if (!_byBuild.TryGetValue(buildId, out var ids))
+        {
+            return Enumerable.Empty<TestResult>();
+        }
+
+        var domainSet = new HashSet<string>(domainIds ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
+        List<string> idSnapshot;
+        lock (_indexLock)
+        {
+            idSnapshot = new List<string>(ids);
+        }
+
+        if (domainSet.Count == 0)
+        {
+            return idSnapshot.Select(id => _testResults.TryGetValue(id, out var result) ? result : null)
+                .Where(r => r != null)!;
+        }
+
+        return idSnapshot.Select(id => _testResults.TryGetValue(id, out var result) ? result : null)
+            .Where(r => r != null && domainSet.Contains(r.DomainId))!;
+    }
+
+    /// <inheritdoc/>
+    public IEnumerable<string> GetTestsByNameForBuild(string buildId)
+    {
+        if (!_byBuild.TryGetValue(buildId, out var ids))
+        {
+            return Enumerable.Empty<string>();
+        }
+
+        List<string> idSnapshot;
+        lock (_indexLock)
+        {
+            idSnapshot = new List<string>(ids);
+        }
+
+        return idSnapshot.Select(id => _testResults.TryGetValue(id, out var result) ? result?.TestFullName : null)
+            .Where(name => !string.IsNullOrEmpty(name))
+            .Distinct()
+            .OrderBy(name => name)!;
+    }
+
+    /// <inheritdoc/>
+    public IEnumerable<TestResult> GetTestResultsByConfigurationAndBuilds(string configId, List<string> buildIds)
+    {
+        if (!_byConfiguration.TryGetValue(configId, out var ids))
+        {
+            return Enumerable.Empty<TestResult>();
+        }
+
+        var buildSet = new HashSet<string>(buildIds ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
+        List<string> idSnapshot;
+        lock (_indexLock)
+        {
+            idSnapshot = new List<string>(ids);
+        }
+
+        if (buildSet.Count == 0)
+        {
+            return idSnapshot.Select(id => _testResults.TryGetValue(id, out var result) ? result : null)
+                .Where(r => r != null)!;
+        }
+
+        return idSnapshot.Select(id => _testResults.TryGetValue(id, out var result) ? result : null)
+            .Where(r => r != null && buildSet.Contains(r.BuildId))!;
+    }
+
+    /// <inheritdoc/>
+    public StringPoolStats GetStringPoolStats()
+    {
+        return new StringPoolStats(0, 0, 0, 0);
+    }
+
+    /// <inheritdoc/>
     public TestResult? GetTestResultById(string id)
     {
         _testResults.TryGetValue(id, out var result);

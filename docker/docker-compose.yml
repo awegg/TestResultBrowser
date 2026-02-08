@@ -1,3 +1,5 @@
+version: '3.3'
+
 services:
   testresultbrowser:
     build:
@@ -5,8 +7,8 @@ services:
       dockerfile: docker/Dockerfile
     container_name: testresultbrowser
     ports:
-      - "5000:8080"  # HTTP
-      - "5001:8081"  # HTTPS (if configured)
+      - "89:8080"  # HTTP
+      # - "90:8081"  # HTTPS (if configured)
     volumes:
       # Mount test results directory (adjust path to your network share)
       - ${TEST_RESULTS_PATH:-../sample_data}:/mnt/testresults:ro
@@ -26,9 +28,6 @@ services:
       interval: 30s
       timeout: 3s
       retries: 3
-      start_period: 60s
-    mem_limit: 20g
-    mem_reservation: 12g
 
 volumes:
   testresultbrowser-userdata:

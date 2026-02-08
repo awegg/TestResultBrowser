@@ -63,4 +63,10 @@ public record TestResult
 
     /// <summary>Directory path containing the test report (index.html) - e.g., "C:\\data\\Release-252\\Px Core - Alarm Dashboard"</summary>
     public string? ReportDirectoryPath { get; init; }
+
+    /// <summary>Absolute path to the screenshot asset (if available)</summary>
+    public string? ReportScreenshotPath { get; set; }
+
+    /// <summary>Absolute path to the video asset (if available)</summary>
+    public string? ReportVideoPath { get; set; }
 }

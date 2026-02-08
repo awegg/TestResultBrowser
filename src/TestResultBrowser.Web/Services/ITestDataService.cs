@@ -51,6 +51,31 @@ public interface ITestDataService
     IEnumerable<TestResult> GetTestResultsByTestName(string testFullName);
 
     /// <summary>
+    /// Gets a specific test result by build, test name, and configuration
+    /// </summary>
+    TestResult? GetTestResultFast(string buildId, string testName, string configId);
+
+    /// <summary>
+    /// Gets test results by build and a list of domains
+    /// </summary>
+    IEnumerable<TestResult> GetTestResultsByBuildAndDomains(string buildId, List<string> domainIds);
+
+    /// <summary>
+    /// Gets distinct test names for a build
+    /// </summary>
+    IEnumerable<string> GetTestsByNameForBuild(string buildId);
+
+    /// <summary>
+    /// Gets test results for a configuration across multiple builds
+    /// </summary>
+    IEnumerable<TestResult> GetTestResultsByConfigurationAndBuilds(string configId, List<string> buildIds);
+
+    /// <summary>
+    /// Gets string pooling statistics (if enabled)
+    /// </summary>
+    StringPoolStats GetStringPoolStats();
+
+    /// <summary>
     /// Gets a specific test result by ID
     /// </summary>
     TestResult? GetTestResultById(string id);

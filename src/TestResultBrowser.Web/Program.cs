@@ -2,6 +2,8 @@ using TestResultBrowser.Web.Components;
 using MudBlazor.Services;
 using TestResultBrowser.Web.Services;
 using TestResultBrowser.Web.Hubs;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,6 +40,8 @@ builder.Services.AddSingleton<IWorkItemLinkService, WorkItemLinkService>();
 builder.Services.AddSingleton<IFailureGroupingService, FailureGroupingService>();
 builder.Services.AddSingleton<IFlakyTestDetectionService, FlakyTestDetectionService>();
 builder.Services.AddSingleton<IFeatureGroupingService, FeatureGroupingService>();
+builder.Services.AddSingleton<ITestReportUrlService, TestReportUrlService>();
+builder.Services.AddSingleton<IReportAssetService, ReportAssetService>();
 builder.Services.AddSingleton<ConfigurationValidator>();
 
 // Register background services
@@ -70,6 +74,25 @@ if (!app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.UseStaticFiles();
+var reportOptions = app.Services.GetRequiredService<IOptions<TestResultBrowserOptions>>().Value;
+if (!string.IsNullOrWhiteSpace(reportOptions.FileSharePath) && Directory.Exists(reportOptions.FileSharePath))
+{
+    var reportFileProvider = new PhysicalFileProvider(Path.GetFullPath(reportOptions.FileSharePath));
+    app.UseDefaultFiles(new DefaultFilesOptions
+    {
+        FileProvider = reportFileProvider,
+        RequestPath = "/test-reports"
+    });
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = reportFileProvider,
+        RequestPath = "/test-reports"
+    });
+}
+else
+{
+    app.Logger.LogWarning("Test report file share path is missing or does not exist: {Path}", reportOptions.FileSharePath);
+}
 app.UseAntiforgery();
 
 // Map API controllers

@@ -1,5 +1,8 @@
 @using TestResultBrowser.Web.Models
+@using TestResultBrowser.Web.Services
 @using MudBlazor
+@inject ITestReportUrlService TestReportUrlService
+@inject IReportAssetService ReportAssetService
 
 @if (IsOpen && TestResult != null)
 {
@@ -107,6 +110,42 @@
                                     <span class="media-meta">@ActiveTest.BuildId · @ActiveTest.Timestamp.ToString("MM/dd/yyyy HH:mm")</span>
                                 }
                             </h6>
+                            @if (IsLoadingAssets)
+                            {
+                                <div class="media-loading">Loading report assets...</div>
+                            }
+                            else if (AssetInfo != null && (!string.IsNullOrEmpty(AssetInfo.ScreenshotUrl) || !string.IsNullOrEmpty(AssetInfo.VideoUrl)))
+                            {
+                                <div class="media-assets">
+                                    @if (!string.IsNullOrEmpty(AssetInfo.ScreenshotUrl))
+                                    {
+                                        <img src="@AssetInfo.ScreenshotUrl" alt="Test screenshot" />
+                                    }
+                                    @if (!string.IsNullOrEmpty(AssetInfo.VideoUrl))
+                                    {
+                                        <video controls src="@AssetInfo.VideoUrl"></video>
+                                    }
+                                </div>
+                            }
+                            else if (ActiveTest != null && string.IsNullOrEmpty(ActiveTest.ReportDirectoryPath))
+                            {
+                                <div class="media-empty">
+                                    No report assets available for this test.
+                                </div>
+                            }
+                            @if (AssetInfo != null && (!string.IsNullOrEmpty(AssetInfo.ScreenshotUrl) || !string.IsNullOrEmpty(AssetInfo.VideoUrl)))
+                            {
+                                <div class="media-links">
+                                    @if (!string.IsNullOrEmpty(AssetInfo.ScreenshotUrl))
+                                    {
+                                        <a class="btn btn-outline-secondary" target="_blank" href="@AssetInfo.ScreenshotUrl">Open Screenshot</a>
+                                    }
+                                    @if (!string.IsNullOrEmpty(AssetInfo.VideoUrl))
+                                    {
+                                        <a class="btn btn-outline-secondary" target="_blank" href="@AssetInfo.VideoUrl">Open Video</a>
+                                    }
+                                </div>
+                            }
                             @if (!string.IsNullOrEmpty(ActiveTest?.ReportDirectoryPath))
                             {
                                 <div class="media-preview">
@@ -114,12 +153,6 @@
                                 </div>
                                 <div class="mt-2">
                                     <a class="btn btn-outline-secondary" target="_blank" href="@GetReportUrl()">Open Full Report</a>
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="media-empty">
-                                    No report assets available for this test.
                                 </div>
                             }
                         </div>
@@ -152,8 +185,15 @@
     public EventCallback OnClose { get; set; }
 
     private string? selectedHistoryId;
+    private ReportAssetInfo? AssetInfo { get; set; }
+    private bool IsLoadingAssets { get; set; }
 
     private TestResult? ActiveTest => GetActiveTestResult();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadAssetsAsync();
+    }
 
     private async Task Close()
     {
@@ -165,12 +205,13 @@
         var reportPath = ActiveTest?.ReportDirectoryPath ?? string.Empty;
         return string.IsNullOrEmpty(reportPath)
             ? string.Empty
-            : $"/api/TestReport?path={Uri.EscapeDataString(reportPath)}";
+            : TestReportUrlService.GetReportUrl(reportPath) ?? string.Empty;
     }
 
-    private void SelectHistory(TestResult item)
+    private async Task SelectHistory(TestResult item)
     {
         selectedHistoryId = item.Id;
+        await LoadAssetsAsync();
     }
 
     private bool IsActiveHistory(TestResult item)
@@ -195,6 +236,26 @@
         }
 
         return History[0];
+    }
+
+    private async Task LoadAssetsAsync()
+    {
+        if (!IsOpen || ActiveTest == null)
+        {
+            AssetInfo = null;
+            IsLoadingAssets = false;
+            return;
+        }
+
+        IsLoadingAssets = true;
+        try
+        {
+            AssetInfo = await ReportAssetService.GetAssetsAsync(ActiveTest);
+        }
+        finally
+        {
+            IsLoadingAssets = false;
+        }
     }
 }
 
@@ -231,6 +292,37 @@
         border-radius: 6px;
         padding: 16px;
         color: #666;
+    }
+
+    .media-loading {
+        background: #f0f4f8;
+        border: 1px solid #d8e1ea;
+        border-radius: 6px;
+        padding: 12px;
+        color: #4b5563;
+        font-size: 0.9rem;
+        margin-bottom: 12px;
+    }
+
+    .media-assets {
+        display: grid;
+        gap: 12px;
+        margin-bottom: 12px;
+    }
+
+    .media-assets img,
+    .media-assets video {
+        width: 100%;
+        border-radius: 6px;
+        border: 1px solid #e0e0e0;
+        background: #fff;
+    }
+
+    .media-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 12px;
     }
 
     .media-meta {
