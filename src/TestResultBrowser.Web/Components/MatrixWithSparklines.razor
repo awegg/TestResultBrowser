@@ -27,7 +27,7 @@ else
                 @foreach (var config in Matrix.Configurations)
                 {
                     <tr>
-                        <td class="matrix-version-cell">@GetConfigLabel(config)</td>
+                        <td class="matrix-version-cell">@ConfigurationLabelHelper.GetConfigurationLabel(config)</td>
                         @foreach (var build in Matrix.Builds)
                         {
                             <td>
@@ -56,7 +56,7 @@ else
                                         </ChildContent>
                                         <TooltipContent>
                                             <div class="matrix-tooltip">
-                                                <div class="tooltip-title">@GetConfigLabel(cell.ConfigId)</div>
+                                                <div class="tooltip-title">@ConfigurationLabelHelper.GetConfigurationLabel(cell.ConfigId)</div>
                                                 <div class="tooltip-subtitle">@cell.BuildId · @cell.Timestamp.ToString("MM/dd/yyyy HH:mm")</div>
                                                 <div class="tooltip-stat">@cell.Passed passed / @cell.Failed failed / @cell.Total total</div>
                                             </div>
@@ -87,12 +87,6 @@ else
         return buildId.Length > 12 ? buildId[..12] + "..." : buildId;
     }
 
-    private static string GetConfigLabel(string configId)
-    {
-        return string.Equals(configId, ConfigurationHistoryService.AllConfigurationsId, StringComparison.OrdinalIgnoreCase)
-            ? "All configurations"
-            : configId;
-    }
 }
 
 <style>

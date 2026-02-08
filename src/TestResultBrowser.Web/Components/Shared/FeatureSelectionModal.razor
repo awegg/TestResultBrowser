@@ -1,0 +1,140 @@
+@using TestResultBrowser.Web.Services
+@inject IFeatureGroupingService FeatureGroupingService
+
+<div class="modal-backdrop fade show" style="display: block; z-index: 9998;"></div>
+<div class="modal fade show" style="display: block; z-index: 9999;" role="dialog">
+    <div class="modal-dialog modal-xl" style="max-width: 80vw;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Select Features</h5>
+                <button type="button" class="btn-close" @onclick="Cancel"></button>
+            </div>
+            <div class="modal-body" style="max-height: 600px; overflow-y: auto;">
+                <input type="text" class="form-control mb-3" placeholder="Search features..."
+                       @bind="searchText" @bind:event="oninput" />
+
+                @if (FeatureGroups.Count == 0)
+                {
+                    <p>No features available</p>
+                }
+                else if (FilteredGroups.Count == 0)
+                {
+                    <p>No features match your search.</p>
+                }
+                else
+                {
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;">
+                    @foreach (var group in FilteredGroups.OrderBy(g => g.Key))
+                    {
+                        var groupKey = group.Key;
+                        var groupFeatures = group.Value;
+                        var countInGroup = groupFeatures.Count(f => SelectedFeatures.Contains(f));
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                                <input type="checkbox"
+                                       @onchange="(ChangeEventArgs e) => OnGroupChanged(groupKey, e)"
+                                       checked="@(countInGroup == groupFeatures.Count)" />
+                                <strong style="font-size: 0.95rem;">@groupKey</strong>
+                            </div>
+                            <div style="padding-left: 28px;">
+                                @foreach (var feature in groupFeatures)
+                                {
+                                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 5px; font-size: 0.85rem;">
+                                        <input type="checkbox" style="min-width: 16px;"
+                                               checked="@SelectedFeatures.Contains(feature)"
+                                               @onchange="(ChangeEventArgs e) => OnFeatureChanged(feature, e)" />
+                                        <span>@feature</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-info" @onclick="ClearAll">Clear All</button>
+                <button type="button" class="btn btn-secondary" @onclick="Cancel">Cancel</button>
+                <button type="button" class="btn btn-primary" @onclick="Apply">Apply</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public Dictionary<string, List<string>> FeatureGroups { get; set; } = new();
+    [Parameter] public HashSet<string> SelectedFeatures { get; set; } = new();
+    [Parameter] public EventCallback OnApply { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private string searchText = string.Empty;
+
+    private Dictionary<string, List<string>> FilteredGroups =>
+        FeatureGroupingService.GetFilteredFeatureGroups(FeatureGroups, searchText);
+
+    private void ClearAll()
+    {
+        SelectedFeatures.Clear();
+        StateHasChanged();
+    }
+
+    private async Task Apply()
+    {
+        await OnApply.InvokeAsync();
+    }
+
+    private async Task Cancel()
+    {
+        searchText = string.Empty;
+        await OnCancel.InvokeAsync();
+    }
+
+    private void OnGroupChanged(string groupName, ChangeEventArgs args)
+    {
+        if (args.Value is not bool value)
+        {
+            return;
+        }
+
+        if (!FeatureGroups.TryGetValue(groupName, out var features))
+        {
+            return;
+        }
+
+        if (value)
+        {
+            foreach (var f in features)
+            {
+                SelectedFeatures.Add(f);
+            }
+        }
+        else
+        {
+            foreach (var f in features)
+            {
+                SelectedFeatures.Remove(f);
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    private void OnFeatureChanged(string feature, ChangeEventArgs args)
+    {
+        if (args.Value is not bool value)
+        {
+            return;
+        }
+
+        if (value)
+        {
+            SelectedFeatures.Add(feature);
+        }
+        else
+        {
+            SelectedFeatures.Remove(feature);
+        }
+
+        StateHasChanged();
+    }
+}

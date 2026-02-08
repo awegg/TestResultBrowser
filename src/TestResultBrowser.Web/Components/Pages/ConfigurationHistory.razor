@@ -8,6 +8,7 @@
 @using TestResultBrowser.Web.Components
 @inject IConfigurationHistoryService ConfigHistoryService
 @inject IUserDataService UserDataService
+@inject IFeatureGroupingService FeatureGroupingService
 @inject ISnackbar Snackbar
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JS
@@ -31,7 +32,7 @@
                 }
                 else
                 {
-                    <span>@GetConfigurationLabel(selectedConfiguration)</span>
+                    <span>@ConfigurationLabelHelper.GetConfigurationLabel(selectedConfiguration)</span>
                 }
                 <MudSpacer />
                 <MudIcon Icon="@Icons.Material.Filled.MoreVert"></MudIcon>
@@ -197,7 +198,7 @@
                             <div style="padding: 12px; cursor: pointer; background-color: @(configMeta.Id == selectedConfiguration ? "#e3f2fd" : "transparent"); border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;"
                                  @onclick="@(() => SelectConfigurationFromDialog(configMeta.Id))">
                                 <div style="flex: 1;">
-                                    <div style="font-weight: 500;">@GetConfigurationLabel(configMeta.Id)</div>
+                                    <div style="font-weight: 500;">@ConfigurationLabelHelper.GetConfigurationLabel(configMeta.Id)</div>
                                     <div style="font-size: 0.85rem; color: #666; margin-top: 2px;">Last updated: @configMeta.LastUpdateDisplay</div>
                                 </div>
                                 @if (configMeta.Id == selectedConfiguration)
@@ -218,87 +219,10 @@
 
 @if (showFeatureDialog)
 {
-    <div class="modal-backdrop fade show" style="display: block; z-index: 9998;"></div>
-    <div class="modal fade show" style="display: block; z-index: 9999;" role="dialog">
-        <div class="modal-dialog modal-xl" style="max-width: 80vw;">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Select Features</h5>
-                    <button type="button" class="btn-close" @onclick="() => showFeatureDialog = false"></button>
-                </div>
-                <div class="modal-body" style="max-height: 600px; overflow-y: auto;">
-                    <input type="text" class="form-control mb-3" placeholder="Search features..." 
-                           @bind="featureSearchText" @bind:event="oninput" />
-                    
-                    @if (featureGroups.Count == 0)
-                    {
-                        <p>No features available</p>
-                    }
-                    else if (GetFilteredFeatureGroups().Count == 0)
-                    {
-                        <p>No features match your search.</p>
-                    }
-                    else
-                    {
-                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;">
-                        @foreach (var group in GetFilteredFeatureGroups().OrderBy(g => g.Key))
-                        {
-                            var groupKey = group.Key;
-                            var groupFeatures = group.Value;
-                            var countInGroup = groupFeatures.Count(f => selectedFeatureNames.Contains(f));
-                            <div>
-                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
-                                    <input type="checkbox" 
-                                           @onchange="@((ChangeEventArgs e) => {
-                                               if (e.Value is bool value)
-                                               {
-                                                   if (value)
-                                                   {
-                                                       foreach (var f in groupFeatures) selectedFeatureNames.Add(f);
-                                                   }
-                                                   else
-                                                   {
-                                                       foreach (var f in groupFeatures) selectedFeatureNames.Remove(f);
-                                                   }
-                                                   StateHasChanged();
-                                               }
-                                           })"
-                                           checked="@(countInGroup == groupFeatures.Count)" />
-                                    <strong style="font-size: 0.95rem;">@groupKey</strong>
-                                </div>
-                                <div style="padding-left: 28px;">
-                                    @foreach (var feature in groupFeatures)
-                                    {
-                                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 5px; font-size: 0.85rem;">
-                                            <input type="checkbox" style="min-width: 16px;"
-                                                   checked="@selectedFeatureNames.Contains(feature)"
-                                                   @onchange="@((ChangeEventArgs e) => {
-                                                       if (e.Value is bool value)
-                                                       {
-                                                           if (value)
-                                                               selectedFeatureNames.Add(feature);
-                                                           else
-                                                               selectedFeatureNames.Remove(feature);
-                                                           StateHasChanged();
-                                                       }
-                                                   })" />
-                                            <span>@feature</span>
-                                        </div>
-                                    }
-                                </div>
-                            </div>
-                        }
-                        </div>
-                    }
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-info" @onclick="@ClearAllFeatures">Clear All</button>
-                    <button type="button" class="btn btn-secondary" @onclick="() => { featureSearchText = string.Empty; showFeatureDialog = false; }">Cancel</button>
-                    <button type="button" class="btn btn-primary" @onclick="@ApplyFeatureSelection">Apply</button>
-                </div>
-            </div>
-        </div>
-    </div>
+    <FeatureSelectionModal FeatureGroups="featureGroups"
+                           SelectedFeatures="selectedFeatureNames"
+                           OnApply="ApplyFeatureSelection"
+                           OnCancel="CloseFeatureDialog" />
 }
 
 @* Test Details Modal *@
@@ -325,7 +249,8 @@
     [SupplyParameterFromQuery(Name = "filterId")]
     public int? FilterIdFromUrl { get; set; }
 
-    private string? FeatureFromUrl { get; set; }
+    [SupplyParameterFromQuery(Name = "feature")]
+    public string? FeatureFromUrl { get; set; }
     
     private List<string> availableConfigurations = new();
     private List<ConfigurationMetadata> configurationMetadata = new();
@@ -334,7 +259,6 @@
     private int numberOfBuilds = 5;
     private bool isLoading = false;
     private string searchText = string.Empty;
-    private string featureSearchText = string.Empty;
     private bool showConfigurationDialog = false;
     private bool showOnlyFailed = false;
     private SelectedTestInfo? selectedTestInfo = null;  // Track selected test with column info
@@ -410,8 +334,6 @@
             needsRefresh = true;
         }
 
-        FeatureFromUrl = ReadFeatureFromQuery();
-
         if (!string.Equals(FeatureFromUrl, lastFeatureFromUrl, StringComparison.OrdinalIgnoreCase))
         {
             lastFeatureFromUrl = FeatureFromUrl;
@@ -479,25 +401,6 @@
             ["builds"] = numberOfBuilds
         });
         NavigationManager.NavigateTo(uri, replace: true);
-    }
-
-    private string? ReadFeatureFromQuery()
-    {
-        var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
-        if (string.IsNullOrWhiteSpace(uri.Query))
-        {
-            return null;
-        }
-
-        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
-        return query.TryGetValue("feature", out var feature) ? feature.ToString() : null;
-    }
-
-    private static string GetConfigurationLabel(string configId)
-    {
-        return string.Equals(configId, ConfigurationHistoryService.AllConfigurationsId, StringComparison.OrdinalIgnoreCase)
-            ? "All configurations"
-            : configId;
     }
 
     private async Task OnConfigurationChanged(string newConfig)
@@ -701,20 +604,18 @@
 
     private void BuildFeatureGroups()
     {
-        featureGroups.Clear();
         if (historyResult?.HierarchyNodes == null || historyResult.HierarchyNodes.Count == 0)
+        {
+            featureGroups.Clear();
             return;
+        }
 
-        // Collect all feature names
         var allFeatures = new List<string>();
         void CollectFeatures(HierarchyNode node)
         {
             if (node.NodeType == HierarchyNodeType.Feature)
             {
-                if (!allFeatures.Contains(node.Name))
-                {
-                    allFeatures.Add(node.Name);
-                }
+                allFeatures.Add(node.Name);
             }
             foreach (var child in node.Children)
             {
@@ -727,114 +628,12 @@
             CollectFeatures(root);
         }
 
-        // Group features by parsing their names
-        foreach (var feature in allFeatures.OrderBy(f => f))
-        {
-            string group = ExtractGroupFromFeatureName(feature);
-            if (!featureGroups.TryGetValue(group, out var list))
-            {
-                list = new List<string>();
-                featureGroups[group] = list;
-            }
-            if (!list.Contains(feature))
-            {
-                list.Add(feature);
-            }
-        }
-
-        // Sort features within each group
-        foreach (var key in featureGroups.Keys.ToList())
-        {
-            featureGroups[key] = featureGroups[key].OrderBy(n => n).ToList();
-        }
+        featureGroups = FeatureGroupingService.BuildFeatureGroups(allFeatures);
     }
 
-    private string ExtractGroupFromFeatureName(string featureName)
+    private void CloseFeatureDialog()
     {
-        // Feature names can be:
-        // "Px Core - Alarm Dashboard" -> "PX Core"
-        // "Px Core - Alarm Manager" -> "PX Core"
-        // "Px Feature LogHandler Regression" -> "PX Feature LogHandler"
-        // "Px Feature LogHandler Smoke" -> "PX Feature LogHandler"
-        // "Px Feature Identity Server" -> "PX Feature Identity Server"
-        
-        if (string.IsNullOrEmpty(featureName))
-            return "Other";
-
-        var name = featureName.Trim();
-        string groupName = name;
-
-        // First, split by " - " to get the prefix (for names like "Px Core - Alarm Dashboard")
-        var dashParts = name.Split(" - ");
-        if (dashParts.Length > 1)
-        {
-            groupName = dashParts[0].Trim();
-        }
-        else
-        {
-            // For names without " - ", check for and remove test type suffixes
-            var suffixes = new[] { "Regression", "Smoke", "Archive Viewer", "Public API" };
-            foreach (var suffix in suffixes)
-            {
-                if (name.EndsWith(" " + suffix, StringComparison.OrdinalIgnoreCase))
-                {
-                    groupName = name.Substring(0, name.Length - (" " + suffix).Length).Trim();
-                    break;
-                }
-            }
-        }
-
-        // Normalize: "Px Core" -> "PX Core", "Px Feature Loghandler" -> "PX Feature Loghandler"
-        if (groupName.StartsWith("Px ", StringComparison.OrdinalIgnoreCase))
-        {
-            var withoutPx = groupName.Substring(3).Trim();
-            return "PX " + withoutPx;
-        }
-
-        return "Other";
-    }
-
-    private void ToggleFeature(string feature, bool value)
-    {
-        if (value)
-        {
-            selectedFeatureNames.Add(feature);
-        }
-        else
-        {
-            selectedFeatureNames.Remove(feature);
-        }
-        StateHasChanged();
-    }
-
-    private void ToggleGroup(string groupName, bool? value)
-    {
-        if (!featureGroups.TryGetValue(groupName, out var features))
-            return;
-
-        if (value == true)
-        {
-            // Select all features in this group
-            foreach (var f in features)
-            {
-                selectedFeatureNames.Add(f);
-            }
-        }
-        else if (value == false)
-        {
-            // Deselect all features in this group
-            foreach (var f in features)
-            {
-                selectedFeatureNames.Remove(f);
-            }
-        }
-        StateHasChanged();
-    }
-
-    private void ClearAllFeatures()
-    {
-        selectedFeatureNames.Clear();
-        StateHasChanged();
+        showFeatureDialog = false;
     }
 
     private void ApplyFeatureSelection()
@@ -844,32 +643,6 @@
         StateHasChanged();
     }
 
-    private Dictionary<string, List<string>> GetFilteredFeatureGroups()
-    {
-        if (string.IsNullOrEmpty(featureSearchText))
-        {
-            return featureGroups;
-        }
-
-        var searchLower = featureSearchText.ToLower();
-        var filtered = new Dictionary<string, List<string>>();
-
-        foreach (var group in featureGroups)
-        {
-            // Filter features that match the search text
-            var matchingFeatures = group.Value
-                .Where(f => f.Contains(featureSearchText, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-
-            // Also include the group if the group name matches
-            if (group.Key.Contains(featureSearchText, StringComparison.OrdinalIgnoreCase) || matchingFeatures.Count > 0)
-            {
-                filtered[group.Key] = matchingFeatures.Count > 0 ? matchingFeatures : group.Value;
-            }
-        }
-
-        return filtered;
-    }
 
     private HierarchyNode? GetFilteredNode(HierarchyNode node)
     {

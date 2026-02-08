@@ -8,6 +8,7 @@
 @inject ITestDataService TestDataService
 @inject ITriageService TriageService
 @inject NavigationManager NavigationManager
+@inject IFeatureGroupingService FeatureGroupingService
 @inject ISnackbar Snackbar
 @inject ILogger<Home> Logger
 @inject IJSRuntime JS
@@ -273,87 +274,10 @@
 
 @if (showFeatureDialog)
 {
-	<div class="modal-backdrop fade show" style="display: block; z-index: 9998;"></div>
-	<div class="modal fade show" style="display: block; z-index: 9999;" role="dialog">
-		<div class="modal-dialog modal-xl" style="max-width: 80vw;">
-			<div class="modal-content">
-				<div class="modal-header">
-					<h5 class="modal-title">Select Features</h5>
-					<button type="button" class="btn-close" @onclick="() => showFeatureDialog = false"></button>
-				</div>
-				<div class="modal-body" style="max-height: 600px; overflow-y: auto;">
-					<input type="text" class="form-control mb-3" placeholder="Search features..."
-						   @bind="featureSearchText" @bind:event="oninput" />
-
-					@if (featureGroups.Count == 0)
-					{
-						<p>No features available</p>
-					}
-					else if (GetFilteredFeatureGroups().Count == 0)
-					{
-						<p>No features match your search.</p>
-					}
-					else
-					{
-						<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;">
-						@foreach (var group in GetFilteredFeatureGroups().OrderBy(g => g.Key))
-						{
-							var groupKey = group.Key;
-							var groupFeatures = group.Value;
-							var countInGroup = groupFeatures.Count(f => selectedFeatureNames.Contains(f));
-							<div>
-								<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
-									<input type="checkbox"
-										   @onchange="@((ChangeEventArgs e) => {
-											   if (e.Value is bool value)
-											   {
-												   if (value)
-												   {
-													   foreach (var f in groupFeatures) selectedFeatureNames.Add(f);
-												   }
-												   else
-												   {
-													   foreach (var f in groupFeatures) selectedFeatureNames.Remove(f);
-												   }
-												   StateHasChanged();
-											   }
-										   })"
-										   checked="@(countInGroup == groupFeatures.Count)" />
-									<strong style="font-size: 0.95rem;">@groupKey</strong>
-								</div>
-								<div style="padding-left: 28px;">
-									@foreach (var feature in groupFeatures)
-									{
-										<div style="display: flex; align-items: center; gap: 6px; margin-bottom: 5px; font-size: 0.85rem;">
-											<input type="checkbox" style="min-width: 16px;"
-												   checked="@selectedFeatureNames.Contains(feature)"
-												   @onchange="@((ChangeEventArgs e) => {
-													   if (e.Value is bool value)
-													   {
-														   if (value)
-															   selectedFeatureNames.Add(feature);
-														   else
-															   selectedFeatureNames.Remove(feature);
-														   StateHasChanged();
-													   }
-												   })" />
-											<span>@feature</span>
-										</div>
-									}
-								</div>
-							</div>
-						}
-						</div>
-					}
-				</div>
-				<div class="modal-footer">
-					<button type="button" class="btn btn-info" @onclick="ClearAllFeatures">Clear All</button>
-					<button type="button" class="btn btn-secondary" @onclick="() => { featureSearchText = string.Empty; showFeatureDialog = false; }">Cancel</button>
-					<button type="button" class="btn btn-primary" @onclick="ApplyFeatureSelection">Apply</button>
-				</div>
-			</div>
-		</div>
-	</div>
+	<FeatureSelectionModal FeatureGroups="featureGroups"
+					   SelectedFeatures="selectedFeatureNames"
+					   OnApply="ApplyFeatureSelection"
+					   OnCancel="CloseFeatureDialog" />
 }
 
 @code {
@@ -370,7 +294,6 @@
 	private const double ChartViewHeight = 220;
 	private bool isChartObserverActive;
 	private int matrixDays = 14;
-	private string featureSearchText = string.Empty;
 	private bool showFeatureDialog;
 	private Dictionary<string, List<string>> featureGroups = new();
 	private HashSet<string> selectedFeatureNames = new(StringComparer.OrdinalIgnoreCase);
@@ -772,9 +695,11 @@
 
 	private void BuildFeatureGroups(List<TestResult> results)
 	{
-		featureGroups.Clear();
 		if (results.Count == 0)
+		{
+			featureGroups.Clear();
 			return;
+		}
 
 		var allFeatures = results
 			.Select(r => r.Feature)
@@ -783,65 +708,7 @@
 			.OrderBy(f => f)
 			.ToList();
 
-		foreach (var feature in allFeatures)
-		{
-			var group = ExtractGroupFromFeatureName(feature);
-			if (!featureGroups.TryGetValue(group, out var list))
-			{
-				list = new List<string>();
-				featureGroups[group] = list;
-			}
-			list.Add(feature);
-		}
-
-		foreach (var key in featureGroups.Keys.ToList())
-		{
-			featureGroups[key] = featureGroups[key]
-				.Distinct(StringComparer.OrdinalIgnoreCase)
-				.OrderBy(n => n)
-				.ToList();
-		}
-	}
-
-	private static string ExtractGroupFromFeatureName(string featureName)
-	{
-		if (string.IsNullOrEmpty(featureName))
-			return "Other";
-
-		var name = featureName.Trim();
-		var groupName = name;
-
-		var dashParts = name.Split(" - ");
-		if (dashParts.Length > 1)
-		{
-			groupName = dashParts[0].Trim();
-		}
-		else
-		{
-			var suffixes = new[] { "Regression", "Smoke", "Archive Viewer", "Public API" };
-			foreach (var suffix in suffixes)
-			{
-				if (name.EndsWith(" " + suffix, StringComparison.OrdinalIgnoreCase))
-				{
-					groupName = name.Substring(0, name.Length - (" " + suffix).Length).Trim();
-					break;
-				}
-			}
-		}
-
-		if (groupName.StartsWith("Px ", StringComparison.OrdinalIgnoreCase))
-		{
-			var withoutPx = groupName.Substring(3).Trim();
-			return "PX " + withoutPx;
-		}
-
-		return groupName;
-	}
-
-	private void ClearAllFeatures()
-	{
-		selectedFeatureNames.Clear();
-		StateHasChanged();
+		featureGroups = FeatureGroupingService.BuildFeatureGroups(allFeatures);
 	}
 
 	private async Task ApplyFeatureSelection()
@@ -851,27 +718,9 @@
 		await RefreshAsync();
 	}
 
-	private Dictionary<string, List<string>> GetFilteredFeatureGroups()
+	private void CloseFeatureDialog()
 	{
-		if (string.IsNullOrEmpty(featureSearchText))
-		{
-			return featureGroups;
-		}
-
-		var filtered = new Dictionary<string, List<string>>();
-		foreach (var group in featureGroups)
-		{
-			var matchingFeatures = group.Value
-				.Where(f => f.Contains(featureSearchText, StringComparison.OrdinalIgnoreCase))
-				.ToList();
-
-			if (group.Key.Contains(featureSearchText, StringComparison.OrdinalIgnoreCase) || matchingFeatures.Count > 0)
-			{
-				filtered[group.Key] = matchingFeatures.Count > 0 ? matchingFeatures : group.Value;
-			}
-		}
-
-		return filtered;
+		showFeatureDialog = false;
 	}
 
 	private void OnChartMouseMove(Microsoft.AspNetCore.Components.Web.MouseEventArgs args)
