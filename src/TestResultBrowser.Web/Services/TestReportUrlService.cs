@@ -11,7 +11,9 @@ public class TestReportUrlService : ITestReportUrlService
 
     public TestReportUrlService(IOptions<TestResultBrowserOptions> options)
     {
-        _baseDirectory = Path.GetFullPath(options?.Value.FileSharePath ?? string.Empty);
+        _baseDirectory = string.IsNullOrWhiteSpace(options?.Value.FileSharePath)
+            ? string.Empty
+            : Path.GetFullPath(options.Value.FileSharePath);
     }
 
     /// <inheritdoc/>
@@ -24,9 +26,24 @@ public class TestReportUrlService : ITestReportUrlService
 
         var normalizedPath = reportDirectoryPath.Trim();
 
+        if (string.IsNullOrWhiteSpace(_baseDirectory))
+        {
+            return null;
+        }
+
         if (Path.IsPathRooted(normalizedPath))
         {
             var fullPath = Path.GetFullPath(normalizedPath);
+            if (!IsUnderBaseDirectory(fullPath))
+            {
+                return null;
+            }
+
+            normalizedPath = Path.GetRelativePath(_baseDirectory, fullPath);
+        }
+        else
+        {
+            var fullPath = Path.GetFullPath(Path.Combine(_baseDirectory, normalizedPath));
             if (!IsUnderBaseDirectory(fullPath))
             {
                 return null;

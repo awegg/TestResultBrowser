@@ -114,16 +114,16 @@
                             {
                                 <div class="media-loading">Loading report assets...</div>
                             }
-                            else if (AssetInfo != null && (!string.IsNullOrEmpty(AssetInfo.ScreenshotUrl) || !string.IsNullOrEmpty(AssetInfo.VideoUrl)))
+                            else if (HasMediaAssets)
                             {
                                 <div class="media-assets">
-                                    @if (!string.IsNullOrEmpty(AssetInfo.ScreenshotUrl))
+                                    @if (!string.IsNullOrEmpty(AssetInfo?.ScreenshotUrl))
                                     {
-                                        <img src="@AssetInfo.ScreenshotUrl" alt="Test screenshot" />
+                                        <img src="@AssetInfo!.ScreenshotUrl" alt="Test screenshot" />
                                     }
-                                    @if (!string.IsNullOrEmpty(AssetInfo.VideoUrl))
+                                    @if (!string.IsNullOrEmpty(AssetInfo?.VideoUrl))
                                     {
-                                        <video controls src="@AssetInfo.VideoUrl"></video>
+                                        <video controls src="@AssetInfo!.VideoUrl"></video>
                                     }
                                 </div>
                             }
@@ -133,16 +133,16 @@
                                     No report assets available for this test.
                                 </div>
                             }
-                            @if (AssetInfo != null && (!string.IsNullOrEmpty(AssetInfo.ScreenshotUrl) || !string.IsNullOrEmpty(AssetInfo.VideoUrl)))
+                            @if (HasMediaAssets)
                             {
                                 <div class="media-links">
-                                    @if (!string.IsNullOrEmpty(AssetInfo.ScreenshotUrl))
+                                    @if (!string.IsNullOrEmpty(AssetInfo?.ScreenshotUrl))
                                     {
-                                        <a class="btn btn-outline-secondary" target="_blank" href="@AssetInfo.ScreenshotUrl">Open Screenshot</a>
+                                        <a class="btn btn-outline-secondary" target="_blank" href="@AssetInfo!.ScreenshotUrl">Open Screenshot</a>
                                     }
-                                    @if (!string.IsNullOrEmpty(AssetInfo.VideoUrl))
+                                    @if (!string.IsNullOrEmpty(AssetInfo?.VideoUrl))
                                     {
-                                        <a class="btn btn-outline-secondary" target="_blank" href="@AssetInfo.VideoUrl">Open Video</a>
+                                        <a class="btn btn-outline-secondary" target="_blank" href="@AssetInfo!.VideoUrl">Open Video</a>
                                     }
                                 </div>
                             }
@@ -187,8 +187,12 @@
     private string? selectedHistoryId;
     private ReportAssetInfo? AssetInfo { get; set; }
     private bool IsLoadingAssets { get; set; }
+    private string? lastAssetTestId;
 
     private TestResult? ActiveTest => GetActiveTestResult();
+
+    private bool HasMediaAssets => AssetInfo != null &&
+        (!string.IsNullOrEmpty(AssetInfo.ScreenshotUrl) || !string.IsNullOrEmpty(AssetInfo.VideoUrl));
 
     protected override async Task OnParametersSetAsync()
     {
@@ -247,10 +251,17 @@
             return;
         }
 
+        if (string.Equals(lastAssetTestId, ActiveTest.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
         IsLoadingAssets = true;
+        StateHasChanged();
         try
         {
             AssetInfo = await ReportAssetService.GetAssetsAsync(ActiveTest);
+            lastAssetTestId = ActiveTest.Id;
         }
         finally
         {

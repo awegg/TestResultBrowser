@@ -1,5 +1,5 @@
-using System.Collections.Concurrent;
 using System.Text.Json;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using TestResultBrowser.Web.Models;
 
@@ -10,98 +10,80 @@ namespace TestResultBrowser.Web.Services;
 /// </summary>
 public class ReportAssetService : IReportAssetService
 {
-    private readonly ConcurrentDictionary<string, ReportAssetInfo?> _cache = new();
+    private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(10);
     private readonly ITestReportUrlService _urlService;
     private readonly string _baseDirectory;
     private readonly ILogger<ReportAssetService> _logger;
+    private readonly IMemoryCache _cache;
 
     public ReportAssetService(
         ITestReportUrlService urlService,
         IOptions<TestResultBrowserOptions> options,
-        ILogger<ReportAssetService> logger)
+        ILogger<ReportAssetService> logger,
+        IMemoryCache cache)
     {
         _urlService = urlService;
         _logger = logger;
-        _baseDirectory = Path.GetFullPath(options?.Value.FileSharePath ?? string.Empty);
+        _cache = cache;
+        _baseDirectory = string.IsNullOrWhiteSpace(options?.Value.FileSharePath)
+            ? string.Empty
+            : Path.GetFullPath(options.Value.FileSharePath);
     }
 
-    public Task<ReportAssetInfo?> GetAssetsAsync(TestResult testResult)
+    public async Task<ReportAssetInfo?> GetAssetsAsync(TestResult testResult)
     {
         if (testResult == null)
         {
-            return Task.FromResult<ReportAssetInfo?>(null);
+            return null;
         }
 
-        if (_cache.TryGetValue(testResult.Id, out var cached))
+        if (_cache.TryGetValue(testResult.Id, out ReportAssetInfo? cached))
         {
-            return Task.FromResult<ReportAssetInfo?>(cached);
-        }
-
-        var cachedFromResult = TryBuildFromCachedPaths(testResult);
-        if (cachedFromResult != null)
-        {
-            _cache[testResult.Id] = cachedFromResult;
-            return Task.FromResult<ReportAssetInfo?>(cachedFromResult);
+            return cached;
         }
 
         var reportDirectory = ResolveReportDirectory(testResult.ReportDirectoryPath);
         if (string.IsNullOrEmpty(reportDirectory))
         {
-            _cache[testResult.Id] = null;
-            return Task.FromResult<ReportAssetInfo?>(null);
+            _cache.Set<ReportAssetInfo?>(testResult.Id, null, CacheDuration);
+            return null;
         }
 
         var reportJsonPath = Path.Combine(reportDirectory, "report.json");
         if (!File.Exists(reportJsonPath))
         {
-            _cache[testResult.Id] = null;
-            return Task.FromResult<ReportAssetInfo?>(null);
+            _cache.Set<ReportAssetInfo?>(testResult.Id, null, CacheDuration);
+            return null;
         }
 
         try
         {
-            using var stream = File.OpenRead(reportJsonPath);
-            using var doc = JsonDocument.Parse(stream);
+            await using var stream = File.OpenRead(reportJsonPath);
+            using var doc = await JsonDocument.ParseAsync(stream);
 
             var assets = FindAssets(doc.RootElement, testResult.TestFullName);
             if (assets == null)
             {
-                _cache[testResult.Id] = null;
-                return Task.FromResult<ReportAssetInfo?>(null);
+                _cache.Set<ReportAssetInfo?>(testResult.Id, null, CacheDuration);
+                return null;
             }
 
             var screenshotPath = ResolveAssetPath(reportDirectory, assets.ScreenshotPath);
             var videoPath = ResolveAssetPath(reportDirectory, assets.VideoPath);
 
-            testResult.ReportScreenshotPath = screenshotPath;
-            testResult.ReportVideoPath = videoPath;
-
             var assetInfo = new ReportAssetInfo(
                 screenshotPath != null ? _urlService.GetReportUrl(screenshotPath) : null,
                 videoPath != null ? _urlService.GetReportUrl(videoPath) : null);
 
-            _cache[testResult.Id] = assetInfo;
-            return Task.FromResult<ReportAssetInfo?>(assetInfo);
+            _cache.Set<ReportAssetInfo?>(testResult.Id, assetInfo, CacheDuration);
+            return assetInfo;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to parse report.json for {ReportDirectory}", reportDirectory);
-            _cache[testResult.Id] = null;
-            return Task.FromResult<ReportAssetInfo?>(null);
-        }
-    }
-
-    private ReportAssetInfo? TryBuildFromCachedPaths(TestResult testResult)
-    {
-        if (string.IsNullOrEmpty(testResult.ReportScreenshotPath) &&
-            string.IsNullOrEmpty(testResult.ReportVideoPath))
-        {
+            _cache.Set<ReportAssetInfo?>(testResult.Id, null, CacheDuration);
             return null;
         }
-
-        return new ReportAssetInfo(
-            string.IsNullOrEmpty(testResult.ReportScreenshotPath) ? null : _urlService.GetReportUrl(testResult.ReportScreenshotPath),
-            string.IsNullOrEmpty(testResult.ReportVideoPath) ? null : _urlService.GetReportUrl(testResult.ReportVideoPath));
     }
 
     private string? ResolveReportDirectory(string? reportDirectoryPath)
@@ -111,16 +93,16 @@ public class ReportAssetService : IReportAssetService
             return null;
         }
 
+        if (string.IsNullOrWhiteSpace(_baseDirectory))
+        {
+            return null;
+        }
+
         var trimmed = reportDirectoryPath.Trim();
         if (Path.IsPathRooted(trimmed))
         {
             var fullPath = Path.GetFullPath(trimmed);
             return IsUnderBaseDirectory(fullPath) ? fullPath : null;
-        }
-
-        if (string.IsNullOrWhiteSpace(_baseDirectory))
-        {
-            return null;
         }
 
         var combined = Path.GetFullPath(Path.Combine(_baseDirectory, trimmed));
@@ -136,7 +118,10 @@ public class ReportAssetService : IReportAssetService
 
         var normalized = assetPath.Replace('/', Path.DirectorySeparatorChar);
         var combined = Path.GetFullPath(Path.Combine(reportDirectory, normalized));
-        return combined.StartsWith(Path.GetFullPath(reportDirectory), StringComparison.OrdinalIgnoreCase)
+        var reportDir = Path.GetFullPath(reportDirectory);
+        var reportDirWithSeparator = reportDir.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        return combined.StartsWith(reportDirWithSeparator, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(combined, reportDir, StringComparison.OrdinalIgnoreCase)
             ? combined
             : null;
     }
