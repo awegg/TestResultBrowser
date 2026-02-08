@@ -1,8 +1,1395 @@
 ﻿@page "/"
 @rendermode InteractiveServer
+@using TestResultBrowser.Web.Models
+@using TestResultBrowser.Web.Services
+@using MudBlazor
+@using System.Globalization
+@using Microsoft.JSInterop
+@inject ITestDataService TestDataService
+@inject ITriageService TriageService
+@inject NavigationManager NavigationManager
+@inject IFeatureGroupingService FeatureGroupingService
+@inject ISnackbar Snackbar
+@inject ILogger<Home> Logger
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
 <PageTitle>Home</PageTitle>
 
-<h1>Hello, world!</h1>
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="dashboard-shell">
+	<div class="dashboard-hero">
+		<h1>Quality Pulse</h1>
+		<div class="hero-actions">
+			<span class="hero-range">@rangeStart.ToString("MMM dd") – @rangeEnd.AddDays(-1).ToString("MMM dd, yyyy")</span>
+			<MudButton Variant="Variant.Filled" Size="Size.Small" Color="Color.Primary" OnClick="RefreshAsync" Disabled="@isLoading">
+				@if (isLoading)
+				{
+					<MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+				}
+				Refresh
+			</MudButton>
+			<MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Primary" OnClick="OpenConfigurationHistory">
+				Config History
+			</MudButton>
+				<MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Secondary" OnClick="OpenFeatureDialog" Disabled="@isLoading">
+					Select Features
+				</MudButton>
+				@if (selectedFeatureNames.Any())
+				{
+					<MudTooltip Text="@string.Join(", ", selectedFeatureNames)">
+						<MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">
+							Feature filter: @selectedFeatureNames.Count
+						</MudChip>
+					</MudTooltip>
+				}
+		</div>
+	</div>
 
-Welcome to your new app.
+	@if (isLoading)
+	{
+		<MudPaper Class="pa-6 d-flex flex-column align-center">
+			<MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+			<MudText Typo="Typo.h6" Class="mt-4">Building dashboard...</MudText>
+			<MudText Typo="Typo.body2" Color="Color.Secondary">Scanning cached test results</MudText>
+		</MudPaper>
+	}
+	else
+	{
+		@* KPI Strip *@
+		<div class="kpi-strip">
+			<div class="kpi-item">
+				<div class="kpi-label">Pass Rate</div>
+				<div class="kpi-val">@metrics.PassRate.ToString("F1")%</div>
+				<div class="kpi-detail">@metrics.TotalTests.ToString("N0") tests</div>
+			</div>
+			<div class="kpi-divider"></div>
+			<div class="kpi-item">
+				<div class="kpi-label">Failed</div>
+				<div class="kpi-val kpi-val--bad">@metrics.FailedTests.ToString("N0")</div>
+				<div class="kpi-detail">@metrics.FailingConfigurations configs
+					<span class="delta @(metrics.FailingConfigurationsDelta >= 0 ? "delta-up" : "delta-down")">
+						@(metrics.FailingConfigurationsDelta >= 0 ? "+" : "")@metrics.FailingConfigurationsDelta
+					</span>
+				</div>
+			</div>
+			<div class="kpi-divider"></div>
+			<div class="kpi-item">
+				<div class="kpi-label">Passed</div>
+				<div class="kpi-val kpi-val--good">@metrics.PassedTests.ToString("N0")</div>
+				<div class="kpi-detail">@metrics.SkippedTests.ToString("N0") skipped</div>
+			</div>
+			<div class="kpi-divider"></div>
+			<div class="kpi-item">
+				<div class="kpi-label">24h Change</div>
+				<div class="kpi-val">@metrics.NewFailures / @metrics.FixedTests</div>
+				<div class="kpi-detail">new / fixed &middot; @metrics.LatestBuild</div>
+			</div>
+		</div>
+
+		@* Full-Width Sparkline Chart *@
+		<div class="chart-card">
+			<div class="chart-header">
+				<span class="chart-title">Pass Rate Trend (30 days)</span>
+				<div class="chart-controls">
+					<button type="button" class="chart-toggle" @onclick="ShowAllSeries">All</button>
+					<button type="button" class="chart-toggle" @onclick="ShowOverallOnly">Overall only</button>
+				</div>
+				<div class="sparkline-legend">
+					@foreach (var series in trendSeries)
+					{
+						<button type="button" class="legend-toggle @(IsSeriesVisible(series.Name) ? "is-active" : "is-muted")" @onclick="(() => ToggleSeries(series.Name))">
+							<span class="legend-dot" style="background:@series.Color"></span>
+							<span>@series.Name</span>
+						</button>
+					}
+				</div>
+			</div>
+			<div class="chart-body">
+				@if (trendSeries.Count > 0)
+				{
+					var renderedSeries = GetRenderedSeries();
+					var yMin = renderedSeries.Min(s => s.YMin);
+					var yMax = renderedSeries.Max(s => s.YMax);
+					var yRange = yMax - yMin;
+					if (yRange < 1) yRange = 1;
+					<div class="chart-container">
+						<div class="chart-y-axis">
+							<span>@yMax.ToString("F1")%</span>
+							<span>@((yMin + yRange / 2).ToString("F1"))%</span>
+							<span>@yMin.ToString("F1")%</span>
+						</div>
+						<div class="chart-svg-area" @ref="chartAreaRef" @onmousemove="OnChartMouseMove" @onmouseleave="OnChartMouseLeave">
+							<svg width="100%" height="220" viewBox="0 0 800 220" preserveAspectRatio="none">
+								<rect x="0" y="0" width="800" height="220" rx="10" ry="10" fill="#0f172a" />
+								@* Grid lines *@
+								<line x1="0" y1="55" x2="800" y2="55" stroke="#1e293b" stroke-width="1" />
+								<line x1="0" y1="110" x2="800" y2="110" stroke="#1e293b" stroke-width="1" />
+								<line x1="0" y1="165" x2="800" y2="165" stroke="#1e293b" stroke-width="1" />
+								@foreach (var series in renderedSeries)
+								{
+									foreach (var segment in series.Segments)
+									{
+										<polyline fill="none" stroke="@series.Color" stroke-width="2.5" points="@segment" />
+									}
+								}
+								@if (hoverIndex.HasValue && trendDays.Count > 1)
+								{
+									var hoverX = GetHoverX();
+									<line x1="@hoverX" y1="0" x2="@hoverX" y2="220" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4 4" />
+								}
+							</svg>
+							@if (hoverIndex.HasValue && trendDays.Count > 0)
+							{
+								<div class="chart-hover-label" style="@GetHoverLabelStyle()">
+									<div class="chart-hover-date">@GetHoverDateLabel()</div>
+									<div class="chart-hover-values">
+										@foreach (var item in GetHoverValues())
+										{
+											<span class="chart-hover-item">
+												<span class="legend-dot" style="background:@item.Color"></span>
+												<span>@item.Name: @item.DisplayValue</span>
+											</span>
+										}
+									</div>
+								</div>
+							}
+						</div>
+					</div>
+					<div class="chart-x-axis">
+						@foreach (var tick in GetXAxisTicks())
+						{
+							<span class="chart-x-tick" style="left:@tick.Percent%">@tick.Label</span>
+						}
+					</div>
+				}
+				else
+				{
+					<div class="sparkline-empty">No trend data available</div>
+				}
+			</div>
+		</div>
+
+		<MudGrid Class="mt-1" GutterSize="GutterSize.Small">
+			<MudItem xs="12" md="6">
+				<MudPaper Class="panel-card">
+					<div class="panel-header">Top Domains (Failures)</div>
+					<div class="panel-list">
+						@if (topDomains.Count == 0)
+						{
+							<div class="panel-empty">No domain data in range.</div>
+						}
+						else
+						{
+							@foreach (var item in topDomains)
+							{
+								<div class="panel-row">
+									<div class="panel-name">@item.Name</div>
+									<div class="panel-metric">@item.Failed.ToString("N0") / @item.Total.ToString("N0")</div>
+									<div class="panel-rate">@item.PassRate.ToString("F1")%</div>
+								</div>
+							}
+						}
+					</div>
+				</MudPaper>
+			</MudItem>
+
+			<MudItem xs="12" md="6">
+				<MudPaper Class="panel-card">
+					<div class="panel-header">Top Features (Failures) · @topFeaturesBuildId</div>
+					<div class="panel-list">
+						@if (topFeatures.Count == 0)
+						{
+							<div class="panel-empty">No feature data in range.</div>
+						}
+						else
+						{
+							@foreach (var item in topFeatures)
+							{
+								<div class="panel-row panel-row--link" @onclick="(() => NavigateToFeatureHistory(item.Name))">
+									<div class="panel-name">@item.Name</div>
+									<div class="panel-metric">@item.Failed.ToString("N0") / @item.Total.ToString("N0")</div>
+									<div class="panel-rate">@item.PassRate.ToString("F1")%</div>
+								</div>
+							}
+						}
+					</div>
+				</MudPaper>
+			</MudItem>
+
+			@* Worst Performing Configurations *@
+			<MudItem xs="12" md="6">
+				<MudPaper Class="panel-card">
+					<div class="panel-header">Worst Performing Configurations</div>
+					<div class="panel-list">
+						@if (worstConfigs.Count == 0)
+						{
+							<div class="panel-empty">No failing configurations in range.</div>
+						}
+						else
+						{
+							@foreach (var (cfg, rank) in worstConfigs.Select((c, i) => (c, i + 1)))
+							{
+								<div class="worst-row" @onclick="@(() => NavigateToConfigHistory(cfg.ConfigId))">
+									<div class="rank-badge">@rank</div>
+									<div class="worst-details">
+										<div class="worst-name">@cfg.Version / @cfg.NamedConfig</div>
+										<div class="worst-metrics">
+											<span>@cfg.PassRate.ToString("F1")%</span>
+											<span class="@(cfg.Delta >= 0 ? "delta-indicator-up" : "delta-indicator-down")">
+												@(cfg.Delta >= 0 ? "+" : "")@cfg.Delta.ToString("F1")%
+											</span>
+											<span>@cfg.FailedTests.ToString("N0") / @cfg.TotalTests.ToString("N0") failed</span>
+										</div>
+									</div>
+								</div>
+							}
+						}
+					</div>
+				</MudPaper>
+			</MudItem>
+
+			@* Configuration Matrix with Sparklines *@
+			<MudItem xs="12">
+				<MudPaper Class="panel-card" Style="min-height: auto;">
+					<div class="matrix-header-row">
+						<div class="panel-header">Configuration Matrix (Last @matrixDays Days)</div>
+						<div class="matrix-controls">
+							<MudSelect T="int" Dense="true" Variant="Variant.Outlined" Value="@matrixDays" ValueChanged="OnMatrixDaysChanged" Class="matrix-days-select">
+								<MudSelectItem Value="7">7 days</MudSelectItem>
+								<MudSelectItem Value="14">14 days</MudSelectItem>
+								<MudSelectItem Value="30">30 days</MudSelectItem>
+							</MudSelect>
+						</div>
+					</div>
+					<MatrixWithSparklines Matrix="configMatrix" OnCellClick="NavigateToConfigHistory" />
+				</MudPaper>
+			</MudItem>
+		</MudGrid>
+
+		<div class="dashboard-footer">
+			Last updated: @(lastUpdated.HasValue ? lastUpdated.Value.ToString("MMM dd, yyyy HH:mm") : "-")
+		</div>
+	}
+</MudContainer>
+
+@if (showFeatureDialog)
+{
+	<FeatureSelectionModal FeatureGroups="featureGroups"
+					   SelectedFeatures="selectedFeatureNames"
+					   OnApply="ApplyFeatureSelection"
+					   OnCancel="CloseFeatureDialog" />
+}
+
+@code {
+	private bool isLoading = true;
+	private DateTime rangeStart = DateTime.UtcNow.AddDays(-30);
+	private DateTime rangeEnd = DateTime.UtcNow;
+	private DateTime? lastUpdated;
+	private ElementReference chartAreaRef;
+	private DotNetObjectReference<Home>? sizeObserverRef;
+	private double chartPixelWidth;
+	private int? hoverIndex;
+	private List<DateTime> trendDays = new();
+	private const double ChartViewWidth = 800;
+	private const double ChartViewHeight = 220;
+	private bool isChartObserverActive;
+	private int matrixDays = 14;
+	private bool showFeatureDialog;
+	private Dictionary<string, List<string>> featureGroups = new();
+	private HashSet<string> selectedFeatureNames = new(StringComparer.OrdinalIgnoreCase);
+
+	private DashboardMetrics metrics = new();
+	private List<TrendSeries> trendSeries = new();
+	private List<BreakdownItem> topDomains = new();
+	private List<BreakdownItem> topFeatures = new();
+	private string topFeaturesBuildId = "-";
+	private DashboardMatrix? configMatrix;
+	private List<WorstConfig> worstConfigs = new();
+	private HashSet<string> visibleSeries = new(StringComparer.OrdinalIgnoreCase);
+
+	protected override async Task OnInitializedAsync()
+	{
+		await RefreshAsync();
+	}
+
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		if (firstRender)
+		{
+			sizeObserverRef = DotNetObjectReference.Create(this);
+		}
+
+		if (!isChartObserverActive && trendSeries.Count > 0)
+		{
+			await JS.InvokeVoidAsync("trb.observeSize", chartAreaRef, sizeObserverRef);
+			isChartObserverActive = true;
+		}
+	}
+
+	[JSInvokable]
+	public Task OnChartSizeChanged(double width)
+	{
+		chartPixelWidth = width;
+		StateHasChanged();
+		return Task.CompletedTask;
+	}
+
+	public async ValueTask DisposeAsync()
+	{
+		try
+		{
+			await JS.InvokeVoidAsync("trb.unobserveSize", chartAreaRef);
+		}
+		catch
+		{
+			// Ignore dispose exceptions from shutdown.
+		}
+		sizeObserverRef?.Dispose();
+	}
+
+	private async Task RefreshAsync()
+	{
+		isLoading = true;
+		await InvokeAsync(StateHasChanged);
+
+		try
+		{
+		rangeEnd = DateTime.UtcNow.Date.AddDays(1);
+		rangeStart = rangeEnd.AddDays(-30);
+
+		var allResults = TestDataService.GetAllTestResults().ToList();
+		lastUpdated = allResults.Count > 0 ? allResults.Max(r => r.Timestamp) : null;
+
+		var periodResults = allResults
+			.Where(r => r.Timestamp >= rangeStart && r.Timestamp < rangeEnd)
+			.ToList();
+
+		BuildFeatureGroups(periodResults);
+		if (selectedFeatureNames.Count > 0)
+		{
+			var validFeatures = featureGroups.SelectMany(g => g.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
+			selectedFeatureNames.RemoveWhere(f => !validFeatures.Contains(f));
+		}
+
+		var dashboardResults = selectedFeatureNames.Count == 0
+			? periodResults
+			: periodResults.Where(r => selectedFeatureNames.Contains(r.Feature)).ToList();
+
+		metrics.TotalTests = dashboardResults.Count;
+		metrics.PassedTests = dashboardResults.Count(r => r.Status == TestStatus.Pass);
+		metrics.FailedTests = dashboardResults.Count(r => r.Status == TestStatus.Fail);
+		metrics.SkippedTests = dashboardResults.Count(r => r.Status == TestStatus.Skip);
+		metrics.PassRate = metrics.TotalTests > 0
+			? (double)metrics.PassedTests / metrics.TotalTests * 100.0
+			: 0.0;
+
+		metrics.FailingConfigurations = dashboardResults
+			.Where(r => r.Status == TestStatus.Fail)
+			.Select(r => r.ConfigurationId)
+			.Distinct()
+			.Count();
+
+		var previousStart = rangeStart.AddDays(-30);
+		var previousEnd = rangeStart;
+		var previousResults = allResults
+			.Where(r => r.Timestamp >= previousStart && r.Timestamp < previousEnd)
+			.ToList();
+		if (selectedFeatureNames.Count > 0)
+		{
+			previousResults = previousResults
+				.Where(r => selectedFeatureNames.Contains(r.Feature))
+				.ToList();
+		}
+		var previousFailingConfigs = previousResults
+			.Where(r => r.Status == TestStatus.Fail)
+			.Select(r => r.ConfigurationId)
+			.Distinct()
+			.Count();
+		metrics.FailingConfigurationsDelta = metrics.FailingConfigurations - previousFailingConfigs;
+
+		var triage = await TriageService.GetMorningTriageAsync();
+		if (triage != null)
+		{
+			metrics.NewFailures = triage.NewFailures.Count;
+			metrics.FixedTests = triage.FixedTests.Count;
+			metrics.LatestBuild = triage.TodayBuildId;
+			metrics.PreviousBuild = triage.YesterdayBuildId;
+		}
+
+		var rangeDays = Enumerable.Range(0, 30)
+			.Select(offset => rangeStart.AddDays(offset).Date)
+			.ToList();
+		trendDays = rangeDays;
+
+		var overallSeries = BuildDailySeries(dashboardResults, rangeDays, r => true);
+		trendSeries = new List<TrendSeries>
+		{
+			new TrendSeries("Overall", "#38bdf8", overallSeries)
+		};
+
+		var topConfigs = dashboardResults
+			.Where(r => r.Status == TestStatus.Fail)
+			.GroupBy(r => r.ConfigurationId)
+			.OrderByDescending(g => g.Count())
+			.Take(3)
+			.Select(g => g.Key)
+			.ToList();
+
+		var palette = new[] { "#f97316", "#a78bfa", "#22c55e" };
+		for (var i = 0; i < topConfigs.Count; i++)
+		{
+			var configId = topConfigs[i];
+			var seriesValues = BuildDailySeries(dashboardResults, rangeDays, r => r.ConfigurationId == configId);
+			trendSeries.Add(new TrendSeries(ShortenConfigName(configId), palette[i % palette.Length], seriesValues));
+		}
+
+		foreach (var series in trendSeries)
+		{
+			series.BuildSegments(ChartViewWidth, ChartViewHeight);
+		}
+
+		var seriesNames = trendSeries.Select(s => s.Name).ToList();
+		if (visibleSeries.Count == 0)
+		{
+			visibleSeries = new HashSet<string>(seriesNames, StringComparer.OrdinalIgnoreCase);
+		}
+		else
+		{
+			visibleSeries = new HashSet<string>(visibleSeries.Intersect(seriesNames, StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase);
+			if (visibleSeries.Count == 0 && trendSeries.Count > 0)
+			{
+				visibleSeries.Add(trendSeries[0].Name);
+			}
+		}
+
+		topDomains = dashboardResults
+			.GroupBy(r => r.DomainId)
+			.Select(g => new BreakdownItem(
+				g.Key,
+				g.Count(r => r.Status == TestStatus.Fail),
+				g.Count(),
+				g.Count() > 0 ? (double)g.Count(r => r.Status == TestStatus.Pass) / g.Count() * 100.0 : 0.0))
+			.OrderByDescending(b => b.Failed)
+			.Take(6)
+			.ToList();
+
+		var latestBuildResult = dashboardResults
+			.OrderByDescending(r => r.Timestamp)
+			.FirstOrDefault();
+		topFeaturesBuildId = latestBuildResult?.BuildId ?? "-";
+		var latestBuildResults = latestBuildResult == null
+			? new List<TestResult>()
+			: dashboardResults.Where(r => r.BuildId == latestBuildResult.BuildId).ToList();
+
+		topFeatures = latestBuildResults
+			.GroupBy(r => r.Feature)
+			.Select(g => new BreakdownItem(
+				g.Key,
+				g.Count(r => r.Status == TestStatus.Fail),
+				g.Count(),
+				g.Count() > 0 ? (double)g.Count(r => r.Status == TestStatus.Pass) / g.Count() * 100.0 : 0.0))
+			.OrderByDescending(b => b.Failed)
+			.Take(6)
+			.ToList();
+
+		// Build configuration matrix with releases on X axis
+		var matrixRangeStart = rangeEnd.AddDays(-matrixDays);
+		var buildsInRange = dashboardResults
+			.Select(r => r.BuildId)
+			.Distinct()
+			.Select(bid => (BuildId: bid, Timestamp: TestDataService.GetBuildTimestamp(bid)))
+			.Where(b => b.Timestamp.HasValue && b.Timestamp.Value >= matrixRangeStart && b.Timestamp.Value < rangeEnd)
+			.OrderByDescending(b => b.Timestamp!.Value)
+			.Select(b => new BuildInfo(b.BuildId, b.Timestamp!.Value))
+			.ToList();
+
+		if (buildsInRange.Count > 0)
+		{
+			var configIds = dashboardResults
+				.Select(r => r.ConfigurationId)
+				.Distinct()
+				.OrderBy(c => c)
+				.ToList();
+			configIds.Insert(0, ConfigurationHistoryService.AllConfigurationsId);
+
+			var matrixCells = new Dictionary<string, Dictionary<string, ReleaseMatrixCell>>(StringComparer.OrdinalIgnoreCase);
+			var configHistory = new Dictionary<string, List<(double? PassRate, int Total, int Passed, int Failed)>>(StringComparer.OrdinalIgnoreCase);
+
+			foreach (var build in buildsInRange)
+			{
+				var buildResults = dashboardResults
+					.Where(r => r.BuildId == build.BuildId)
+					.ToList();
+
+				// All configurations row
+				if (!matrixCells.ContainsKey(ConfigurationHistoryService.AllConfigurationsId))
+					matrixCells[ConfigurationHistoryService.AllConfigurationsId] = new();
+
+				var totalAll = buildResults.Count;
+				var passedAll = buildResults.Count(r => r.Status == TestStatus.Pass);
+				var failedAll = buildResults.Count(r => r.Status == TestStatus.Fail);
+				if (totalAll > 0)
+				{
+					var passRateAll = (double)passedAll / totalAll * 100.0;
+					matrixCells[ConfigurationHistoryService.AllConfigurationsId][build.BuildId] = new ReleaseMatrixCell(
+						ConfigurationHistoryService.AllConfigurationsId,
+						build.BuildId,
+						build.Timestamp,
+						passRateAll,
+						totalAll,
+						passedAll,
+						failedAll);
+				}
+
+				var grouped = buildResults.GroupBy(r => r.ConfigurationId);
+				foreach (var g in grouped)
+				{
+					if (!matrixCells.ContainsKey(g.Key))
+						matrixCells[g.Key] = new();
+
+					var total = g.Count();
+					var passed = g.Count(r => r.Status == TestStatus.Pass);
+					var failed = g.Count(r => r.Status == TestStatus.Fail);
+					var passRate = total > 0 ? (double)passed / total * 100.0 : 0.0;
+
+					matrixCells[g.Key][build.BuildId] = new ReleaseMatrixCell(
+						g.Key,
+						build.BuildId,
+						build.Timestamp,
+						passRate,
+						total,
+						passed,
+						failed);
+
+					if (!configHistory.ContainsKey(g.Key))
+						configHistory[g.Key] = new();
+					configHistory[g.Key].Add((passRate, total, passed, failed));
+				}
+			}
+
+			configMatrix = new DashboardMatrix(buildsInRange, configIds, matrixCells);
+
+			// Build worst-performing configs from latest/oldest pass rates
+			worstConfigs = configHistory
+				.Select(kvp =>
+				{
+					var configId = kvp.Key;
+					if (string.Equals(configId, ConfigurationHistoryService.AllConfigurationsId, StringComparison.OrdinalIgnoreCase))
+					{
+						return null;
+					}
+					var history = kvp.Value;
+					if (history == null || history.Count == 0)
+					{
+						return null;
+					}
+					var latest = history[0];
+					var oldest = history[^1];
+					if (latest == default || oldest == default)
+					{
+						return null;
+					}
+					var latestPass = latest.PassRate ?? 0;
+					var oldestPass = oldest.PassRate ?? 0;
+					var delta = latestPass - oldestPass;
+					var parts = configId.Split('_');
+					var version = parts.Length > 0 ? parts[0] : configId;
+					var namedConfig = parts.Length > 2 ? parts[2] : configId;
+					return new WorstConfig(configId, version, namedConfig, latestPass, delta, latest.Failed, latest.Total);
+				})
+				.OfType<WorstConfig>()
+				.Where(w => w.FailedTests > 0)
+				.OrderBy(w => w.PassRate)
+				.ThenByDescending(w => w.FailedTests)
+				.Take(5)
+				.ToList();
+		}
+		else
+		{
+			configMatrix = null;
+			worstConfigs = new();
+		}
+
+		}
+		catch (Exception ex)
+		{
+			Logger.LogError(ex, "Error loading dashboard data");
+			Snackbar.Add($"Error loading dashboard: {ex.Message}", Severity.Error);
+		}
+		finally
+		{
+			isLoading = false;
+			await InvokeAsync(StateHasChanged);
+		}
+	}
+
+	private void OpenConfigurationHistory()
+	{
+		NavigationManager.NavigateTo("/configuration-history");
+	}
+
+	private void OpenFeatureDialog()
+	{
+		BuildFeatureGroups(TestDataService.GetAllTestResults()
+			.Where(r => r.Timestamp >= rangeStart && r.Timestamp < rangeEnd)
+			.ToList());
+		showFeatureDialog = true;
+	}
+
+	private void NavigateToConfigHistory(string configId)
+	{
+		NavigationManager.NavigateTo($"/configuration-history?config={Uri.EscapeDataString(configId)}");
+	}
+
+	private void NavigateToFeatureHistory(string featureName)
+	{
+		if (string.IsNullOrWhiteSpace(featureName))
+			return;
+
+		var url = $"/configuration-history?config={Uri.EscapeDataString(ConfigurationHistoryService.AllConfigurationsId)}&feature={Uri.EscapeDataString(featureName)}";
+		NavigationManager.NavigateTo(url);
+	}
+
+	private async Task OnMatrixDaysChanged(int value)
+	{
+		matrixDays = value;
+		await RefreshAsync();
+	}
+
+	private void ToggleSeries(string name)
+	{
+		if (!visibleSeries.Add(name))
+		{
+			visibleSeries.Remove(name);
+		}
+
+		if (visibleSeries.Count == 0 && trendSeries.Count > 0)
+		{
+			visibleSeries.Add(trendSeries[0].Name);
+		}
+	}
+
+	private void ShowAllSeries()
+	{
+		visibleSeries = new HashSet<string>(trendSeries.Select(s => s.Name), StringComparer.OrdinalIgnoreCase);
+	}
+
+	private void ShowOverallOnly()
+	{
+		var overallName = trendSeries.FirstOrDefault(s => s.Name == "Overall")?.Name
+			?? trendSeries.FirstOrDefault()?.Name;
+		visibleSeries = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		if (!string.IsNullOrEmpty(overallName))
+		{
+			visibleSeries.Add(overallName);
+		}
+	}
+
+	private bool IsSeriesVisible(string name) => visibleSeries.Contains(name);
+
+	private List<TrendSeries> GetRenderedSeries()
+	{
+		var rendered = trendSeries.Where(s => visibleSeries.Contains(s.Name)).ToList();
+		return rendered.Count > 0 ? rendered : trendSeries;
+	}
+
+	private void BuildFeatureGroups(List<TestResult> results)
+	{
+		if (results.Count == 0)
+		{
+			featureGroups.Clear();
+			return;
+		}
+
+		var allFeatures = results
+			.Select(r => r.Feature)
+			.Where(f => !string.IsNullOrWhiteSpace(f))
+			.Distinct(StringComparer.OrdinalIgnoreCase)
+			.OrderBy(f => f)
+			.ToList();
+
+		featureGroups = FeatureGroupingService.BuildFeatureGroups(allFeatures);
+	}
+
+	private async Task ApplyFeatureSelection()
+	{
+		showFeatureDialog = false;
+		Snackbar.Add($"Applied {selectedFeatureNames.Count} feature(s)", Severity.Info);
+		await RefreshAsync();
+	}
+
+	private void CloseFeatureDialog()
+	{
+		showFeatureDialog = false;
+	}
+
+	private void OnChartMouseMove(Microsoft.AspNetCore.Components.Web.MouseEventArgs args)
+	{
+		if (trendDays.Count == 0)
+		{
+			hoverIndex = null;
+			return;
+		}
+
+		if (chartPixelWidth <= 0)
+		{
+			chartPixelWidth = ChartViewWidth;
+		}
+
+		var normalizedX = (args.OffsetX / chartPixelWidth) * ChartViewWidth;
+		var ratio = Math.Clamp((normalizedX - 4) / (ChartViewWidth - 8), 0, 1);
+		var index = (int)Math.Round(ratio * (trendDays.Count - 1));
+		hoverIndex = Math.Clamp(index, 0, trendDays.Count - 1);
+	}
+
+	private void OnChartMouseLeave()
+	{
+		hoverIndex = null;
+	}
+
+	private double GetHoverX()
+	{
+		if (!hoverIndex.HasValue || trendDays.Count <= 1)
+			return 0;
+
+		var index = hoverIndex.Value;
+		return (index / (double)(trendDays.Count - 1)) * (ChartViewWidth - 8) + 4;
+	}
+
+	private string GetHoverLabelStyle()
+	{
+		if (!hoverIndex.HasValue || trendDays.Count <= 1)
+			return "";
+
+		var percent = (hoverIndex.Value / (double)(trendDays.Count - 1)) * 100.0;
+		return string.Format(CultureInfo.InvariantCulture, "left: {0:F2}%;", percent);
+	}
+
+	private string GetHoverDateLabel()
+	{
+		if (!hoverIndex.HasValue || hoverIndex.Value >= trendDays.Count)
+			return string.Empty;
+
+		return trendDays[hoverIndex.Value].ToString("MMM d", CultureInfo.InvariantCulture);
+	}
+
+	private IEnumerable<HoverValue> GetHoverValues()
+	{
+		if (!hoverIndex.HasValue)
+			return Enumerable.Empty<HoverValue>();
+
+		var index = hoverIndex.Value;
+		return GetRenderedSeries().Select(series =>
+		{
+			var value = index < series.Values.Count ? series.Values[index] : null;
+			var display = value.HasValue ? $"{value.Value:F1}%" : "-";
+			return new HoverValue(series.Name, series.Color, display);
+		}).ToList();
+	}
+
+	private IEnumerable<XAxisTick> GetXAxisTicks()
+	{
+		if (trendDays.Count == 0)
+			return Enumerable.Empty<XAxisTick>();
+
+		const int step = 5;
+		var ticks = new List<XAxisTick>();
+		for (var i = 0; i < trendDays.Count; i += step)
+		{
+			ticks.Add(CreateTick(i));
+		}
+
+		if (ticks.Count == 0 || ticks[^1].Index != trendDays.Count - 1)
+		{
+			ticks.Add(CreateTick(trendDays.Count - 1));
+		}
+
+		return ticks;
+
+		XAxisTick CreateTick(int index)
+		{
+			var percent = trendDays.Count <= 1 ? 0 : (index / (double)(trendDays.Count - 1)) * 100.0;
+			var label = trendDays[index].ToString("MMM d", CultureInfo.InvariantCulture);
+			return new XAxisTick(index, label, percent.ToString("F2", CultureInfo.InvariantCulture));
+		}
+	}
+
+
+	private static List<double?> BuildDailySeries(List<TestResult> results, List<DateTime> days, Func<TestResult, bool> predicate)
+	{
+		var totals = new Dictionary<DateTime, (int Passed, int Total)>();
+		foreach (var day in days)
+		{
+			totals[day] = (0, 0);
+		}
+
+		foreach (var result in results)
+		{
+			if (!predicate(result))
+				continue;
+
+			var date = result.Timestamp.Date;
+			if (!totals.ContainsKey(date))
+				continue;
+
+			var current = totals[date];
+			current.Total += 1;
+			if (result.Status == TestStatus.Pass)
+				current.Passed += 1;
+			totals[date] = current;
+		}
+
+		return days.Select(day =>
+		{
+			var current = totals[day];
+			if (current.Total == 0)
+				return (double?)null;
+			return (double)current.Passed / current.Total * 100.0;
+		}).ToList();
+	}
+
+	private static string ShortenConfigName(string configId)
+	{
+		if (string.IsNullOrWhiteSpace(configId))
+			return "Config";
+
+		if (configId.Length <= 20)
+			return configId;
+
+		return configId.Substring(0, 10) + "..." + configId.Substring(configId.Length - 6);
+	}
+
+	private record BreakdownItem(string Name, int Failed, int Total, double PassRate);
+
+	private class TrendSeries
+	{
+		public TrendSeries(string name, string color, List<double?> values)
+		{
+			Name = name;
+			Color = color;
+			Values = values;
+		}
+
+		public string Name { get; }
+		public string Color { get; }
+		public List<double?> Values { get; }
+		public List<string> Segments { get; } = new();
+
+		public double YMin { get; private set; }
+		public double YMax { get; private set; }
+
+		public void BuildSegments(double width, double height)
+		{
+			Segments.Clear();
+			if (Values.Count == 0)
+				return;
+
+			// Auto-scale Y-axis to data range with padding
+			var validValues = Values.Where(v => v.HasValue).Select(v => v!.Value).ToList();
+			if (validValues.Count == 0)
+				return;
+
+			var dataMin = validValues.Min();
+			var dataMax = validValues.Max();
+			var range = dataMax - dataMin;
+			if (range < 1.0) range = 1.0; // Avoid division by zero for flat lines
+			var padding = range * 0.15;
+			YMin = Math.Max(0, dataMin - padding);
+			YMax = Math.Min(100, dataMax + padding);
+			var yRange = YMax - YMin;
+			if (yRange < 1.0) yRange = 1.0;
+
+			var segmentPoints = new List<string>();
+			for (var i = 0; i < Values.Count; i++)
+			{
+				var value = Values[i];
+				if (!value.HasValue)
+				{
+					FlushSegment(segmentPoints);
+					continue;
+				}
+
+				var x = Values.Count == 1 ? 0 : (i / (double)(Values.Count - 1)) * (width - 8) + 4;
+				var normalized = (value.Value - YMin) / yRange;
+				var y = height - (normalized * (height - 8)) - 4;
+				segmentPoints.Add(string.Format(CultureInfo.InvariantCulture, "{0:F1},{1:F1}", x, y));
+			}
+			FlushSegment(segmentPoints);
+
+			void FlushSegment(List<string> points)
+			{
+				if (points.Count >= 2)
+				{
+					Segments.Add(string.Join(" ", points));
+				}
+				points.Clear();
+			}
+		}
+	}
+
+	private record HoverValue(string Name, string Color, string DisplayValue);
+	private record XAxisTick(int Index, string Label, string Percent);
+
+	private class DashboardMetrics
+	{
+		public int TotalTests { get; set; }
+		public int PassedTests { get; set; }
+		public int FailedTests { get; set; }
+		public int SkippedTests { get; set; }
+		public double PassRate { get; set; }
+		public int FailingConfigurations { get; set; }
+		public int FailingConfigurationsDelta { get; set; }
+		public int NewFailures { get; set; }
+		public int FixedTests { get; set; }
+		public string LatestBuild { get; set; } = "-";
+		public string PreviousBuild { get; set; } = "-";
+	}
+}
+
+<style>
+	.dashboard-shell {
+		padding: 8px 0 16px;
+		font-family: "Space Grotesk", "IBM Plex Sans", "Segoe UI", sans-serif;
+	}
+
+	/* Hero - compact */
+	.dashboard-hero {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 10px 16px;
+		border-radius: 10px;
+		background: linear-gradient(120deg, #0f172a, #1e293b 55%, #334155);
+		color: #f8fafc;
+	}
+
+	.dashboard-hero h1 {
+		margin: 0;
+		font-size: 1.3rem;
+		letter-spacing: -0.02em;
+	}
+
+	.hero-actions {
+		display: flex;
+		gap: 10px;
+		align-items: center;
+	}
+
+	.hero-range {
+		font-size: 0.78rem;
+		color: #94a3b8;
+		white-space: nowrap;
+	}
+
+	/* KPI Strip */
+	.kpi-strip {
+		display: flex;
+		align-items: center;
+		gap: 0;
+		margin-top: 6px;
+		padding: 8px 16px;
+		background: #fff;
+		border: 1px solid #e2e8f0;
+		border-radius: 10px;
+	}
+
+	.kpi-item {
+		flex: 1;
+		text-align: center;
+		padding: 4px 8px;
+	}
+
+	.kpi-divider {
+		width: 1px;
+		height: 40px;
+		background: #e2e8f0;
+		flex-shrink: 0;
+	}
+
+	.kpi-label {
+		font-size: 0.7rem;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: #64748b;
+	}
+
+	.kpi-val {
+		font-size: 1.4rem;
+		font-weight: 700;
+		color: #0f172a;
+		line-height: 1.2;
+	}
+
+	.kpi-val--bad { color: #dc2626; }
+	.kpi-val--good { color: #16a34a; }
+
+	.kpi-detail {
+		font-size: 0.72rem;
+		color: #94a3b8;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	/* Chart Card */
+	.chart-card {
+		margin-top: 6px;
+		background: #fff;
+		border: 1px solid #e2e8f0;
+		border-radius: 10px;
+		overflow: hidden;
+	}
+
+	.chart-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 6px 12px;
+		border-bottom: 1px solid #f1f5f9;
+		gap: 10px;
+	}
+
+	.chart-controls {
+		display: inline-flex;
+		gap: 6px;
+	}
+
+	.chart-toggle {
+		border: 1px solid #cbd5f5;
+		background: #f8fafc;
+		color: #0f172a;
+		padding: 2px 8px;
+		border-radius: 999px;
+		font-size: 0.7rem;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.chart-title {
+		font-size: 0.82rem;
+		font-weight: 600;
+		color: #0f172a;
+	}
+
+	.chart-body {
+		border-radius: 0 0 10px 10px;
+		overflow: hidden;
+		background: #0f172a;
+	}
+
+	.chart-container {
+		display: flex;
+		align-items: stretch;
+	}
+
+	.chart-y-axis {
+		display: flex;
+		flex-direction: column;
+		justify-content: space-between;
+		padding: 4px 6px 4px 4px;
+		background: #0f172a;
+		min-width: 48px;
+		border-radius: 0 0 0 10px;
+	}
+
+	.chart-y-axis span {
+		font-size: 0.65rem;
+		color: #cbd5f5;
+		text-align: right;
+		white-space: nowrap;
+	}
+
+	.chart-svg-area {
+		flex: 1;
+		min-width: 0;
+		border-radius: 0 0 10px 0;
+		overflow: hidden;
+		position: relative;
+	}
+
+	.chart-hover-label {
+		position: absolute;
+		top: 6px;
+		transform: translateX(-50%);
+		background: rgba(15, 23, 42, 0.95);
+		border: 1px solid #1e293b;
+		color: #e2e8f0;
+		padding: 6px 8px;
+		border-radius: 8px;
+		font-size: 0.7rem;
+		line-height: 1.2;
+		max-width: 220px;
+		pointer-events: none;
+		z-index: 2;
+	}
+
+	.chart-hover-date {
+		font-weight: 600;
+		margin-bottom: 4px;
+		color: #ffffff;
+	}
+
+	.chart-hover-values {
+		display: grid;
+		gap: 4px;
+	}
+
+	.chart-hover-item {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		white-space: nowrap;
+	}
+
+	.chart-x-axis {
+		position: relative;
+		height: 20px;
+		background: transparent;
+		border-radius: 0 0 10px 10px;
+		margin-left: 48px;
+	}
+
+	.chart-x-tick {
+		position: absolute;
+		top: 2px;
+		transform: translateX(-50%);
+		font-size: 0.65rem;
+		color: #cbd5f5;
+		white-space: nowrap;
+	}
+
+	.sparkline-empty {
+		background: #0f172a;
+		color: #94a3b8;
+		padding: 20px;
+		text-align: center;
+		font-size: 0.85rem;
+	}
+
+	.sparkline-legend {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		font-size: 0.72rem;
+		color: #475569;
+	}
+
+	.legend-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		border: 1px solid transparent;
+		background: transparent;
+		color: #475569;
+		padding: 2px 6px;
+		border-radius: 999px;
+		cursor: pointer;
+		font-size: 0.72rem;
+	}
+
+	.legend-toggle.is-active {
+		color: #0f172a;
+		background: #e2e8f0;
+		border-color: #cbd5f5;
+	}
+
+	.legend-toggle.is-muted {
+		opacity: 0.45;
+	}
+
+	.legend-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+	}
+
+	/* Delta badges */
+	.delta {
+		display: inline-flex;
+		align-items: center;
+		padding: 1px 5px;
+		border-radius: 999px;
+		font-weight: 600;
+		font-size: 0.72rem;
+	}
+
+	.delta-up { background: #fee2e2; color: #991b1b; }
+	.delta-down { background: #dcfce7; color: #14532d; }
+
+	/* Panels - compact */
+	.panel-card {
+		padding: 10px 12px;
+		border-radius: 10px;
+		background: #ffffff;
+		border: 1px solid #e2e8f0;
+		min-height: 0;
+	}
+
+	.panel-header {
+		font-size: 0.82rem;
+		font-weight: 600;
+		color: #0f172a;
+		margin-bottom: 6px;
+	}
+
+	.matrix-header-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	.matrix-controls {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.matrix-days-select {
+		min-width: 120px;
+	}
+
+	.panel-list {
+		display: grid;
+		gap: 3px;
+	}
+
+	.panel-row {
+		display: grid;
+		grid-template-columns: 1.5fr 0.9fr 0.6fr;
+		gap: 4px;
+		align-items: center;
+		font-size: 0.78rem;
+		padding: 4px 6px;
+		border-radius: 6px;
+		background: #f8fafc;
+	}
+
+	.panel-row--link {
+		cursor: pointer;
+		transition: background 0.12s ease-in-out;
+	}
+
+	.panel-row--link:hover {
+		background: #e2e8f0;
+	}
+
+	.panel-name {
+		font-weight: 600;
+		color: #1f2937;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.panel-metric {
+		color: #475569;
+		text-align: right;
+		white-space: nowrap;
+	}
+
+	.panel-rate {
+		color: #0f172a;
+		text-align: right;
+		font-weight: 600;
+	}
+
+	.panel-empty {
+		color: #94a3b8;
+		font-size: 0.82rem;
+	}
+
+	/* Footer */
+	.dashboard-footer {
+		margin-top: 8px;
+		text-align: right;
+		color: #94a3b8;
+		font-size: 0.72rem;
+	}
+
+	/* Worst Performers */
+	.worst-row {
+		display: grid;
+		grid-template-columns: 28px 1fr;
+		gap: 6px;
+		align-items: center;
+		padding: 5px 6px;
+		border-radius: 6px;
+		background: #f8fafc;
+		cursor: pointer;
+		transition: background 0.1s;
+	}
+
+	.worst-row:hover {
+		background: #e2e8f0;
+	}
+
+	.rank-badge {
+		width: 24px;
+		height: 24px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 50%;
+		background: linear-gradient(135deg, #ef4444, #dc2626);
+		color: #fff;
+		font-weight: 700;
+		font-size: 0.7rem;
+	}
+
+	.worst-details {
+		display: grid;
+		gap: 0;
+	}
+
+	.worst-name {
+		font-weight: 600;
+		color: #0f172a;
+		font-size: 0.78rem;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.worst-metrics {
+		display: flex;
+		gap: 8px;
+		font-size: 0.72rem;
+		color: #64748b;
+	}
+
+	.delta-indicator-up { color: #16a34a; font-weight: 600; }
+	.delta-indicator-down { color: #dc2626; font-weight: 600; }
+
+
+	@@media (max-width: 960px) {
+		.dashboard-hero {
+			flex-direction: column;
+			gap: 8px;
+			align-items: flex-start;
+		}
+
+		.kpi-strip {
+			flex-wrap: wrap;
+		}
+
+		.kpi-divider {
+			display: none;
+		}
+
+		.kpi-item {
+			min-width: 45%;
+		}
+
+		.panel-row {
+			grid-template-columns: 1fr;
+			text-align: left;
+		}
+
+		.panel-metric,
+		.panel-rate {
+			text-align: left;
+		}
+
+	}
+</style>

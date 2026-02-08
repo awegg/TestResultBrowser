@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Quality Pulse Dashboard Mock</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --surface: #ffffff;
+      --muted: #64748b;
+      --text: #0b1220;
+      --accent: #38bdf8;
+      --accent-2: #f97316;
+      --accent-3: #22c55e;
+      --grid: #e2e8f0;
+      --good: #0b6e1c;
+      --warn: #d97706;
+      --bad: #8b1a1a;
+      --heat-0: #f8fafc;
+      --heat-1: #dbeafe;
+      --heat-2: #93c5fd;
+      --heat-3: #60a5fa;
+      --heat-4: #2563eb;
+      --shadow: 0 16px 30px rgba(15, 23, 42, 0.14);
+      --mono: "IBM Plex Mono", "Courier New", monospace;
+      --sans: "Space Grotesk", "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #f5f7fb;
+      color: var(--text);
+      font-family: var(--sans);
+    }
+
+    .shell {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px 20px 40px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .hero {
+      background: linear-gradient(120deg, #0f172a, #1e293b 60%, #334155);
+      color: #f8fafc;
+      border-radius: 16px;
+      padding: 20px 24px;
+      display: grid;
+      grid-template-columns: 1.3fr 1fr;
+      gap: 16px;
+      align-items: center;
+      box-shadow: var(--shadow);
+    }
+
+    .hero h1 {
+      margin: 0 0 6px;
+      font-size: 1.9rem;
+      letter-spacing: -0.02em;
+    }
+
+    .hero p {
+      margin: 0;
+      color: #cbd5f5;
+      max-width: 520px;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    .btn {
+      border: 1px solid transparent;
+      background: #f8fafc;
+      color: #0f172a;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn.outline {
+      background: transparent;
+      border-color: #94a3b8;
+      color: #e2e8f0;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--grid);
+      border-radius: 12px;
+      padding: 12px 14px;
+    }
+
+    .toolbar label {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .toolbar select {
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--grid);
+      font-family: var(--sans);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 18px;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--grid);
+      border-radius: 16px;
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+      min-height: 240px;
+    }
+
+    .panel-title {
+      font-size: 0.9rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #1f2937;
+    }
+
+    .trend-card {
+      display: grid;
+      gap: 10px;
+    }
+
+    .trend-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .trend-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    .trend-spark {
+      background: #0f172a;
+      border-radius: 12px;
+      overflow: hidden;
+      padding: 8px;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .heatmap {
+      overflow-x: auto;
+    }
+
+    .heatmap-grid {
+      display: grid;
+      grid-template-columns: 200px repeat(30, 22px);
+      gap: 4px;
+      align-items: center;
+      font-size: 0.75rem;
+    }
+
+    .heatmap-grid .head {
+      font-size: 0.65rem;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .heatmap-label {
+      font-weight: 600;
+      color: #1f2937;
+      padding-right: 6px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .cell {
+      width: 22px;
+      height: 22px;
+      border-radius: 5px;
+      background: var(--heat-0);
+      border: 1px solid #dbe1f2;
+      cursor: pointer;
+    }
+
+    .cell.good { background: var(--heat-3); }
+    .cell.warn { background: var(--heat-2); }
+    .cell.bad { background: var(--heat-1); }
+    .cell.critical { background: var(--heat-4); }
+
+    .side {
+      display: grid;
+      gap: 14px;
+    }
+
+    .detail-card {
+      border: 1px solid var(--grid);
+      border-radius: 14px;
+      padding: 14px;
+      background: #f8fafc;
+      display: grid;
+      gap: 8px;
+      min-height: 220px;
+    }
+
+    .detail-card h3 {
+      margin: 0;
+      font-size: 1rem;
+    }
+
+    .detail-list {
+      display: grid;
+      gap: 6px;
+      font-size: 0.85rem;
+      color: #1f2937;
+    }
+
+    .mini-list {
+      display: grid;
+      gap: 10px;
+      font-size: 0.85rem;
+    }
+
+    .mini-row {
+      display: grid;
+      grid-template-columns: 1fr 90px 60px;
+      gap: 8px;
+      align-items: center;
+      padding: 6px 8px;
+      border-radius: 10px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+    }
+
+    .mini-row span:last-child {
+      text-align: right;
+      font-weight: 600;
+    }
+
+    .tooltip {
+      position: fixed;
+      pointer-events: none;
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 6px 8px;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      opacity: 0;
+      transform: translateY(-6px);
+      transition: opacity 0.12s ease;
+      z-index: 9999;
+    }
+
+    @media (max-width: 1100px) {
+      .grid { grid-template-columns: 1fr; }
+      .hero { grid-template-columns: 1fr; }
+      .hero-actions { justify-content: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="hero">
+      <div>
+        <h1>Quality Pulse</h1>
+        <p>Daily pass rate over the last 30 days. Heatmap highlights the worst configurations by failure density.</p>
+      </div>
+      <div class="hero-actions">
+        <button class="btn">Refresh</button>
+        <button class="btn outline">Open Configuration History</button>
+      </div>
+    </section>
+
+    <section class="toolbar">
+      <div>
+        <label for="range">Range</label><br />
+        <select id="range">
+          <option value="30">Last 30 days</option>
+          <option value="14">Last 14 days</option>
+          <option value="7">Last 7 days</option>
+        </select>
+      </div>
+      <div>
+        <label for="topN">Top N configs</label><br />
+        <select id="topN">
+          <option value="5">Top 5</option>
+          <option value="10" selected>Top 10</option>
+          <option value="15">Top 15</option>
+        </select>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <div class="panel-title">Daily Pass Rate (30d)</div>
+        <div class="trend-card">
+          <div>
+            <div class="trend-value" id="overall-pass">92.4%</div>
+            <div class="trend-meta">
+              <span>Tests: <strong id="total-tests">1,241,300</strong></span>
+              <span>Failed configs: <strong id="fail-configs">82</strong></span>
+              <span>Delta vs prev: <strong id="delta-configs">+7</strong></span>
+            </div>
+          </div>
+          <div class="trend-spark">
+            <svg id="spark" width="100%" height="72" viewBox="0 0 520 72" preserveAspectRatio="none"></svg>
+          </div>
+          <div class="legend" id="legend"></div>
+        </div>
+      </div>
+
+      <div class="side">
+        <div class="panel">
+          <div class="panel-title">Config Detail</div>
+          <div class="detail-card" id="detail-card">
+            <h3>Click a heatmap cell</h3>
+            <div class="detail-list">
+              <div>Config: <strong id="detail-config">-</strong></div>
+              <div>Date: <strong id="detail-date">-</strong></div>
+              <div>Pass rate: <strong id="detail-rate">-</strong></div>
+              <div>Failed tests: <strong id="detail-fails">-</strong></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Top Domains</div>
+          <div class="mini-list" id="domain-list"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Top Features</div>
+          <div class="mini-list" id="feature-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title">Worst Config Heatmap (Top N)</div>
+      <div class="heatmap" id="heatmap"></div>
+    </section>
+  </div>
+
+  <div class="tooltip" id="tooltip"></div>
+
+  <script>
+    const palette = ["#38bdf8", "#f97316", "#22c55e", "#a78bfa"];
+    const mockConfigs = Array.from({ length: 15 }, (_, i) => `1.14.${i}_E2E_Default${(i % 4) + 1}_Core`);
+    const mockDays = (count) => {
+      const days = [];
+      const today = new Date();
+      for (let i = count - 1; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        days.push(d);
+      }
+      return days;
+    };
+
+    function randomSeries(days) {
+      return days.map(() => {
+        const base = 80 + Math.random() * 18;
+        const noise = (Math.random() - 0.5) * 6;
+        return Math.min(100, Math.max(60, base + noise));
+      });
+    }
+
+    const state = {
+      days: mockDays(30),
+      topN: 10,
+      configs: mockConfigs,
+      overall: randomSeries(mockDays(30)),
+      configSeries: {},
+      domainBreakdown: [
+        { name: "Core", failed: 3200, total: 51000 },
+        { name: "TnT", failed: 2400, total: 42000 },
+        { name: "Integration", failed: 2100, total: 39000 },
+        { name: "Smoke", failed: 1800, total: 35500 },
+        { name: "E2E", failed: 1500, total: 33000 },
+      ],
+      featureBreakdown: [
+        { name: "Auth", failed: 1400, total: 22000 },
+        { name: "Billing", failed: 1200, total: 21000 },
+        { name: "API", failed: 1100, total: 20500 },
+        { name: "Reporting", failed: 980, total: 19000 },
+        { name: "UI", failed: 900, total: 18000 },
+      ]
+    };
+
+    function buildConfigSeries() {
+      state.configSeries = {};
+      state.configs.forEach((cfg) => {
+        state.configSeries[cfg] = randomSeries(state.days).map((v) => {
+          const failCount = Math.floor((100 - v) * 12 + Math.random() * 200);
+          return { passRate: v, failed: failCount };
+        });
+      });
+    }
+
+    function renderSpark() {
+      const svg = document.getElementById("spark");
+      svg.innerHTML = "";
+      const series = [
+        { name: "Overall", color: palette[0], values: state.overall },
+        ...state.configs.slice(0, 3).map((c, i) => ({
+          name: c.slice(0, 12) + "...",
+          color: palette[i + 1],
+          values: state.configSeries[c].map((d) => d.passRate),
+        }))
+      ];
+
+      const width = 520;
+      const height = 72;
+      series.forEach((s) => {
+        const points = s.values.map((v, i) => {
+          const x = (i / (s.values.length - 1)) * (width - 8) + 4;
+          const y = height - (v / 100) * (height - 8) - 4;
+          return `${x.toFixed(1)},${y.toFixed(1)}`;
+        }).join(" ");
+        const poly = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+        poly.setAttribute("fill", "none");
+        poly.setAttribute("stroke", s.color);
+        poly.setAttribute("stroke-width", "2");
+        poly.setAttribute("points", points);
+        svg.appendChild(poly);
+      });
+
+      const legend = document.getElementById("legend");
+      legend.innerHTML = "";
+      series.forEach((s) => {
+        const item = document.createElement("span");
+        const dot = document.createElement("span");
+        dot.className = "legend-dot";
+        dot.style.background = s.color;
+        item.appendChild(dot);
+        item.appendChild(document.createTextNode(s.name));
+        legend.appendChild(item);
+      });
+    }
+
+    function renderBreakdown() {
+      const makeRow = (item) => {
+        const row = document.createElement("div");
+        row.className = "mini-row";
+        row.innerHTML = `<strong>${item.name}</strong><span>${item.failed}/${item.total}</span><span>${((1 - item.failed / item.total) * 100).toFixed(1)}%</span>`;
+        return row;
+      };
+      const domainList = document.getElementById("domain-list");
+      domainList.innerHTML = "";
+      state.domainBreakdown.forEach((d) => domainList.appendChild(makeRow(d)));
+
+      const featureList = document.getElementById("feature-list");
+      featureList.innerHTML = "";
+      state.featureBreakdown.forEach((f) => featureList.appendChild(makeRow(f)));
+    }
+
+    function heatClass(passRate) {
+      if (passRate >= 95) return "good";
+      if (passRate >= 90) return "warn";
+      if (passRate >= 80) return "bad";
+      return "critical";
+    }
+
+    function renderHeatmap() {
+      const heatmap = document.getElementById("heatmap");
+      heatmap.innerHTML = "";
+
+      const grid = document.createElement("div");
+      grid.className = "heatmap-grid";
+
+      grid.appendChild(document.createElement("div"));
+      state.days.forEach((d) => {
+        const head = document.createElement("div");
+        head.className = "head";
+        head.textContent = `${d.getMonth() + 1}/${d.getDate()}`;
+        grid.appendChild(head);
+      });
+
+      const topConfigs = state.configs.slice(0, state.topN);
+      topConfigs.forEach((cfg) => {
+        const label = document.createElement("div");
+        label.className = "heatmap-label";
+        label.textContent = cfg;
+        grid.appendChild(label);
+
+        state.configSeries[cfg].forEach((datum, idx) => {
+          const cell = document.createElement("div");
+          cell.className = `cell ${heatClass(datum.passRate)}`;
+          cell.dataset.config = cfg;
+          cell.dataset.date = state.days[idx].toDateString();
+          cell.dataset.rate = datum.passRate.toFixed(1);
+          cell.dataset.failed = datum.failed;
+          grid.appendChild(cell);
+        });
+      });
+
+      heatmap.appendChild(grid);
+    }
+
+    function updateSummary() {
+      const overall = state.overall.reduce((a, b) => a + b, 0) / state.overall.length;
+      document.getElementById("overall-pass").textContent = `${overall.toFixed(1)}%`;
+    }
+
+    function initTooltip() {
+      const tooltip = document.getElementById("tooltip");
+      document.body.addEventListener("mousemove", (e) => {
+        if (!tooltip.dataset.visible) return;
+        tooltip.style.left = `${e.clientX + 12}px`;
+        tooltip.style.top = `${e.clientY + 12}px`;
+      });
+
+      document.body.addEventListener("mouseover", (e) => {
+        if (!e.target.classList.contains("cell")) return;
+        const { config, date, rate, failed } = e.target.dataset;
+        tooltip.innerHTML = `<strong>${config}</strong><br>${date}<br>Pass: ${rate}%<br>Failed: ${failed}`;
+        tooltip.style.opacity = "1";
+        tooltip.dataset.visible = "true";
+      });
+
+      document.body.addEventListener("mouseout", (e) => {
+        if (!e.target.classList.contains("cell")) return;
+        tooltip.style.opacity = "0";
+        tooltip.dataset.visible = "";
+      });
+
+      document.body.addEventListener("click", (e) => {
+        if (!e.target.classList.contains("cell")) return;
+        const { config, date, rate, failed } = e.target.dataset;
+        document.getElementById("detail-config").textContent = config;
+        document.getElementById("detail-date").textContent = date;
+        document.getElementById("detail-rate").textContent = `${rate}%`;
+        document.getElementById("detail-fails").textContent = failed;
+      });
+    }
+
+    function applyFilters() {
+      const range = Number(document.getElementById("range").value);
+      const topN = Number(document.getElementById("topN").value);
+      state.days = mockDays(range);
+      state.topN = topN;
+      state.overall = randomSeries(state.days);
+      buildConfigSeries();
+      renderSpark();
+      renderHeatmap();
+      updateSummary();
+    }
+
+    buildConfigSeries();
+    renderSpark();
+    renderHeatmap();
+    renderBreakdown();
+    updateSummary();
+    initTooltip();
+
+    document.getElementById("range").addEventListener("change", applyFilters);
+    document.getElementById("topN").addEventListener("change", applyFilters);
+  </script>
+</body>
+</html>

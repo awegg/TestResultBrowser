@@ -68,20 +68,7 @@ public partial class FilePathParserService : IFilePathParserService
             // Parse the config string to extract components
             // Expected format: {Version}_{TestType}_{NamedConfig}_{Domain}
             // Example: dev_E2E_Default1_Core -> Version=dev, TestType=E2E, NamedConfig=Default1, Domain=Core
-            var configParts = configRaw.Split('_');
-
-            string versionRaw = "Unknown";
-            string testType = "Unknown";
-            string namedConfig = "Unknown";
-            string domainId = "Unknown";
-
-            if (configParts.Length >= 4)
-            {
-                versionRaw = configParts[0];
-                testType = configParts[1];
-                namedConfig = configParts[2];
-                domainId = string.Join("_", configParts.Skip(3)); // Handle multi-part domains like "TnT_Prod"
-            }
+            var (versionRaw, testType, namedConfig, domainId) = ParseConfigParts(configRaw);
 
             return new ParsedFilePath
             {
@@ -97,7 +84,104 @@ public partial class FilePathParserService : IFilePathParserService
         }
 
         // Both patterns failed - return default values so file is still processed
+        if (TryParseFallback(normalizedPath, filePath, out var fallbackParsed))
+        {
+            return fallbackParsed;
+        }
+
         return CreateDefaultParsedPath(filePath);
+    }
+
+    private static bool TryParseFallback(string normalizedPath, string originalFilePath, out ParsedFilePath parsed)
+    {
+        parsed = default!;
+
+        var segments = normalizedPath.Split('\\', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0)
+        {
+            return false;
+        }
+
+        var fileName = Path.GetFileName(normalizedPath);
+        var buildNumber = 0;
+        var buildId = "Unknown";
+
+        var releaseIndex = Array.FindIndex(segments, s => s.StartsWith("Release-", StringComparison.OrdinalIgnoreCase));
+        if (releaseIndex >= 0)
+        {
+            var match = Regex.Match(segments[releaseIndex], @"^Release-(\d+)", RegexOptions.IgnoreCase);
+            if (match.Success && int.TryParse(match.Groups[1].Value, out var parsedBuild))
+            {
+                buildNumber = parsedBuild;
+                buildId = $"Release-{parsedBuild}";
+            }
+        }
+
+        string? configRaw = null;
+        if (releaseIndex >= 0)
+        {
+            if (releaseIndex + 1 < segments.Length && segments[releaseIndex + 1].Contains('_'))
+            {
+                configRaw = segments[releaseIndex + 1];
+            }
+            else if (releaseIndex - 1 >= 0 && segments[releaseIndex - 1].Contains('_'))
+            {
+                configRaw = segments[releaseIndex - 1];
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(configRaw))
+        {
+            configRaw = segments.FirstOrDefault(s => s.Contains('_') && !s.EndsWith(".xml", StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (string.IsNullOrWhiteSpace(configRaw))
+        {
+            return false;
+        }
+
+        var (versionRaw, testType, namedConfig, domainId) = ParseConfigParts(configRaw);
+
+        parsed = new ParsedFilePath
+        {
+            BuildNumber = buildNumber,
+            BuildId = buildId,
+            VersionRaw = versionRaw,
+            TestType = testType,
+            NamedConfig = namedConfig,
+            DomainId = domainId,
+            FilePath = originalFilePath,
+            FileName = string.IsNullOrWhiteSpace(fileName) ? "Unknown.xml" : fileName
+        };
+
+        return true;
+    }
+
+    private static (string VersionRaw, string TestType, string NamedConfig, string DomainId) ParseConfigParts(string configRaw)
+    {
+        var parts = configRaw.Split('_', StringSplitOptions.RemoveEmptyEntries);
+
+        if (parts.Length >= 4)
+        {
+            return (parts[0], parts[1], parts[2], string.Join("_", parts.Skip(3)));
+        }
+
+        if (parts.Length == 3)
+        {
+            return (parts[0], parts[1], parts[2], "Unknown");
+        }
+
+        if (parts.Length == 2)
+        {
+            return (parts[0], "Unknown", parts[1], "Unknown");
+        }
+
+        if (parts.Length == 1)
+        {
+            return (parts[0], "Unknown", "Default", "Unknown");
+        }
+
+        return ("Unknown", "Unknown", "Default", "Uncategorized");
     }
 
     private static ParsedFilePath CreateDefaultParsedPath(string filePath)

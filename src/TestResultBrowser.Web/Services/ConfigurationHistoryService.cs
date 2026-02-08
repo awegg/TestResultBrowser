@@ -10,6 +10,8 @@ using TestResultBrowser.Web.Models;
 /// </summary>
 public class ConfigurationHistoryService : IConfigurationHistoryService
 {
+    public const string AllConfigurationsId = "__ALL__";
+
     private readonly ITestDataService _testDataService;
     private readonly IWorkItemLinkService _workItemLinkService;
     private readonly ILogger<ConfigurationHistoryService> _logger;
@@ -33,16 +35,23 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                 ConfigurationId = configurationId
             };
 
-            // Get all builds sorted descending (latest first)
-            var allBuilds = _testDataService.GetAllBuildIds()
-                .OrderByDescending(b => BuildNumberExtractor.ExtractBuildNumber(b))
-                .ToList();
+            // Get all test results for this configuration (indexed query)
+            var configResults = string.Equals(configurationId, AllConfigurationsId, StringComparison.OrdinalIgnoreCase)
+                ? _testDataService.GetAllTestResults().ToList()
+                : _testDataService.GetTestResultsByConfiguration(configurationId).ToList();
 
-            if (!allBuilds.Any())
+            if (!configResults.Any())
             {
-                _logger.LogWarning("No builds found for configuration {ConfigurationId}", configurationId);
+                _logger.LogWarning("No test results found for configuration {ConfigurationId}", configurationId);
                 return Task.FromResult(result);
             }
+
+            // Get builds for this configuration sorted descending (latest first)
+            var allBuilds = configResults
+                .Select(r => r.BuildId)
+                .Distinct()
+                .OrderByDescending(b => BuildNumberExtractor.ExtractBuildNumber(b))
+                .ToList();
 
             // Clamp numberOfBuilds to at least 1
             var buildCount = Math.Max(1, numberOfBuilds);
@@ -68,9 +77,8 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                 result.LatestBuildTime = GetBuildTime(result.LatestBuildId);
             }
 
-            // Get all test results for this configuration across all selected builds
-            // USE INDEXED QUERY - critical for performance with 250k+ tests
-            var testResults = _testDataService.GetTestResultsByConfiguration(configurationId)
+            // Filter configuration results to selected builds
+            var testResults = configResults
                 .Where(t => selectedBuilds.Contains(t.BuildId))
                 .ToList();
 
@@ -79,7 +87,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
 
             if (!testResults.Any())
             {
-                _logger.LogWarning("No test results found for configuration {ConfigurationId}", configurationId);
+                _logger.LogWarning("No test results found for configuration {ConfigurationId} across selected builds", configurationId);
                 return Task.FromResult(result);
             }
 
@@ -112,6 +120,8 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
             var configs = _testDataService.GetAllConfigurationIds()
                 .OrderBy(c => c)
                 .ToList();
+
+            configs.Insert(0, AllConfigurationsId);
 
             _logger.LogInformation("Found {ConfigCount} available configurations", configs.Count);
             return Task.FromResult(configs);
@@ -149,6 +159,10 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
         {
             var testResults = _testDataService.GetAllTestResults();
 
+            var allConfigLastUpdate = testResults.Any()
+                ? testResults.Max(t => t.Timestamp)
+                : DateTime.UtcNow;
+
             // Group by configuration and find latest timestamp for each
             var configMetadata = testResults
                 .GroupBy(t => t.ConfigurationId)
@@ -159,6 +173,12 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                 })
                 .OrderByDescending(c => c.LastUpdateTime)
                 .ToList();
+
+            configMetadata.Insert(0, new ConfigurationMetadata
+            {
+                Id = AllConfigurationsId,
+                LastUpdateTime = allConfigLastUpdate
+            });
 
             _logger.LogInformation("Found {ConfigCount} configurations with metadata", configMetadata.Count);
             return Task.FromResult(configMetadata);
@@ -200,7 +220,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                 NodeType = HierarchyNodeType.Feature,
                 NodeId = featureName,
                 IndentLevel = 0,
-                IsExpanded = featureGroup.Any(t => t.Status == TestStatus.Fail)
+                IsExpanded = false
             };
 
             // Test Suites under feature
@@ -312,7 +332,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
             NodeType = HierarchyNodeType.Domain,
             NodeId = "root",
             IndentLevel = -1,
-            IsExpanded = true,
+            IsExpanded = false,
             Children = featureNodes
         };
 

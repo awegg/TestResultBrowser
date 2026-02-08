@@ -5,7 +5,7 @@
 {
     <div class="modal-backdrop fade show" style="display: block; z-index: 9998;"></div>
     <div class="modal fade show" style="display: block; z-index: 9999;" role="dialog">
-        <div class="modal-dialog modal-lg" style="max-height: 90vh; display: flex; flex-direction: column;">
+        <div class="modal-dialog modal-xl" style="max-height: 90vh; display: flex; flex-direction: column; max-width: 92vw;">
             <div class="modal-content" style="display: flex; flex-direction: column; max-height: 90vh;">
                 <!-- Header -->
                 <div class="modal-header">
@@ -15,82 +15,115 @@
 
                 <!-- Body -->
                 <div class="modal-body" style="overflow-y: auto; flex: 1; max-height: calc(90vh - 120px);">
-                    <!-- Build -->
-                    <div class="mb-3">
-                        <h6>Build</h6>
-                        <p><strong>@(BuildId ?? TestResult.BuildId ?? "Unknown")</strong></p>
-                    </div>
-
-                    <!-- Test Name -->
-                    <div class="mb-3">
-                        <h6>Test Name</h6>
-                        <p>@TestResult.TestFullName</p>
-                    </div>
-
-                    <!-- Error Message -->
-                    @if (!string.IsNullOrEmpty(TestResult.ErrorMessage))
-                    {
-                        <div class="mb-3">
-                            <h6>Error Message</h6>
-                            <div style="background-color: #fff3cd; padding: 10px; border-radius: 4px; border-left: 4px solid #ff6b6b;">
-                                <p style="margin: 0; white-space: pre-wrap; word-break: break-word;">@TestResult.ErrorMessage</p>
+                    <div class="test-details-grid">
+                        <div class="test-details-main">
+                            <!-- Build -->
+                            <div class="mb-3">
+                                <h6>Build</h6>
+                                <p><strong>@(ActiveTest?.BuildId ?? BuildId ?? TestResult.BuildId ?? "Unknown")</strong></p>
                             </div>
-                        </div>
-                    }
 
-                    <!-- Stack Trace -->
-                    @if (!string.IsNullOrEmpty(TestResult.StackTrace))
-                    {
-                        <div class="mb-3">
-                            <h6>Stack Trace</h6>
-                            <div style="background-color: #f8f9fa; padding: 10px; border-radius: 4px; max-height: 300px; overflow-y: auto;">
-                                <pre style="margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 0.85rem;">@TestResult.StackTrace</pre>
+                            <!-- Test Name -->
+                            <div class="mb-3">
+                                <h6>Test Name</h6>
+                                <p>@TestResult.TestFullName</p>
                             </div>
-                        </div>
-                    }
 
-                    <!-- Test History -->
-                    @if (History?.Count > 0)
-                    {
-                        <div class="mb-3">
-                            <h6>Test History</h6>
-                            <table class="table table-sm table-striped" style="font-size: 0.85rem;">
-                                <thead>
-                                    <tr>
-                                        <th>Build</th>
-                                        <th>Date</th>
-                                        <th>Status</th>
-                                        <th>Error Message</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var item in History)
-                                    {
-                                        <tr>
-                                            <td style="width: 120px;"><strong>@item.BuildId</strong></td>
-                                            <td style="width: 140px;">@item.Timestamp.ToString("MM/dd/yyyy HH:mm")</td>
-                                            <td style="width: 80px;">
-                                                @if (item.Status == TestStatus.Fail)
-                                                {
-                                                    <span style="color: #dc3545;">Failed</span>
-                                                }
-                                                else
-                                                {
-                                                    <span style="color: #28a745;">Passed</span>
-                                                }
-                                            </td>
-                                            <td style="word-break: break-word;">
-                                                @if (!string.IsNullOrEmpty(item.ErrorMessage))
-                                                {
-                                                    <span>@item.ErrorMessage</span>
-                                                }
-                                            </td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
+                            <!-- Error Message -->
+                            @if (!string.IsNullOrEmpty(ActiveTest?.ErrorMessage))
+                            {
+                                <div class="mb-3">
+                                    <h6>Error Message</h6>
+                                    <div style="background-color: #fff3cd; padding: 10px; border-radius: 4px; border-left: 4px solid #ff6b6b;">
+                                        <p style="margin: 0; white-space: pre-wrap; word-break: break-word;">@ActiveTest.ErrorMessage</p>
+                                    </div>
+                                </div>
+                            }
+
+                            <!-- Test History -->
+                            @if (History?.Count > 0)
+                            {
+                                <div class="mb-3">
+                                    <h6>Test History</h6>
+                                    <table class="table table-sm table-striped" style="font-size: 0.85rem;">
+                                        <thead>
+                                            <tr>
+                                                <th>Build</th>
+                                                <th>Date</th>
+                                                <th>Status</th>
+                                                <th>Error Message</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var item in History)
+                                            {
+                                                <tr class="history-row @(IsActiveHistory(item) ? "is-active" : string.Empty)" @onclick="(() => SelectHistory(item))">
+                                                    <td style="width: 120px;"><strong>@item.BuildId</strong></td>
+                                                    <td style="width: 140px;">@item.Timestamp.ToString("MM/dd/yyyy HH:mm")</td>
+                                                    <td style="width: 80px;">
+                                                        @if (item.Status == TestStatus.Fail)
+                                                        {
+                                                            <span style="color: #dc3545;">Failed</span>
+                                                        }
+                                                        else if (item.Status == TestStatus.Skip)
+                                                        {
+                                                            <span style="color: #d4a017;">Skipped</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span style="color: #28a745;">Passed</span>
+                                                        }
+                                                    </td>
+                                                    <td style="word-break: break-word;">
+                                                        @if (!string.IsNullOrEmpty(item.ErrorMessage))
+                                                        {
+                                                            <span>@item.ErrorMessage</span>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+
+                            <!-- Stack Trace -->
+                            @if (!string.IsNullOrEmpty(ActiveTest?.StackTrace))
+                            {
+                                <div class="mb-3">
+                                    <h6>Stack Trace</h6>
+                                    <div style="background-color: #f8f9fa; padding: 10px; border-radius: 4px; max-height: 300px; overflow-y: auto;">
+                                        <pre style="margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 0.85rem;">@ActiveTest.StackTrace</pre>
+                                    </div>
+                                </div>
+                            }
                         </div>
-                    }
+
+                        <div class="test-details-media">
+                            <h6>
+                                Media / Report
+                                @if (ActiveTest != null)
+                                {
+                                    <span class="media-meta">@ActiveTest.BuildId · @ActiveTest.Timestamp.ToString("MM/dd/yyyy HH:mm")</span>
+                                }
+                            </h6>
+                            @if (!string.IsNullOrEmpty(ActiveTest?.ReportDirectoryPath))
+                            {
+                                <div class="media-preview">
+                                    <iframe title="Test report preview" src="@GetReportUrl()" sandbox="allow-same-origin allow-scripts"></iframe>
+                                </div>
+                                <div class="mt-2">
+                                    <a class="btn btn-outline-secondary" target="_blank" href="@GetReportUrl()">Open Full Report</a>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="media-empty">
+                                    No report assets available for this test.
+                                </div>
+                            }
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Footer -->
@@ -118,8 +151,111 @@
     [Parameter]
     public EventCallback OnClose { get; set; }
 
+    private string? selectedHistoryId;
+
+    private TestResult? ActiveTest => GetActiveTestResult();
+
     private async Task Close()
     {
         await OnClose.InvokeAsync();
     }
+
+    private string GetReportUrl()
+    {
+        var reportPath = ActiveTest?.ReportDirectoryPath ?? string.Empty;
+        return string.IsNullOrEmpty(reportPath)
+            ? string.Empty
+            : $"/api/TestReport?path={Uri.EscapeDataString(reportPath)}";
+    }
+
+    private void SelectHistory(TestResult item)
+    {
+        selectedHistoryId = item.Id;
+    }
+
+    private bool IsActiveHistory(TestResult item)
+    {
+        return string.Equals(selectedHistoryId, item.Id, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private TestResult? GetActiveTestResult()
+    {
+        if (History == null || History.Count == 0)
+        {
+            return TestResult;
+        }
+
+        if (!string.IsNullOrEmpty(selectedHistoryId))
+        {
+            var match = History.FirstOrDefault(h => string.Equals(h.Id, selectedHistoryId, StringComparison.OrdinalIgnoreCase));
+            if (match != null)
+            {
+                return match;
+            }
+        }
+
+        return History[0];
+    }
 }
+
+<style>
+    .test-details-grid {
+        display: grid;
+        grid-template-columns: minmax(320px, 1.2fr) minmax(320px, 1fr);
+        gap: 20px;
+        align-items: start;
+    }
+
+    .test-details-media {
+        position: sticky;
+        top: 0;
+    }
+
+    .media-preview {
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        overflow: hidden;
+        background: #fff;
+    }
+
+    .media-preview iframe {
+        width: 100%;
+        height: 60vh;
+        border: 0;
+        background: #fff;
+    }
+
+    .media-empty {
+        background: #f8f9fa;
+        border: 1px dashed #c9c9c9;
+        border-radius: 6px;
+        padding: 16px;
+        color: #666;
+    }
+
+    .media-meta {
+        font-size: 0.78rem;
+        font-weight: 500;
+        color: #6b7280;
+        margin-left: 6px;
+    }
+
+    .history-row {
+        cursor: pointer;
+    }
+
+    .history-row.is-active {
+        outline: 2px solid #5b67f2;
+        outline-offset: -2px;
+    }
+
+    @@media (max-width: 1000px) {
+        .test-details-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .media-preview iframe {
+            height: 45vh;
+        }
+    }
+</style>

@@ -989,6 +989,21 @@ All start simultaneously, integrate at the end.
 
 ## Test Summary
 
+---
+
+## Beta Feedback Backlog (Post-MVP Enhancements)
+
+**Source**: February 7, 2026 beta feedback
+
+- [x] T251 [P] [Beta] Fix configuration name rendering showing "Unknown_Unknown" for S500 (fallback parsing added in src/TestResultBrowser.Web/Services/FilePathParserService.cs)
+- [x] T252 [P] [Beta] Enable viewing images/videos in test reports (review AssetsController/TestReportController behavior and content types in src/TestResultBrowser.Web/Controllers/AssetsController.cs and src/TestResultBrowser.Web/Controllers/TestReportController.cs)
+- [x] T253 [P] [Beta] Collapse hierarchy trees by default (update expand/collapse defaults in src/TestResultBrowser.Web/Components/HierarchyTreeView.razor and config history tree rendering in src/TestResultBrowser.Web/Components/Pages/ConfigurationHistory.razor)
+- [x] T254 [P] [Beta] Dont show all selected filters consistently in UI (takes too much space) (updated FilterPanel selection display in src/TestResultBrowser.Web/Components/Shared/FilterPanel.razor)
+- [x] T255 [Beta] Add landing page dashboard with summary tiles and trend charts (implemented Quality Pulse dashboard in src/TestResultBrowser.Web/Components/Pages/Home.razor with KPI cards, 30-day sparkline trends, config matrix with sparklines, worst performers, domain health cards, and drill-down navigation)
+- [x] T256 [Beta] Improve Morning Triage performance (profile and optimize GetMorningTriageAsync in src/TestResultBrowser.Web/Services/TriageService.cs; consider indexing/caching)
+- [x] T257 [P] [Beta] Add searchable dropdown for Flaky Tests (match Configuration History UX in src/TestResultBrowser.Web/Components/Pages/FlakyTests.razor)
+- [x] T258 [P] [Beta] Increase visual contrast for pass/fail states and add non-color cues (updated ConfigMatrix and ReleaseTriage matrix display)
+
 **What NOT to Test** (avoid over-testing):
 - Trivial getters/setters
 - Framework code (ASP.NET, MudBlazor)

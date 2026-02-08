@@ -1,0 +1,260 @@
+@using TestResultBrowser.Web.Models
+@using MudBlazor
+@using System.Globalization
+@using TestResultBrowser.Web.Services
+
+@if (Matrix == null || Matrix.Configurations.Count == 0)
+{
+    <div class="matrix-empty">No configuration data available for this period.</div>
+}
+else
+{
+    <div class="matrix-scroll">
+        <table class="matrix-table">
+            <thead>
+                <tr>
+                    <th class="matrix-header-version">Configuration</th>
+                    @foreach (var build in Matrix.Builds)
+                    {
+                        <th class="matrix-header-config">
+                            <div>@ShortenBuildId(build.BuildId)</div>
+                            <div class="matrix-header-date">@build.Timestamp.ToString("MM/dd")</div>
+                        </th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var config in Matrix.Configurations)
+                {
+                    <tr>
+                        <td class="matrix-version-cell">@ConfigurationLabelHelper.GetConfigurationLabel(config)</td>
+                        @foreach (var build in Matrix.Builds)
+                        {
+                            <td>
+                                @{
+                                    var cell = Matrix.Cells.TryGetValue(config, out var row) && row.TryGetValue(build.BuildId, out var c) ? c : null;
+                                }
+                                @if (cell == null)
+                                {
+                                    <div class="matrix-cell matrix-cell--na">
+                                        <span class="matrix-cell-rate">N/A</span>
+                                    </div>
+                                }
+                                else
+                                {
+                                    var isFail = cell.Failed > 0;
+
+                                    <MudTooltip Placement="Placement.Top">
+                                        <ChildContent>
+                                            <div class="matrix-cell @(isFail ? "matrix-cell--fail" : "matrix-cell--pass")"
+                                                 @onclick="@(() => OnCellClick.InvokeAsync(cell.ConfigId))">
+                                                <span class="matrix-cell-rate">@cell.PassRate.ToString("F1")%</span>
+                                                <span class="matrix-cell-badge @(isFail ? "badge-fail" : "badge-pass")">
+                                                    @(isFail ? "FAIL" : "PASS")
+                                                </span>
+                                            </div>
+                                        </ChildContent>
+                                        <TooltipContent>
+                                            <div class="matrix-tooltip">
+                                                <div class="tooltip-title">@ConfigurationLabelHelper.GetConfigurationLabel(cell.ConfigId)</div>
+                                                <div class="tooltip-subtitle">@cell.BuildId · @cell.Timestamp.ToString("MM/dd/yyyy HH:mm")</div>
+                                                <div class="tooltip-stat">@cell.Passed passed / @cell.Failed failed / @cell.Total total</div>
+                                            </div>
+                                        </TooltipContent>
+                                    </MudTooltip>
+                                }
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    [Parameter] public DashboardMatrix? Matrix { get; set; }
+    [Parameter] public EventCallback<string> OnCellClick { get; set; }
+
+    private static string ShortenBuildId(string buildId)
+    {
+        if (string.IsNullOrEmpty(buildId)) return "-";
+        if (buildId.StartsWith("Release-"))
+        {
+            var num = buildId.Substring(8).Split('_')[0];
+            return $"R-{num}";
+        }
+        return buildId.Length > 12 ? buildId[..12] + "..." : buildId;
+    }
+
+}
+
+<style>
+    .matrix-scroll {
+        overflow-x: auto;
+        margin-top: 8px;
+    }
+
+    .matrix-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 6px;
+    }
+
+    .matrix-header-version,
+    .matrix-header-config {
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #475569;
+        padding: 8px;
+        text-align: center;
+        background: #f8fafc;
+        border-radius: 8px;
+    }
+
+    .matrix-header-version {
+        text-align: left;
+        min-width: 180px;
+    }
+
+    .matrix-header-date {
+        font-size: 0.72rem;
+        color: #94a3b8;
+        font-weight: 500;
+    }
+
+    .matrix-version-cell {
+        font-weight: 700;
+        color: #0f172a;
+        padding: 8px;
+        font-size: 0.9rem;
+    }
+
+    .matrix-cell {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 3px;
+        padding: 8px 6px;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.15s;
+        min-width: 80px;
+    }
+
+    .matrix-cell:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    }
+
+    .matrix-cell--pass {
+        background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+        border: 1px solid #bbf7d0;
+    }
+
+    .matrix-cell--fail {
+        background: linear-gradient(135deg, #fef2f2, #fee2e2);
+        border: 1px solid #fecaca;
+    }
+
+    .matrix-cell--na {
+        background: #f1f5f9;
+        border: 1px dashed #cbd5e1;
+        cursor: default;
+    }
+
+    .matrix-cell-rate {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .matrix-cell-badge {
+        font-size: 0.65rem;
+        font-weight: 700;
+        padding: 1px 6px;
+        border-radius: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .badge-pass {
+        background: #166534;
+        color: #fff;
+    }
+
+    .badge-fail {
+        background: #991b1b;
+        color: #fff;
+    }
+
+    .cell-sparkline {
+        border-radius: 4px;
+        overflow: hidden;
+    }
+
+    .matrix-empty {
+        color: #94a3b8;
+        font-size: 0.9rem;
+        padding: 24px;
+        text-align: center;
+    }
+
+    .matrix-tooltip {
+        padding: 8px 10px;
+        font-size: 0.82rem;
+        max-width: 320px;
+        background: #ffffff;
+        color: #0f172a;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        box-shadow: 0 10px 20px rgba(15, 23, 42, 0.18);
+    }
+
+    .tooltip-subtitle {
+        font-size: 0.72rem;
+        color: #64748b;
+        margin-bottom: 4px;
+    }
+
+    .tooltip-title {
+        font-weight: 700;
+        color: #0b1220;
+        margin-bottom: 4px;
+        word-break: break-all;
+    }
+
+    .tooltip-stat {
+        color: #1f2937;
+        margin-bottom: 8px;
+    }
+
+    .tooltip-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.78rem;
+    }
+
+    .tooltip-table th {
+        text-align: left;
+        color: #374151;
+        padding: 2px 6px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .tooltip-table td {
+        padding: 2px 6px;
+        color: #0f172a;
+    }
+
+    @@media (max-width: 960px) {
+        .matrix-cell {
+            min-width: 70px;
+            padding: 6px 4px;
+        }
+
+        .matrix-cell-rate {
+            font-size: 0.85rem;
+        }
+    }
+</style>
