@@ -200,7 +200,7 @@
     // Cache key prefix for this component
     private const string CacheKeyPrefix = "FailureGroups_";
     private string _cacheKey => $"{CacheKeyPrefix}{selectedConfiguration}_{lastXDays}_{similarityThresholdPercent}";
-    private List<FailureGroup>? groups => Cache.Get<List<FailureGroup>>(_cacheKey);
+    private List<FailureGroup>? groups;
 
     private bool isLoading = false;
     private int similarityThresholdPercent = 80;
@@ -209,6 +209,7 @@
     private List<string> availableConfigurations = new();
     private bool showConfigurationDialog = false;
     private Timer? _debounceTimer;
+    private CancellationTokenSource? _refreshCts;
 
     // Pagination state
     private int currentPage = 1;
@@ -271,22 +272,28 @@
         
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            _refreshCts?.Cancel();
+            _refreshCts?.Dispose();
+            _refreshCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var token = _refreshCts.Token;
+            var selectedConfigSnapshot = selectedConfiguration;
+            var lastXDaysSnapshot = lastXDays;
+            var similaritySnapshot = similarityThresholdPercent;
+
             var groupingTask = Task.Run(() =>
             {
-                var token = cts.Token;
                 token.ThrowIfCancellationRequested();
 
                 var allFailed = TestData.GetAllTestResults().Where(tr => tr.Status == TestStatus.Fail);
 
                 // Filter by date range (use UTC to match TestResult.Timestamp)
-                var cutoffDate = DateTime.UtcNow.AddDays(-lastXDays);
+                var cutoffDate = DateTime.UtcNow.AddDays(-lastXDaysSnapshot);
                 var filtered = allFailed.Where(tr => tr.Timestamp >= cutoffDate);
 
                 // Filter by configuration if selected
-                if (!string.IsNullOrEmpty(selectedConfiguration))
+                if (!string.IsNullOrEmpty(selectedConfigSnapshot))
                 {
-                    filtered = filtered.Where(tr => tr.ConfigurationId == selectedConfiguration);
+                    filtered = filtered.Where(tr => tr.ConfigurationId == selectedConfigSnapshot);
                 }
 
                 token.ThrowIfCancellationRequested();
@@ -294,17 +301,17 @@
                 // Materialize to avoid multiple enumeration
                 var filteredList = filtered.ToList();
 
-                var threshold = Math.Clamp(similarityThresholdPercent, 50, 100) / 100.0;
+                var threshold = Math.Clamp(similaritySnapshot, 50, 100) / 100.0;
                 token.ThrowIfCancellationRequested();
                 var fullGroups = Grouping.GroupFailures(filteredList, threshold);
 
                 return (fullGroups, filteredList.Count, threshold);
-            }, cts.Token);
+            }, token);
 
             var completed = await Task.WhenAny(groupingTask, Task.Delay(TimeSpan.FromSeconds(30)));
             if (completed != groupingTask)
             {
-                cts.Cancel();
+                _refreshCts.Cancel();
                 Logger.LogWarning("Failure group loading timed out after 30 seconds.");
                 Snackbar.Add("Failure group loading timed out after 30 seconds.", Severity.Error);
                 try
@@ -326,6 +333,7 @@
 
             // Store in IMemoryCache with expiration to avoid unbounded growth
             Cache.Set(_cacheKey, fullGroups, TimeSpan.FromMinutes(30));
+            groups = fullGroups;
             currentPage = 1; // Reset to first page on refresh
 
             Logger.LogInformation("Grouped {GroupCount} failure groups from {FailureCount} tests at {Threshold:P0} similarity",
@@ -397,6 +405,8 @@
     public void Dispose()
     {
         _debounceTimer?.Dispose();
+        _refreshCts?.Cancel();
+        _refreshCts?.Dispose();
     }
 }
 
