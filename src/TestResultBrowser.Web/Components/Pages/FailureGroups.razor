@@ -274,6 +274,9 @@
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             var groupingTask = Task.Run(() =>
             {
+                var token = cts.Token;
+                token.ThrowIfCancellationRequested();
+
                 var allFailed = TestData.GetAllTestResults().Where(tr => tr.Status == TestStatus.Fail);
 
                 // Filter by date range (use UTC to match TestResult.Timestamp)
@@ -286,20 +289,36 @@
                     filtered = filtered.Where(tr => tr.ConfigurationId == selectedConfiguration);
                 }
 
+                token.ThrowIfCancellationRequested();
+
                 // Materialize to avoid multiple enumeration
                 var filteredList = filtered.ToList();
 
                 var threshold = Math.Clamp(similarityThresholdPercent, 50, 100) / 100.0;
+                token.ThrowIfCancellationRequested();
                 var fullGroups = Grouping.GroupFailures(filteredList, threshold);
 
                 return (fullGroups, filteredList.Count, threshold);
             }, cts.Token);
 
-            var completed = await Task.WhenAny(groupingTask, Task.Delay(Timeout.Infinite, cts.Token));
+            var completed = await Task.WhenAny(groupingTask, Task.Delay(TimeSpan.FromSeconds(30)));
             if (completed != groupingTask)
             {
+                cts.Cancel();
                 Logger.LogWarning("Failure group loading timed out after 30 seconds.");
                 Snackbar.Add("Failure group loading timed out after 30 seconds.", Severity.Error);
+                try
+                {
+                    await groupingTask;
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected when timing out.
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, "Failure group loading failed after timeout.");
+                }
                 return;
             }
 
@@ -366,13 +385,13 @@
         showTestDetailsModal = true;
     }
 
-    private async Task CloseTestDetails()
+    private Task CloseTestDetails()
     {
         showTestDetailsModal = false;
         selectedTestResult = null;
         selectedTestBuildId = null;
         selectedTestHistory = null;
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     public void Dispose()

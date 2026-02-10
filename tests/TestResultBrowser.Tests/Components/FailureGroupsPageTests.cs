@@ -56,6 +56,11 @@ public class FailureGroupsPageTests
         ctx.Services.AddSingleton<ISnackbar>(new SnackbarService(navManager));
         ctx.Services.AddSingleton<ILogger<FailureGroups>>(new MockLogger<FailureGroups>());
         ctx.Services.AddSingleton<IMemoryCache>(new MemoryCache(new MemoryCacheOptions()));
+        ctx.Services.AddSingleton<ITestReportUrlService>(Mock.Of<ITestReportUrlService>());
+        var reportAssetServiceMock = new Mock<IReportAssetService>();
+        reportAssetServiceMock.Setup(s => s.GetAssetsAsync(It.IsAny<TestResult>()))
+            .ReturnsAsync((ReportAssetInfo?)null);
+        ctx.Services.AddSingleton<IReportAssetService>(reportAssetServiceMock.Object);
 
         // MudBlazor requires a MudPopoverProvider in the component tree
         ctx.RenderComponent<MudPopoverProvider>();
@@ -257,10 +262,13 @@ public class FailureGroupsPageTests
 
         // Act
         var cut = ctx.RenderComponent<FailureGroups>();
-        var panels = cut.FindComponents<MudExpansionPanel>();
 
         // Assert
-        panels.ShouldNotBeEmpty();
+        cut.WaitForAssertion(() =>
+        {
+            var panels = cut.FindComponents<MudExpansionPanel>();
+            panels.ShouldNotBeEmpty();
+        });
     }
 
     [Fact]
@@ -271,10 +279,14 @@ public class FailureGroupsPageTests
 
         // Act
         var cut = ctx.RenderComponent<FailureGroups>();
-        var panelText = cut.FindAll(".mud-expand-panel-header").FirstOrDefault()?.TextContent;
 
         // Assert
-        panelText.ShouldNotBeNullOrEmpty();
+        cut.WaitForAssertion(() =>
+        {
+            var markup = cut.Markup;
+            markup.ShouldContain("Database timeout");
+            markup.ShouldContain("2 -");
+        });
     }
 
     [Fact]
@@ -478,7 +490,7 @@ public class FailureGroupsPageTests
         var htmlContent = cut.Markup;
 
         // Assert
-        htmlContent.ShouldContain("pre-wrap");
+        htmlContent.ShouldContain("cell-error");
     }
 
     #endregion

@@ -114,15 +114,7 @@ else
                                                         @failure.TestFullName
                                                     </span>
                                                 </div>
-                                                <div style="display:flex; align-items:center; gap:6px; margin:2px 0;">
-                                                    <span style="color:#64748b;">Last 20:</span>
-                                                    <div style="display:flex; gap:2px;">
-                                                        @foreach (var run in GetRecentRuns(failure.TestFullName, failure.AffectedConfigs.FirstOrDefault()))
-                                                        {
-                                                            <span title="@GetRunTooltip(run)" style="width:8px; height:8px; border-radius:2px; background-color:@GetStatusColor(run.Status);"></span>
-                                                        }
-                                                    </div>
-                                                </div>
+                                                @RenderLastRuns(failure.TestFullName, failure.AffectedConfigs.FirstOrDefault())
                                                 <div>Error: @failure.ErrorMessage</div>
                                                 <div>Configs: @string.Join(", ", failure.AffectedConfigs)</div>
                                             </div>
@@ -171,15 +163,7 @@ else
                                 @fixedTest.TestFullName
                             </span>
                         </div>
-                        <div style="display:flex; align-items:center; gap:6px; margin:2px 0;">
-                            <span style="color:#64748b;">Last 20:</span>
-                            <div style="display:flex; gap:2px;">
-                                @foreach (var run in GetRecentRuns(fixedTest.TestFullName, fixedTest.FixedInConfigs.FirstOrDefault()))
-                                {
-                                    <span title="@GetRunTooltip(run)" style="width:8px; height:8px; border-radius:2px; background-color:@GetStatusColor(run.Status);"></span>
-                                }
-                            </div>
-                        </div>
+                        @RenderLastRuns(fixedTest.TestFullName, fixedTest.FixedInConfigs.FirstOrDefault())
                         <div>@string.Join(", ", fixedTest.FixedInConfigs)</div>
                     </div>
                 }
@@ -216,6 +200,7 @@ else
     private TestResult? selectedTestResult;
     private string? selectedTestBuildId;
     private List<TestResult>? selectedTestHistory;
+    private Dictionary<string, List<TestResult>> recentRunsByKey = new(StringComparer.OrdinalIgnoreCase);
 
     protected override async Task OnInitializedAsync()
     {
@@ -278,6 +263,7 @@ else
             var domains = selectedDomains.Any() ? selectedDomains.ToList() : null;
             triageResult = await TriageService.GetMorningTriageAsync(domains);
             _cachedDomainGroups = triageResult?.NewFailures.GroupBy(f => f.DomainId).ToList() ?? new();
+            recentRunsByKey = BuildRecentRunsCache(triageResult);
         }
         catch (Exception ex)
         {
@@ -302,12 +288,45 @@ else
             return new List<TestResult>();
         }
 
-        return TestDataService.GetTestResultsByTestName(testFullName)
-            .Where(r => string.Equals(r.ConfigurationId, configId, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(r => r.Timestamp)
-            .Take(20)
-            .OrderBy(r => r.Timestamp)
+        var key = GetRecentRunsKey(testFullName, configId);
+        return recentRunsByKey.TryGetValue(key, out var runs) ? runs : new List<TestResult>();
+    }
+
+    private Dictionary<string, List<TestResult>> BuildRecentRunsCache(MorningTriageResult? result)
+    {
+        var cache = new Dictionary<string, List<TestResult>>(StringComparer.OrdinalIgnoreCase);
+        if (result == null)
+        {
+            return cache;
+        }
+
+        var keys = result.NewFailures
+            .Select(f => (f.TestFullName, ConfigId: f.AffectedConfigs.FirstOrDefault()))
+            .Concat(result.FixedTests.Select(f => (f.TestFullName, ConfigId: f.FixedInConfigs.FirstOrDefault())))
+            .Where(k => !string.IsNullOrWhiteSpace(k.TestFullName) && !string.IsNullOrWhiteSpace(k.ConfigId))
+            .Select(k => (k.TestFullName, ConfigId: k.ConfigId!))
+            .GroupBy(k => GetRecentRunsKey(k.TestFullName, k.ConfigId), StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
             .ToList();
+
+        foreach (var (testFullName, configId) in keys)
+        {
+            var runs = TestDataService.GetTestResultsByTestName(testFullName)
+                .Where(r => string.Equals(r.ConfigurationId, configId, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(r => r.Timestamp)
+                .Take(20)
+                .OrderBy(r => r.Timestamp)
+                .ToList();
+
+            cache[GetRecentRunsKey(testFullName, configId!)] = runs;
+        }
+
+        return cache;
+    }
+
+    private string GetRecentRunsKey(string testFullName, string configId)
+    {
+        return $"{testFullName}||{configId}";
     }
 
     private string GetStatusColor(TestStatus status) => status switch
@@ -321,6 +340,29 @@ else
     {
         return $"{run.BuildId} · {run.Timestamp:MM/dd/yyyy HH:mm}";
     }
+
+    private RenderFragment RenderLastRuns(string testFullName, string? configId) => builder =>
+    {
+        var runs = GetRecentRuns(testFullName, configId);
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "style", "display:flex; align-items:center; gap:6px; margin:2px 0;");
+        builder.OpenElement(2, "span");
+        builder.AddAttribute(3, "style", "color:#64748b;");
+        builder.AddContent(4, "Last 20:");
+        builder.CloseElement();
+        builder.OpenElement(5, "div");
+        builder.AddAttribute(6, "style", "display:flex; gap:2px;");
+        var seq = 7;
+        foreach (var run in runs)
+        {
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "title", GetRunTooltip(run));
+            builder.AddAttribute(seq++, "style", $"width:8px; height:8px; border-radius:2px; background-color:{GetStatusColor(run.Status)};");
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+        builder.CloseElement();
+    };
 
     private void OpenTestDetails(string testFullName, string? configId)
     {
@@ -347,13 +389,13 @@ else
         showTestDetailsModal = true;
     }
 
-    private async Task CloseTestDetails()
+    private Task CloseTestDetails()
     {
         showTestDetailsModal = false;
         selectedTestResult = null;
         selectedTestBuildId = null;
         selectedTestHistory = null;
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     private string GetTrendIcon()

@@ -26,7 +26,7 @@
                                 <p><strong>@(ActiveTest?.BuildId ?? BuildId ?? TestResult.BuildId ?? "Unknown")</strong></p>
                                 @if (!string.IsNullOrEmpty(FlakyIndicatorText))
                                 {
-                                    <div style="font-size: 0.85rem; color: #64748b;">Flaky (last 20): @FlakyIndicatorText</div>
+                                    <div style="font-size: 0.85rem; color: #64748b;">Flaky (last @FlakyWindow): @FlakyIndicatorText</div>
                                 }
                             </div>
 
