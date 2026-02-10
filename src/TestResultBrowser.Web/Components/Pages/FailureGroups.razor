@@ -109,33 +109,53 @@
                             }
                             @foreach (var test in testGroups)
                                 {
-                                    <MudExpansionPanel IsInitiallyExpanded="false" Text="@($"{test.TestName} ({test.Count} occurrences)")">
-                                        <ChildContent>
-                                            <MudExpansionPanels MultiExpanded="true" Class="ms-4">
-                                                @foreach (var dateGroup in test.DateGroups)
+                                    var latestResult = GetLatestResult(test);
+                                    <MudExpansionPanel IsInitiallyExpanded="false">
+                                        <TitleContent>
+                                            <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
+                                                <span>@test.TestName (@test.Count occurrences)</span>
+                                                @if (latestResult != null)
                                                 {
-                                                    <MudExpansionPanel IsInitiallyExpanded="false" Text="@($"{dateGroup.Date:yyyy-MM-dd} ({dateGroup.Count} failures)")">
-                                                        <ChildContent>
-                                                            @foreach (var testResult in dateGroup.Results)
-                                                        {
-                                                            <MudPaper Class="pa-3 mb-3">
-                                                                <MudText Typo="Typo.body2" Style="font-weight:bold;">@testResult.DomainId - @testResult.BuildId</MudText>
-                                                                <MudText Typo="Typo.caption" Color="Color.Default" Class="mt-1">
-                                                                    Feature @testResult.FeatureId | Configuration @testResult.ConfigurationId
-                                                                </MudText>
-                                                                @if (!string.IsNullOrWhiteSpace(testResult.ErrorMessage))
-                                                                {
-                                                                    <MudText Typo="Typo.caption" Color="Color.Error" Style="white-space: pre-wrap; word-break: break-word; margin-top: 8px;">
-                                                                        <strong>Last seen:</strong> @testResult.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")<br/>
-                                                                        @testResult.ErrorMessage
-                                                                    </MudText>
-                                                                }
-                                                            </MudPaper>
-                                                        }
-                                                    </ChildContent>
-                                                </MudExpansionPanel>
+                                                    <span style="color:#1976d2; cursor:pointer; text-decoration:underline; font-size:0.85rem;"
+                                                          @onclick="(() => OpenTestDetails(latestResult))"
+                                                          @onclick:stopPropagation="true">
+                                                        Open details
+                                                    </span>
                                                 }
-                                            </MudExpansionPanels>
+                                            </div>
+                                        </TitleContent>
+                                        <ChildContent>
+                                            <div class="ms-4">
+                                                <table class="table table-sm failure-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th class="col-date">Date</th>
+                                                            <th class="col-build">Build</th>
+                                                            <th class="col-domain">Domain</th>
+                                                            <th class="col-feature">Feature</th>
+                                                            <th class="col-config">Configuration</th>
+                                                            <th class="col-seen">Last seen</th>
+                                                            <th class="col-error">Error</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach (var row in GetTestRows(test))
+                                                        {
+                                                            <tr>
+                                                                <td>@row.Date.ToString("yyyy-MM-dd")</td>
+                                                                <td>@row.Result.BuildId</td>
+                                                                <td>@row.Result.DomainId</td>
+                                                                <td>@row.Result.FeatureId</td>
+                                                                <td class="cell-config">@row.Result.ConfigurationId</td>
+                                                                <td>@row.Result.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                                                <td class="cell-error" title="@row.Result.ErrorMessage">
+                                                                    @row.Result.ErrorMessage
+                                                                </td>
+                                                            </tr>
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            </div>
                                         </ChildContent>
                                     </MudExpansionPanel>
                                 }
@@ -170,13 +190,17 @@
     SelectedConfigurationChanged="@((string value) => SelectConfigurationFromDialog(value))"
     AvailableConfigurations="@availableConfigurations" />
 
+<TestDetailsModal IsOpen="@showTestDetailsModal"
+                  TestResult="@selectedTestResult"
+                  BuildId="@selectedTestBuildId"
+                  History="@selectedTestHistory"
+                  OnClose="@CloseTestDetails" />
+
 @code {
     // Cache key prefix for this component
     private const string CacheKeyPrefix = "FailureGroups_";
     private string _cacheKey => $"{CacheKeyPrefix}{selectedConfiguration}_{lastXDays}_{similarityThresholdPercent}";
-
-    // Use IMemoryCache instead of static dictionary to avoid cross-user data leakage
-    private List<FailureGroup>? groups => Cache.Get<List<FailureGroup>>(_cacheKey);
+    private List<FailureGroup>? groups;
 
     private bool isLoading = false;
     private int similarityThresholdPercent = 80;
@@ -185,12 +209,18 @@
     private List<string> availableConfigurations = new();
     private bool showConfigurationDialog = false;
     private Timer? _debounceTimer;
+    private CancellationTokenSource? _refreshCts;
 
     // Pagination state
     private int currentPage = 1;
     private int itemsPerPage = 25;
     private int totalPages => groups != null ? (int)Math.Ceiling(groups.Count / (double)itemsPerPage) : 0;
     private List<FailureGroup> displayedGroups => groups?.Skip((currentPage - 1) * itemsPerPage).Take(itemsPerPage).ToList() ?? new();
+
+    private bool showTestDetailsModal;
+    private TestResult? selectedTestResult;
+    private string? selectedTestBuildId;
+    private List<TestResult>? selectedTestHistory;
 
     private class GroupedTest
     {
@@ -209,6 +239,10 @@
     protected override async Task OnInitializedAsync()
     {
         availableConfigurations = TestData.GetAllConfigurationIds().ToList();
+        if (availableConfigurations.Count > 0)
+        {
+            selectedConfiguration = availableConfigurations[0];
+        }
         await Refresh();
     }
 
@@ -238,30 +272,72 @@
         
         try
         {
-            var allFailed = TestData.GetAllTestResults().Where(tr => tr.Status == TestStatus.Fail);
-            
-            // Filter by date range (use UTC to match TestResult.Timestamp)
-            var cutoffDate = DateTime.UtcNow.AddDays(-lastXDays);
-            var filtered = allFailed.Where(tr => tr.Timestamp >= cutoffDate);
-            
-            // Filter by configuration if selected
-            if (!string.IsNullOrEmpty(selectedConfiguration))
+            _refreshCts?.Cancel();
+            _refreshCts?.Dispose();
+            _refreshCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var token = _refreshCts.Token;
+            var selectedConfigSnapshot = selectedConfiguration;
+            var lastXDaysSnapshot = lastXDays;
+            var similaritySnapshot = similarityThresholdPercent;
+
+            var groupingTask = Task.Run(() =>
             {
-                filtered = filtered.Where(tr => tr.ConfigurationId == selectedConfiguration);
+                token.ThrowIfCancellationRequested();
+
+                var allFailed = TestData.GetAllTestResults().Where(tr => tr.Status == TestStatus.Fail);
+
+                // Filter by date range (use UTC to match TestResult.Timestamp)
+                var cutoffDate = DateTime.UtcNow.AddDays(-lastXDaysSnapshot);
+                var filtered = allFailed.Where(tr => tr.Timestamp >= cutoffDate);
+
+                // Filter by configuration if selected
+                if (!string.IsNullOrEmpty(selectedConfigSnapshot))
+                {
+                    filtered = filtered.Where(tr => tr.ConfigurationId == selectedConfigSnapshot);
+                }
+
+                token.ThrowIfCancellationRequested();
+
+                // Materialize to avoid multiple enumeration
+                var filteredList = filtered.ToList();
+
+                var threshold = Math.Clamp(similaritySnapshot, 50, 100) / 100.0;
+                token.ThrowIfCancellationRequested();
+                var fullGroups = Grouping.GroupFailures(filteredList, threshold);
+
+                return (fullGroups, filteredList.Count, threshold);
+            }, token);
+
+            var completed = await Task.WhenAny(groupingTask, Task.Delay(TimeSpan.FromSeconds(30)));
+            if (completed != groupingTask)
+            {
+                _refreshCts.Cancel();
+                Logger.LogWarning("Failure group loading timed out after 30 seconds.");
+                Snackbar.Add("Failure group loading timed out after 30 seconds.", Severity.Error);
+                try
+                {
+                    await groupingTask;
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected when timing out.
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, "Failure group loading failed after timeout.");
+                }
+                return;
             }
-            
-            // Materialize to avoid multiple enumeration
-            var filteredList = filtered.ToList();
-            
-            var threshold = Math.Clamp(similarityThresholdPercent, 50, 100) / 100.0;
-            var fullGroups = Grouping.GroupFailures(filteredList, threshold);
+
+            var (fullGroups, failureCount, threshold) = await groupingTask;
 
             // Store in IMemoryCache with expiration to avoid unbounded growth
             Cache.Set(_cacheKey, fullGroups, TimeSpan.FromMinutes(30));
+            groups = fullGroups;
             currentPage = 1; // Reset to first page on refresh
 
             Logger.LogInformation("Grouped {GroupCount} failure groups from {FailureCount} tests at {Threshold:P0} similarity",
-                fullGroups?.Count ?? 0, filteredList.Count, threshold);
+                fullGroups?.Count ?? 0, failureCount, threshold);
         }
         catch (Exception ex)
         {
@@ -285,8 +361,88 @@
         currentPage = 1; // Reset to first page when page size changes
     }
 
+    private TestResult? GetLatestResult(GroupedTest testGroup)
+    {
+        return testGroup.DateGroups
+            .SelectMany(group => group.Results)
+            .OrderByDescending(result => result.Timestamp)
+            .FirstOrDefault();
+    }
+
+    private List<(DateTime Date, TestResult Result)> GetTestRows(GroupedTest testGroup)
+    {
+        return testGroup.DateGroups
+            .SelectMany(group => group.Results.Select(result => (group.Date, Result: result)))
+            .OrderByDescending(row => row.Result.Timestamp)
+            .ToList();
+    }
+
+    private void OpenTestDetails(TestResult testResult)
+    {
+        if (string.IsNullOrWhiteSpace(testResult.TestFullName) || string.IsNullOrWhiteSpace(testResult.ConfigurationId))
+        {
+            return;
+        }
+
+        selectedTestResult = testResult;
+        selectedTestBuildId = testResult.BuildId;
+        selectedTestHistory = TestData.GetTestResultsByTestName(testResult.TestFullName)
+            .Where(r => string.Equals(r.ConfigurationId, testResult.ConfigurationId, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(r => r.Timestamp)
+            .ToList();
+        showTestDetailsModal = true;
+    }
+
+    private Task CloseTestDetails()
+    {
+        showTestDetailsModal = false;
+        selectedTestResult = null;
+        selectedTestBuildId = null;
+        selectedTestHistory = null;
+        return Task.CompletedTask;
+    }
+
     public void Dispose()
     {
         _debounceTimer?.Dispose();
+        _refreshCts?.Cancel();
+        _refreshCts?.Dispose();
     }
 }
+
+<style>
+    .failure-table {
+        font-size: 0.85rem;
+        table-layout: auto;
+        width: 100%;
+    }
+
+    .failure-table th,
+    .failure-table td {
+        vertical-align: top;
+        padding: 4px 6px;
+    }
+
+    .failure-table .col-date { width: 90px; }
+    .failure-table .col-build { width: 100px; }
+    .failure-table .col-domain { width: 120px; }
+    .failure-table .col-feature { width: 220px; }
+    .failure-table .col-config { width: 180px; }
+    .failure-table .col-seen { width: 140px; }
+    .failure-table .col-error { width: 260px; }
+
+    .failure-table td {
+        word-break: break-word;
+        white-space: normal;
+    }
+
+    .failure-table .cell-error {
+        max-width: 260px;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .failure-table .cell-config {
+        word-break: break-all;
+    }
+</style>

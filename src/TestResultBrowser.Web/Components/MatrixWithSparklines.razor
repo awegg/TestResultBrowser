@@ -9,6 +9,14 @@
 }
 else
 {
+    var latestBuildId = Matrix.Builds.Count > 0 ? Matrix.Builds[0].BuildId : string.Empty;
+    var configurations = Matrix.Configurations;
+    if (HideNoLatestRelease && !string.IsNullOrEmpty(latestBuildId))
+    {
+        configurations = configurations
+            .Where(configId => HasLatestRelease(configId, latestBuildId))
+            .ToList();
+    }
     <div class="matrix-scroll">
         <table class="matrix-table">
             <thead>
@@ -24,7 +32,7 @@ else
                 </tr>
             </thead>
             <tbody>
-                @foreach (var config in Matrix.Configurations)
+                @foreach (var config in configurations)
                 {
                     <tr>
                         <td class="matrix-version-cell">@ConfigurationLabelHelper.GetConfigurationLabel(config)</td>
@@ -75,6 +83,22 @@ else
 @code {
     [Parameter] public DashboardMatrix? Matrix { get; set; }
     [Parameter] public EventCallback<string> OnCellClick { get; set; }
+    [Parameter] public bool HideNoLatestRelease { get; set; }
+
+    private bool HasLatestRelease(string configId, string latestBuildId)
+    {
+        if (Matrix == null)
+        {
+            return false;
+        }
+
+        if (string.Equals(configId, ConfigurationHistoryService.AllConfigurationsId, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return Matrix.Cells.TryGetValue(configId, out var row) && row.ContainsKey(latestBuildId);
+    }
 
     private static string ShortenBuildId(string buildId)
     {

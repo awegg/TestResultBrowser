@@ -66,121 +66,70 @@ public class TriageService : ITriageService
                 return null;
             }
 
-            // Create lookup dictionaries
-            var todayByTestName = todayTests
-                .GroupBy(t => t.TestFullName)
-                .ToDictionary(g => g.Key, g => g.ToList());
+            // Build fast lookup by (TestFullName, ConfigurationId)
+            var todayByKey = todayTests
+                .GroupBy(t => (t.TestFullName, t.ConfigurationId))
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(t => t.Timestamp).First());
 
-            var yesterdayByTestName = yesterdayTests
-                .GroupBy(t => t.TestFullName)
-                .ToDictionary(g => g.Key, g => g.ToList());
+            var yesterdayByKey = yesterdayTests
+                .GroupBy(t => (t.TestFullName, t.ConfigurationId))
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(t => t.Timestamp).First());
 
-            // Find new failures (passed yesterday, failed today)
-            var newFailures = new List<TriageNewFailure>();
-            foreach (var testName in todayByTestName.Keys)
-            {
-                if (!yesterdayByTestName.ContainsKey(testName))
-                    continue;
-
-                var todayResults = todayByTestName[testName];
-                var yesterdayResults = yesterdayByTestName[testName];
-
-                // Check if any configuration failed today that passed yesterday
-                foreach (var todayResult in todayResults.Where(t => t.Status == TestStatus.Fail))
-                {
-                    var yesterdayResult = yesterdayResults.FirstOrDefault(y =>
-                        y.ConfigurationId == todayResult.ConfigurationId);
-
-                    if (yesterdayResult != null && yesterdayResult.Status == TestStatus.Pass)
-                    {
-                        // Found a new failure
-                        var existing = newFailures.FirstOrDefault(f => f.TestFullName == testName &&
-                                                                     f.DomainId == todayResult.DomainId &&
-                                                                     f.FeatureId == todayResult.FeatureId);
-                        if (existing != null)
-                        {
-                            // Add config to existing entry
-                            existing.AffectedConfigs.Add(todayResult.ConfigurationId);
-                        }
-                        else
-                        {
-                            newFailures.Add(new TriageNewFailure
-                            {
-                                TestFullName = testName,
-                                DomainId = todayResult.DomainId,
-                                FeatureId = todayResult.FeatureId,
-                                AffectedConfigs = new List<string> { todayResult.ConfigurationId },
-                                ErrorMessage = todayResult.ErrorMessage ?? "No error message",
-                                StackTrace = todayResult.StackTrace,
-                                FailedOn = todayResult.Timestamp
-                            });
-                        }
-                    }
-                }
-            }
-
-            // Find fixed tests (failed yesterday, passed today)
-            var fixedTests = new List<TriageFixedTest>();
-            foreach (var testName in todayByTestName.Keys)
-            {
-                if (!yesterdayByTestName.ContainsKey(testName))
-                    continue;
-
-                var todayResults = todayByTestName[testName];
-                var yesterdayResults = yesterdayByTestName[testName];
-
-                // Check if any configuration passed today that failed yesterday
-                foreach (var todayResult in todayResults.Where(t => t.Status == TestStatus.Pass))
-                {
-                    var yesterdayResult = yesterdayResults.FirstOrDefault(y =>
-                        y.ConfigurationId == todayResult.ConfigurationId);
-
-                    if (yesterdayResult != null && yesterdayResult.Status == TestStatus.Fail)
-                    {
-                        // Found a fixed test
-                        var existing = fixedTests.FirstOrDefault(f => f.TestFullName == testName &&
-                                                                     f.DomainId == todayResult.DomainId &&
-                                                                     f.FeatureId == todayResult.FeatureId);
-                        if (existing != null)
-                        {
-                            existing.FixedInConfigs.Add(todayResult.ConfigurationId);
-                        }
-                        else
-                        {
-                            fixedTests.Add(new TriageFixedTest
-                            {
-                                TestFullName = testName,
-                                DomainId = todayResult.DomainId,
-                                FeatureId = todayResult.FeatureId,
-                                FixedInConfigs = new List<string> { todayResult.ConfigurationId },
-                                PassedOn = todayResult.Timestamp
-                            });
-                        }
-                    }
-                }
-            }
-
-            // Find still failing tests (failed yesterday, failed today)
+            var newFailuresMap = new Dictionary<(string TestFullName, string DomainId, string FeatureId), TriageNewFailure>();
+            var fixedTestsMap = new Dictionary<(string TestFullName, string DomainId, string FeatureId), TriageFixedTest>();
             var stillFailing = new List<TestResult>();
-            foreach (var testName in todayByTestName.Keys)
+
+            foreach (var (key, todayResult) in todayByKey)
             {
-                if (!yesterdayByTestName.ContainsKey(testName))
-                    continue;
-
-                var todayResults = todayByTestName[testName];
-                var yesterdayResults = yesterdayByTestName[testName];
-
-                foreach (var todayResult in todayResults.Where(t => t.Status == TestStatus.Fail))
+                if (!yesterdayByKey.TryGetValue(key, out var yesterdayResult))
                 {
-                    var yesterdayResult = yesterdayResults.FirstOrDefault(y =>
-                        y.ConfigurationId == todayResult.ConfigurationId);
+                    continue;
+                }
 
-                    if (yesterdayResult != null && yesterdayResult.Status == TestStatus.Fail)
+                if (todayResult.Status == TestStatus.Fail && yesterdayResult.Status == TestStatus.Pass)
+                {
+                    var bucketKey = (todayResult.TestFullName, todayResult.DomainId, todayResult.FeatureId);
+                    if (!newFailuresMap.TryGetValue(bucketKey, out var entry))
                     {
-                        stillFailing.Add(todayResult);
+                        entry = new TriageNewFailure
+                        {
+                            TestFullName = todayResult.TestFullName,
+                            DomainId = todayResult.DomainId,
+                            FeatureId = todayResult.FeatureId,
+                            AffectedConfigs = new List<string>(),
+                            ErrorMessage = todayResult.ErrorMessage ?? "No error message",
+                            StackTrace = todayResult.StackTrace,
+                            FailedOn = todayResult.Timestamp
+                        };
+                        newFailuresMap[bucketKey] = entry;
                     }
+                    entry.AffectedConfigs.Add(todayResult.ConfigurationId);
+                }
+                else if (todayResult.Status == TestStatus.Pass && yesterdayResult.Status == TestStatus.Fail)
+                {
+                    var bucketKey = (todayResult.TestFullName, todayResult.DomainId, todayResult.FeatureId);
+                    if (!fixedTestsMap.TryGetValue(bucketKey, out var entry))
+                    {
+                        entry = new TriageFixedTest
+                        {
+                            TestFullName = todayResult.TestFullName,
+                            DomainId = todayResult.DomainId,
+                            FeatureId = todayResult.FeatureId,
+                            FixedInConfigs = new List<string>(),
+                            PassedOn = todayResult.Timestamp
+                        };
+                        fixedTestsMap[bucketKey] = entry;
+                    }
+                    entry.FixedInConfigs.Add(todayResult.ConfigurationId);
+                }
+                else if (todayResult.Status == TestStatus.Fail && yesterdayResult.Status == TestStatus.Fail)
+                {
+                    stillFailing.Add(todayResult);
                 }
             }
+
+            var newFailures = newFailuresMap.Values.ToList();
+            var fixedTests = fixedTestsMap.Values.ToList();
 
             // Calculate pass rates
             var todayPassed = todayTests.Count(t => t.Status == TestStatus.Pass);

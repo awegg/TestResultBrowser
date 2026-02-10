@@ -56,6 +56,11 @@ public class FailureGroupsPageTests
         ctx.Services.AddSingleton<ISnackbar>(new SnackbarService(navManager));
         ctx.Services.AddSingleton<ILogger<FailureGroups>>(new MockLogger<FailureGroups>());
         ctx.Services.AddSingleton<IMemoryCache>(new MemoryCache(new MemoryCacheOptions()));
+        ctx.Services.AddSingleton<ITestReportUrlService>(Mock.Of<ITestReportUrlService>());
+        var reportAssetServiceMock = new Mock<IReportAssetService>();
+        reportAssetServiceMock.Setup(s => s.GetAssetsAsync(It.IsAny<TestResult>()))
+            .ReturnsAsync((ReportAssetInfo?)null);
+        ctx.Services.AddSingleton<IReportAssetService>(reportAssetServiceMock.Object);
 
         // MudBlazor requires a MudPopoverProvider in the component tree
         ctx.RenderComponent<MudPopoverProvider>();
@@ -257,10 +262,13 @@ public class FailureGroupsPageTests
 
         // Act
         var cut = ctx.RenderComponent<FailureGroups>();
-        var panels = cut.FindComponents<MudExpansionPanel>();
 
         // Assert
-        panels.ShouldNotBeEmpty();
+        cut.WaitForAssertion(() =>
+        {
+            var panels = cut.FindComponents<MudExpansionPanel>();
+            panels.ShouldNotBeEmpty();
+        });
     }
 
     [Fact]
@@ -271,10 +279,14 @@ public class FailureGroupsPageTests
 
         // Act
         var cut = ctx.RenderComponent<FailureGroups>();
-        var panelText = cut.FindAll(".mud-expand-panel-header").FirstOrDefault()?.TextContent;
 
         // Assert
-        panelText.ShouldNotBeNullOrEmpty();
+        cut.WaitForAssertion(() =>
+        {
+            var markup = cut.Markup;
+            markup.ShouldContain("Database timeout");
+            markup.ShouldContain("2 -");
+        });
     }
 
     [Fact]
@@ -311,27 +323,32 @@ public class FailureGroupsPageTests
     }
 
     [Fact]
-    public void ConfigurationButton_Click_OpensSelector()
+    public async Task ConfigurationButton_Click_OpensSelector()
     {
         // Arrange
         var (ctx, _, _) = CreateContext();
         var cut = ctx.RenderComponent<FailureGroups>();
 
         // Act
-        var buttons = cut.FindComponents<MudButton>();
-        var configButton = buttons.FirstOrDefault();
-        if (configButton != null)
+        await cut.InvokeAsync(() =>
         {
-            // Note: In real E2E tests, you would trigger the actual click
-            // Here we're checking that the button exists and is clickable
-        }
+            var configButton = cut.FindAll("button")
+                .FirstOrDefault(b => b.TextContent.Contains("Configuration"));
+
+            configButton.ShouldNotBeNull();
+            configButton!.Click();
+        });
 
         // Assert
-        configButton.ShouldNotBeNull();
+        cut.WaitForAssertion(() =>
+        {
+            var backdrop = cut.FindAll(".modal-backdrop");
+            backdrop.ShouldNotBeEmpty();
+        });
     }
 
     [Fact]
-    public void ConfigurationSelector_DisplaysAllConfigurations()
+    public async Task ConfigurationSelector_DisplaysAllConfigurations()
     {
         // Arrange
         var (ctx, dataServiceMock, _) = CreateContext();
@@ -340,9 +357,21 @@ public class FailureGroupsPageTests
 
         // Act
         var cut = ctx.RenderComponent<FailureGroups>();
+        await cut.InvokeAsync(() =>
+        {
+            var configButton = cut.FindAll("button")
+                .FirstOrDefault(b => b.TextContent.Contains("Configuration"));
+            configButton.ShouldNotBeNull();
+            configButton!.Click();
+        });
 
         // Assert
-        cut.ShouldNotBeNull();
+        cut.WaitForAssertion(() =>
+        {
+            var markup = cut.Markup;
+            markup.ShouldContain("Config1");
+            markup.ShouldContain("Config4");
+        });
     }
 
     #endregion
@@ -375,30 +404,42 @@ public class FailureGroupsPageTests
         var (ctx, _, groupingServiceMock) = CreateContext();
         var cut = ctx.RenderComponent<FailureGroups>();
 
+        groupingServiceMock.Invocations.Clear();
+
         // Act - In a real E2E test, you would:
-        // var threshold = cut.FindComponent<MudNumericField>();
-        // threshold.SetParametersAsync(ParameterView.FromDictionary(new Dictionary<string, object> 
-        // {
-        //     { nameof(MudNumericField<int>.Value), 50 }
-        // }));
+        var numericInputs = cut.FindAll("input[type='number']");
+        numericInputs.ShouldNotBeEmpty();
+        numericInputs[0].Change("60");
 
         // Assert
-        groupingServiceMock.Verify(
-            s => s.GroupFailures(It.IsAny<IEnumerable<TestResult>>(), It.IsAny<double>()),
-            Times.AtLeastOnce);
+        cut.WaitForAssertion(() =>
+        {
+            groupingServiceMock.Verify(
+                s => s.GroupFailures(It.IsAny<IEnumerable<TestResult>>(), It.IsAny<double>()),
+                Times.AtLeastOnce);
+        });
     }
 
     [Fact]
     public void DateRangeFilter_CanBeAdjusted()
     {
         // Arrange
-        var (ctx, _, _) = CreateContext();
+        var (ctx, _, groupingServiceMock) = CreateContext();
 
         // Act
         var cut = ctx.RenderComponent<FailureGroups>();
+        groupingServiceMock.Invocations.Clear();
+        var numericInputs = cut.FindAll("input[type='number']");
+        numericInputs.Count.ShouldBeGreaterThan(1);
+        numericInputs[1].Change("40");
 
         // Assert
-        cut.ShouldNotBeNull();
+        cut.WaitForAssertion(() =>
+        {
+            groupingServiceMock.Verify(
+                s => s.GroupFailures(It.IsAny<IEnumerable<TestResult>>(), It.IsAny<double>()),
+                Times.AtLeastOnce);
+        });
     }
 
     #endregion
@@ -478,7 +519,7 @@ public class FailureGroupsPageTests
         var htmlContent = cut.Markup;
 
         // Assert
-        htmlContent.ShouldContain("pre-wrap");
+        htmlContent.ShouldContain("cell-error");
     }
 
     #endregion
