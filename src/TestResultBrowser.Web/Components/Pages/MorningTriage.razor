@@ -109,7 +109,20 @@ else
                                         @foreach (var failure in featureGroup)
                                         {
                                             <div Style="padding:0.125rem 0.25rem;margin-bottom:0.125rem;background-color:#ffebee;font-size:0.75rem;line-height:1.2;">
-                                                <div Style="font-weight:600;">@failure.TestFullName</div>
+                                                <div Style="font-weight:600;">
+                                                    <span style="color:#1976d2; cursor:pointer; text-decoration:underline;" @onclick="(() => OpenTestDetails(failure.TestFullName, failure.AffectedConfigs.FirstOrDefault()))">
+                                                        @failure.TestFullName
+                                                    </span>
+                                                </div>
+                                                <div style="display:flex; align-items:center; gap:6px; margin:2px 0;">
+                                                    <span style="color:#64748b;">Last 20:</span>
+                                                    <div style="display:flex; gap:2px;">
+                                                        @foreach (var run in GetRecentRuns(failure.TestFullName, failure.AffectedConfigs.FirstOrDefault()))
+                                                        {
+                                                            <span title="@GetRunTooltip(run)" style="width:8px; height:8px; border-radius:2px; background-color:@GetStatusColor(run.Status);"></span>
+                                                        }
+                                                    </div>
+                                                </div>
                                                 <div>Error: @failure.ErrorMessage</div>
                                                 <div>Configs: @string.Join(", ", failure.AffectedConfigs)</div>
                                             </div>
@@ -153,7 +166,20 @@ else
                 @foreach (var fixedTest in triageResult.FixedTests)
                 {
                     <div Style="padding:0.125rem 0.25rem;margin-bottom:0.125rem;background-color:#f1f8e9;font-size:0.75rem;line-height:1.2;">
-                        <div Style="font-weight:600;">@fixedTest.TestFullName</div>
+                        <div Style="font-weight:600;">
+                            <span style="color:#1976d2; cursor:pointer; text-decoration:underline;" @onclick="(() => OpenTestDetails(fixedTest.TestFullName, fixedTest.FixedInConfigs.FirstOrDefault()))">
+                                @fixedTest.TestFullName
+                            </span>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:6px; margin:2px 0;">
+                            <span style="color:#64748b;">Last 20:</span>
+                            <div style="display:flex; gap:2px;">
+                                @foreach (var run in GetRecentRuns(fixedTest.TestFullName, fixedTest.FixedInConfigs.FirstOrDefault()))
+                                {
+                                    <span title="@GetRunTooltip(run)" style="width:8px; height:8px; border-radius:2px; background-color:@GetStatusColor(run.Status);"></span>
+                                }
+                            </div>
+                        </div>
                         <div>@string.Join(", ", fixedTest.FixedInConfigs)</div>
                     </div>
                 }
@@ -161,6 +187,12 @@ else
         </MudPaper>
     }
 }
+
+<TestDetailsModal IsOpen="@showTestDetailsModal"
+                  TestResult="@selectedTestResult"
+                  BuildId="@selectedTestBuildId"
+                  History="@selectedTestHistory"
+                  OnClose="@CloseTestDetails" />
 
 @code {
     [SupplyParameterFromQuery(Name = "domain")]
@@ -179,6 +211,11 @@ else
     private List<IGrouping<string, TriageNewFailure>> displayedDomainGroups =>
         _cachedDomainGroups.Skip((newFailuresPage - 1) * domainsPerPage).Take(domainsPerPage).ToList();
     private int totalFailurePages => _cachedDomainGroups.Count > 0 ? (int)Math.Ceiling(_cachedDomainGroups.Count / (double)domainsPerPage) : 0;
+
+    private bool showTestDetailsModal;
+    private TestResult? selectedTestResult;
+    private string? selectedTestBuildId;
+    private List<TestResult>? selectedTestHistory;
 
     protected override async Task OnInitializedAsync()
     {
@@ -256,6 +293,67 @@ else
     private async Task RefreshTriage()
     {
         await LoadData();
+    }
+
+    private List<TestResult> GetRecentRuns(string testFullName, string? configId)
+    {
+        if (string.IsNullOrWhiteSpace(testFullName) || string.IsNullOrWhiteSpace(configId))
+        {
+            return new List<TestResult>();
+        }
+
+        return TestDataService.GetTestResultsByTestName(testFullName)
+            .Where(r => string.Equals(r.ConfigurationId, configId, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(r => r.Timestamp)
+            .Take(20)
+            .OrderBy(r => r.Timestamp)
+            .ToList();
+    }
+
+    private string GetStatusColor(TestStatus status) => status switch
+    {
+        TestStatus.Pass => "#4CAF50",
+        TestStatus.Fail => "#F44336",
+        _ => "#9E9E9E"
+    };
+
+    private string GetRunTooltip(TestResult run)
+    {
+        return $"{run.BuildId} · {run.Timestamp:MM/dd/yyyy HH:mm}";
+    }
+
+    private void OpenTestDetails(string testFullName, string? configId)
+    {
+        if (triageResult == null || string.IsNullOrWhiteSpace(testFullName) || string.IsNullOrWhiteSpace(configId))
+        {
+            return;
+        }
+
+        var buildId = triageResult.TodayBuildId;
+        var testResult = TestDataService.GetTestResultFast(buildId, testFullName, configId);
+        var history = TestDataService.GetTestResultsByTestName(testFullName)
+            .Where(r => string.Equals(r.ConfigurationId, configId, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(r => r.Timestamp)
+            .ToList();
+
+        selectedTestResult = testResult ?? history.FirstOrDefault();
+        if (selectedTestResult == null)
+        {
+            return;
+        }
+
+        selectedTestBuildId = buildId;
+        selectedTestHistory = history;
+        showTestDetailsModal = true;
+    }
+
+    private async Task CloseTestDetails()
+    {
+        showTestDetailsModal = false;
+        selectedTestResult = null;
+        selectedTestBuildId = null;
+        selectedTestHistory = null;
+        await Task.CompletedTask;
     }
 
     private string GetTrendIcon()

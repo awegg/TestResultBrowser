@@ -24,6 +24,10 @@
                             <div class="mb-3">
                                 <h6>Build</h6>
                                 <p><strong>@(ActiveTest?.BuildId ?? BuildId ?? TestResult.BuildId ?? "Unknown")</strong></p>
+                                @if (!string.IsNullOrEmpty(FlakyIndicatorText))
+                                {
+                                    <div style="font-size: 0.85rem; color: #64748b;">Flaky (last 20): @FlakyIndicatorText</div>
+                                }
                             </div>
 
                             <!-- Test Name -->
@@ -188,8 +192,11 @@
     private ReportAssetInfo? AssetInfo { get; set; }
     private bool IsLoadingAssets { get; set; }
     private string? lastAssetTestId;
+    private const int FlakyWindow = 20;
 
     private TestResult? ActiveTest => GetActiveTestResult();
+
+    private string? FlakyIndicatorText => BuildFlakyIndicator();
 
     private bool HasMediaAssets => AssetInfo != null &&
         (!string.IsNullOrEmpty(AssetInfo.ScreenshotUrl) || !string.IsNullOrEmpty(AssetInfo.VideoUrl));
@@ -197,6 +204,41 @@
     protected override async Task OnParametersSetAsync()
     {
         await LoadAssetsAsync();
+    }
+
+    private string? BuildFlakyIndicator()
+    {
+        if (ActiveTest == null || History == null || History.Count == 0)
+        {
+            return null;
+        }
+
+        var configId = ActiveTest.ConfigurationId;
+        if (string.IsNullOrWhiteSpace(configId))
+        {
+            return null;
+        }
+
+        var recent = History
+            .Where(r => string.Equals(r.ConfigurationId, configId, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(r => r.Timestamp)
+            .Take(FlakyWindow)
+            .ToList();
+
+        if (recent.Count == 0)
+        {
+            return null;
+        }
+
+        var total = recent.Count(r => r.Status != TestStatus.Skip);
+        if (total == 0)
+        {
+            return null;
+        }
+
+        var failed = recent.Count(r => r.Status == TestStatus.Fail);
+        var percent = (double)failed / total * 100.0;
+        return $"{percent:F0}% ({failed}/{total})";
     }
 
     private async Task Close()

@@ -31,17 +31,17 @@
 			<MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Primary" OnClick="OpenConfigurationHistory">
 				Config History
 			</MudButton>
-				<MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Secondary" OnClick="OpenFeatureDialog" Disabled="@isLoading">
-					Select Features
-				</MudButton>
-				@if (selectedFeatureNames.Any())
-				{
-					<MudTooltip Text="@string.Join(", ", selectedFeatureNames)">
-						<MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">
-							Feature filter: @selectedFeatureNames.Count
-						</MudChip>
-					</MudTooltip>
-				}
+			<MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Secondary" OnClick="OpenFeatureDialog" Disabled="@isLoading">
+				Select Features
+			</MudButton>
+			@if (selectedFeatureNames.Any())
+			{
+				<MudTooltip Text="@string.Join(", ", selectedFeatureNames)">
+					<MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">
+						Feature filter: @selectedFeatureNames.Count
+					</MudChip>
+				</MudTooltip>
+			}
 		</div>
 	</div>
 
@@ -254,6 +254,9 @@
 					<div class="matrix-header-row">
 						<div class="panel-header">Configuration Matrix (Last @matrixDays Days)</div>
 						<div class="matrix-controls">
+							<MudSwitch T="bool" Dense="true" Color="Color.Primary" @bind-Value="hideNoLatestRelease" @bind-Value:after="OnHideNoLatestReleaseChanged" Class="matrix-filter-toggle">
+								<span class="matrix-filter-label">Hide N/A last release</span>
+							</MudSwitch>
 							<MudSelect T="int" Dense="true" Variant="Variant.Outlined" Value="@matrixDays" ValueChanged="OnMatrixDaysChanged" Class="matrix-days-select">
 								<MudSelectItem Value="7">7 days</MudSelectItem>
 								<MudSelectItem Value="14">14 days</MudSelectItem>
@@ -261,7 +264,7 @@
 							</MudSelect>
 						</div>
 					</div>
-					<MatrixWithSparklines Matrix="configMatrix" OnCellClick="NavigateToConfigHistory" />
+						<MatrixWithSparklines @key="@($"{matrixDays}-{hideNoLatestRelease}")" Matrix="configMatrix" HideNoLatestRelease="hideNoLatestRelease" OnCellClick="NavigateToConfigHistory" />
 				</MudPaper>
 			</MudItem>
 		</MudGrid>
@@ -295,6 +298,7 @@
 	private bool isChartObserverActive;
 	private int matrixDays = 14;
 	private bool showFeatureDialog;
+	private bool hideNoLatestRelease = true;
 	private Dictionary<string, List<string>> featureGroups = new();
 	private HashSet<string> selectedFeatureNames = new(StringComparer.OrdinalIgnoreCase);
 
@@ -512,6 +516,20 @@
 				.ToList();
 			configIds.Insert(0, ConfigurationHistoryService.AllConfigurationsId);
 
+			if (hideNoLatestRelease)
+			{
+				var latestBuildId = buildsInRange[0].BuildId;
+				var configsInLatest = dashboardResults
+					.Where(r => r.BuildId == latestBuildId)
+					.Select(r => r.ConfigurationId)
+					.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+				configIds = configIds
+					.Where(id => string.Equals(id, ConfigurationHistoryService.AllConfigurationsId, StringComparison.OrdinalIgnoreCase) ||
+						configsInLatest.Contains(id))
+					.ToList();
+			}
+
 			var matrixCells = new Dictionary<string, Dictionary<string, ReleaseMatrixCell>>(StringComparer.OrdinalIgnoreCase);
 			var configHistory = new Dictionary<string, List<(double? PassRate, int Total, int Passed, int Failed)>>(StringComparer.OrdinalIgnoreCase);
 
@@ -653,6 +671,11 @@
 	private async Task OnMatrixDaysChanged(int value)
 	{
 		matrixDays = value;
+		await RefreshAsync();
+	}
+
+	private async Task OnHideNoLatestReleaseChanged()
+	{
 		await RefreshAsync();
 	}
 
@@ -1243,6 +1266,18 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 8px;
+	}
+
+	.matrix-filter-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+	}
+
+	.matrix-filter-label {
+		font-size: 0.76rem;
+		color: #475569;
+		font-weight: 600;
 	}
 
 	.matrix-days-select {
