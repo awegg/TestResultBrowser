@@ -17,6 +17,15 @@ public record TestResult
     /// <summary>Method name, e.g., "TestDownloadReport"</summary>
     public required string MethodName { get; init; }
 
+    /// <summary>Lifecycle hook classification for synthetic setup/teardown entries emitted by test frameworks.</summary>
+    public TestLifecycleHookType LifecycleHookType { get; init; } = TestLifecycleHookType.None;
+
+    /// <summary>Target test or suite name associated with a lifecycle hook failure, if available.</summary>
+    public string? LifecycleHookTarget { get; init; }
+
+    /// <summary>True when this result represents a setup/teardown hook instead of a real test case.</summary>
+    public bool IsLifecycleHook => LifecycleHookType != TestLifecycleHookType.None;
+
     /// <summary>Test execution status (Pass/Fail/Skip)</summary>
     public required TestStatus Status { get; init; }
 
@@ -63,4 +72,17 @@ public record TestResult
 
     /// <summary>Directory path containing the test report (index.html) - e.g., "C:\\data\\Release-252\\Px Core - Alarm Dashboard"</summary>
     public string? ReportDirectoryPath { get; init; }
+}
+
+/// <summary>
+/// Lifecycle hook kind emitted by the test framework.
+/// </summary>
+public enum TestLifecycleHookType
+{
+    None,
+    BeforeAll,
+    AfterAll,
+    BeforeEach,
+    AfterEach,
+    Unknown
 }

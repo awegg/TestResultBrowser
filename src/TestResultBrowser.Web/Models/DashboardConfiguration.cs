@@ -46,6 +46,16 @@ public class DashboardConfiguration
     public bool ShowFlakyIndicators { get; set; } = true;
 
     /// <summary>
+    /// Persisted feature-group selections (for example: "PX Core") used to auto-apply across configurations.
+    /// </summary>
+    public List<string> FeatureFilterGroups { get; set; } = new();
+
+    /// <summary>
+    /// Persisted explicit feature selections not covered by selected groups.
+    /// </summary>
+    public List<string> FeatureFilterNames { get; set; } = new();
+
+    /// <summary>
     /// Last updated timestamp
     /// </summary>
     public DateTime LastUpdated { get; set; } = DateTime.UtcNow;

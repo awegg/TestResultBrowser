@@ -20,11 +20,8 @@ public class TriageService : ITriageService
     /// <inheritdoc/>
     public async Task<MorningTriageResult?> GetMorningTriageAsync(List<string>? selectedDomains = null)
     {
-        // Get the two most recent builds
-        var allResults = _testDataService.GetAllTestResults();
-        var builds = allResults
-            .Select(r => r.BuildId)
-            .Distinct()
+        // Use the build ID index — avoids materializing all test results just to find the two latest builds
+        var builds = _testDataService.GetAllBuildIds()
             .OrderByDescending(b => BuildNumberExtractor.ExtractBuildNumber(b))
             .Take(2)
             .ToList();
@@ -131,13 +128,13 @@ public class TriageService : ITriageService
             var newFailures = newFailuresMap.Values.ToList();
             var fixedTests = fixedTestsMap.Values.ToList();
 
-            // Calculate pass rates
-            var todayPassed = todayTests.Count(t => t.Status == TestStatus.Pass);
-            var todayTotal = todayTests.Count(t => t.Status != TestStatus.Skip);
+            // Calculate pass rates — single pass each to avoid 4 separate enumerations
+            int todayPassed = 0, todayTotal = 0;
+            foreach (var t in todayTests) { if (t.Status != TestStatus.Skip) { todayTotal++; if (t.Status == TestStatus.Pass) todayPassed++; } }
             var todayPassRate = todayTotal > 0 ? (double)todayPassed / todayTotal * 100 : 0;
 
-            var yesterdayPassed = yesterdayTests.Count(t => t.Status == TestStatus.Pass);
-            var yesterdayTotal = yesterdayTests.Count(t => t.Status != TestStatus.Skip);
+            int yesterdayPassed = 0, yesterdayTotal = 0;
+            foreach (var t in yesterdayTests) { if (t.Status != TestStatus.Skip) { yesterdayTotal++; if (t.Status == TestStatus.Pass) yesterdayPassed++; } }
             var yesterdayPassRate = yesterdayTotal > 0 ? (double)yesterdayPassed / yesterdayTotal * 100 : 0;
 
             _logger.LogInformation(
