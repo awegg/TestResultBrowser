@@ -39,7 +39,7 @@ public class HistoryCellData
         {
             if (HookFailures > 0) return HistoryCellStatus.HasFailures;
             if (Total == 0) return HistoryCellStatus.NoData;
-            if (Failed > 0) return HistoryCellStatus.HasFailures;
+            if (Failed > 0 || HookFailures > 0) return HistoryCellStatus.HasFailures;
             if (Skipped > 0 && Passed == 0) return HistoryCellStatus.AllSkipped;
             return HistoryCellStatus.AllPassed;
         }

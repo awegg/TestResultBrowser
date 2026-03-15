@@ -264,10 +264,8 @@ else
             var domains = selectedDomains.Any() ? selectedDomains.ToList() : null;
             triageResult = await TriageService.GetMorningTriageAsync(domains);
             _cachedDomainGroups = triageResult?.NewFailures.GroupBy(f => f.DomainId).ToList() ?? new();
-            // Capture snapshot before Task.Run to avoid closing over the mutable field
-            var triageSnapshot = triageResult;
             // Offload N lock-acquiring GetTestResultsByTestName calls off the Blazor render thread
-            recentRunsByKey = await Task.Run(() => BuildRecentRunsCache(triageSnapshot));
+            recentRunsByKey = await Task.Run(() => BuildRecentRunsCache(triageResult));
         }
         catch (Exception ex)
         {
