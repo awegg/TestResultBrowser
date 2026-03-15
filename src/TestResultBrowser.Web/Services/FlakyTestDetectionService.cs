@@ -26,9 +26,8 @@ public class FlakyTestDetectionService : IFlakyTestDetectionService
         failureRateThreshold = Math.Clamp(failureRateThreshold, 0.0, 1.0);
         recentRunWindow = Math.Max(1, recentRunWindow);
 
-        // Group by test name and get recent runs for each
+        // Group first, then sort within each group — avoids O(N log N) global sort over all results
         var resultsByTest = allResults
-            .OrderByDescending(tr => tr.Timestamp)
             .GroupBy(tr => tr.TestFullName)
             .ToList();
 
@@ -36,7 +35,7 @@ public class FlakyTestDetectionService : IFlakyTestDetectionService
 
         foreach (var testGroup in resultsByTest)
         {
-            var recentRuns = testGroup.Take(recentRunWindow).OrderBy(tr => tr.Timestamp).ToList();
+            var recentRuns = testGroup.OrderByDescending(tr => tr.Timestamp).Take(recentRunWindow).OrderBy(tr => tr.Timestamp).ToList();
 
             if (recentRuns.Count < 2)
                 continue; // Need at least 2 runs to determine flakiness

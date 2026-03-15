@@ -230,6 +230,7 @@
                   TestResult="@GetSelectedTestResult()"
                   BuildId="@GetSelectedBuildId()"
                   History="@GetTestHistory()"
+                  CurrentWindowBuildIds="@GetCurrentWindowBuildIds()"
                   OnClose="@CloseTestDetails" />
 
 @* Save Filter Dialog *@
@@ -265,7 +266,9 @@
     private bool showFeatureDialog = false;   // Controls feature selection dialog
     private bool showTestDetailsDialog = false;  // Controls test details modal
     private Dictionary<string, List<string>> featureGroups = new();  // Groups of features
-    private HashSet<string> selectedFeatureNames = new();  // Currently selected features
+    private HashSet<string> selectedFeatureNames = new(StringComparer.OrdinalIgnoreCase);  // Effective features for current configuration
+    private HashSet<string> selectedFeatureGroups = new(StringComparer.OrdinalIgnoreCase);  // Cross-configuration group intent
+    private HashSet<string> explicitFeatureSelections = new(StringComparer.OrdinalIgnoreCase);  // Explicit features not implied by groups
     private bool showSaveFilterDialog = false;  // Controls save filter dialog
     private LoadFilterDropdown? loadFilterDropdown;  // Reference to load filter dropdown
     private string currentUsername = "DefaultUser";  // Current user (can be from auth later)
@@ -282,6 +285,8 @@
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
         await LoadAvailableConfigurations();
+
+        await LoadFeatureSelectionPreferencesAsync();
 
         sw.Restart();
         // Apply saved filter from URL (if provided)
@@ -434,6 +439,9 @@
             var sw = System.Diagnostics.Stopwatch.StartNew();
             historyResult = await ConfigHistoryService.GetConfigurationHistoryAsync(selectedConfiguration, numberOfBuilds);
 
+            BuildFeatureGroups();
+            ApplyFeatureSelectionIntentToCurrentConfiguration();
+
             ApplyFeatureFromUrlIfNeeded();
 
             Snackbar.Add("✅ Configuration history loaded", Severity.Success);
@@ -566,9 +574,13 @@
         return history.Count > 0 ? history : null;
     }
 
+    private List<string>? GetCurrentWindowBuildIds() =>
+        historyResult?.HistoryColumns?.Select(c => c.BuildId).ToList();
+
     private void OpenFeatureDialog()
     {
         BuildFeatureGroups();
+        ApplyFeatureSelectionIntentToCurrentConfiguration();
         showFeatureDialog = true;
     }
 
@@ -578,8 +590,6 @@
         {
             return;
         }
-
-        BuildFeatureGroups();
 
         selectedFeatureNames.Clear();
         var knownFeatures = featureGroups.SelectMany(g => g.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -633,14 +643,109 @@
 
     private void CloseFeatureDialog()
     {
+        ApplyFeatureSelectionIntentToCurrentConfiguration();
         showFeatureDialog = false;
     }
 
-    private void ApplyFeatureSelection()
+    private async Task ApplyFeatureSelection()
     {
+        BuildFeatureSelectionIntentFromCurrentSelection();
+        try
+        {
+            await SaveFeatureSelectionPreferencesAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to save preferences: {ex.Message}", Severity.Warning);
+        }
         showFeatureDialog = false;
         Snackbar.Add($"Applied {selectedFeatureNames.Count} feature(s)", Severity.Info);
         StateHasChanged();
+    }
+    private async Task LoadFeatureSelectionPreferencesAsync()
+    {
+        var config = await UserDataService.GetDashboardConfigAsync(currentUsername);
+        if (config == null)
+        {
+            return;
+        }
+
+        selectedFeatureGroups = (config.FeatureFilterGroups ?? new List<string>())
+            .Where(g => !string.IsNullOrWhiteSpace(g))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        explicitFeatureSelections = (config.FeatureFilterNames ?? new List<string>())
+            .Where(f => !string.IsNullOrWhiteSpace(f))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async Task SaveFeatureSelectionPreferencesAsync()
+    {
+        var config = await UserDataService.GetDashboardConfigAsync(currentUsername)
+            ?? new DashboardConfiguration { Username = currentUsername };
+
+        config.FeatureFilterGroups = selectedFeatureGroups
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        config.FeatureFilterNames = explicitFeatureSelections
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        await UserDataService.SaveDashboardConfigAsync(config);
+    }
+
+    private void ApplyFeatureSelectionIntentToCurrentConfiguration()
+    {
+        if (featureGroups.Count == 0)
+        {
+            selectedFeatureNames.Clear();
+            return;
+        }
+
+        var knownFeatures = featureGroups
+            .SelectMany(g => g.Value)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var fromGroups = ExpandSelectedGroupFeatures();
+        var fromExplicit = explicitFeatureSelections.Where(knownFeatures.Contains);
+
+        selectedFeatureNames = fromGroups
+            .Concat(fromExplicit)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private HashSet<string> ExpandSelectedGroupFeatures()
+    {
+        var selected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var group in selectedFeatureGroups)
+        {
+            if (!featureGroups.TryGetValue(group, out var features))
+            {
+                continue;
+            }
+
+            foreach (var feature in features)
+            {
+                selected.Add(feature);
+            }
+        }
+
+        return selected;
+    }
+
+    private void BuildFeatureSelectionIntentFromCurrentSelection()
+    {
+        selectedFeatureGroups = featureGroups
+            .Where(group => group.Value.Count > 0 && group.Value.All(f => selectedFeatureNames.Contains(f)))
+            .Select(group => group.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var impliedByGroups = ExpandSelectedGroupFeatures();
+        explicitFeatureSelections = selectedFeatureNames
+            .Where(feature => !impliedByGroups.Contains(feature))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
 
@@ -664,6 +769,8 @@
                 IsExpanded = node.IsExpanded,
                 ReportDirectoryPath = node.ReportDirectoryPath,
                 TestFullName = node.TestFullName,
+                LifecycleHookType = node.LifecycleHookType,
+                LifecycleHookTarget = node.LifecycleHookTarget,
                 WorkItemReferences = new List<WorkItemReference>(node.WorkItemReferences),
                 HistoryCells = new List<HistoryCellData>(node.HistoryCells),
                 LatestStats = new TestNodeStats
@@ -686,7 +793,7 @@
             }
 
             // Drop empty non-test nodes
-            if (filteredNode.NodeType != HierarchyNodeType.Test && filteredNode.Children.Count == 0)
+            if (!IsLeafNode(filteredNode) && filteredNode.Children.Count == 0)
             {
                 return null;
             }
@@ -704,7 +811,9 @@
             IsExpanded = node.IsExpanded,
             ReportDirectoryPath = node.ReportDirectoryPath,
             TestFullName = node.TestFullName,
-                WorkItemReferences = new List<WorkItemReference>(node.WorkItemReferences),
+            LifecycleHookType = node.LifecycleHookType,
+            LifecycleHookTarget = node.LifecycleHookTarget,
+            WorkItemReferences = new List<WorkItemReference>(node.WorkItemReferences),
             HistoryCells = new List<HistoryCellData>(node.HistoryCells),
             LatestStats = new TestNodeStats
             {
@@ -726,7 +835,7 @@
         }
 
         // Prune empty non-test nodes
-        if (failureFilteredNode.NodeType != HierarchyNodeType.Test && failureFilteredNode.Children.Count == 0)
+        if (!IsLeafNode(failureFilteredNode) && failureFilteredNode.Children.Count == 0)
         {
             return null;
         }
@@ -743,7 +852,7 @@
         }
 
         // If it's a test node, check if it has any failures
-        if (node.NodeType == HierarchyNodeType.Test)
+        if (IsLeafNode(node))
         {
             var hasFailure = node.HistoryCells.Any(c => c.Status == HistoryCellStatus.HasFailures);
             if (!hasFailure)
@@ -758,10 +867,13 @@
         {
             Name = node.Name,
             NodeType = node.NodeType,
+            NodeId = node.NodeId,
             IndentLevel = node.IndentLevel,
             IsExpanded = node.IsExpanded,
             ReportDirectoryPath = node.ReportDirectoryPath,
             TestFullName = node.TestFullName,
+            LifecycleHookType = node.LifecycleHookType,
+            LifecycleHookTarget = node.LifecycleHookTarget,
             WorkItemReferences = new List<WorkItemReference>(node.WorkItemReferences),
             HistoryCells = new List<HistoryCellData>(node.HistoryCells),
             LatestStats = new TestNodeStats
@@ -784,6 +896,11 @@
 
         // Only include this node if it has children after filtering
         return filteredNode.Children.Count > 0 ? filteredNode : null;
+    }
+
+    private static bool IsLeafNode(HierarchyNode node)
+    {
+        return node.NodeType == HierarchyNodeType.Test || node.NodeType == HierarchyNodeType.Hook;
     }
 
     private void OpenSaveFilterDialog()
@@ -839,11 +956,15 @@
 
         if (filter.Features != null && filter.Features.Any())
         {
-            selectedFeatureNames = filter.Features.ToHashSet();
+            selectedFeatureNames = filter.Features.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            selectedFeatureGroups.Clear();
+            explicitFeatureSelections = selectedFeatureNames.ToHashSet(StringComparer.OrdinalIgnoreCase);
         }
         else
         {
             selectedFeatureNames.Clear();
+            selectedFeatureGroups.Clear();
+            explicitFeatureSelections.Clear();
         }
 
         if (filter.OnlyFailures.HasValue)
