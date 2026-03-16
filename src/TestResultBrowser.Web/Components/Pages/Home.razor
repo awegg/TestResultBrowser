@@ -9,6 +9,7 @@
 @inject ITriageService TriageService
 @inject NavigationManager NavigationManager
 @inject IFeatureGroupingService FeatureGroupingService
+@inject IUserDataService UserDataService
 @inject ISnackbar Snackbar
 @inject ILogger<Home> Logger
 @inject IJSRuntime JS
@@ -300,7 +301,10 @@
 	private bool showFeatureDialog;
 	private bool hideNoLatestRelease = true;
 	private Dictionary<string, List<string>> featureGroups = new();
-	private HashSet<string> selectedFeatureNames = new(StringComparer.OrdinalIgnoreCase);
+	private HashSet<string> selectedFeatureNames = new(StringComparer.OrdinalIgnoreCase); // Effective for current dataset
+	private HashSet<string> selectedFeatureGroups = new(StringComparer.OrdinalIgnoreCase); // Cross-view/cross-config group intent
+	private HashSet<string> explicitFeatureSelections = new(StringComparer.OrdinalIgnoreCase); // Explicit features not implied by groups
+	private string currentUsername = "DefaultUser";
 
 	private DashboardMetrics metrics = new();
 	private List<TrendSeries> trendSeries = new();
@@ -313,6 +317,7 @@
 
 	protected override async Task OnInitializedAsync()
 	{
+		await LoadFeatureSelectionPreferencesAsync();
 		await RefreshAsync();
 	}
 
@@ -325,8 +330,15 @@
 
 		if (!isChartObserverActive && trendSeries.Count > 0)
 		{
-			await JS.InvokeVoidAsync("trb.observeSize", chartAreaRef, sizeObserverRef);
-			isChartObserverActive = true;
+			try
+			{
+				await JS.InvokeVoidAsync("trb.observeSize", chartAreaRef, sizeObserverRef);
+				isChartObserverActive = true;
+			}
+			catch (Exception ex)
+			{
+				Logger.LogWarning(ex, "Chart size observer could not be attached");
+			}
 		}
 	}
 
@@ -369,29 +381,33 @@
 			.ToList();
 
 		BuildFeatureGroups(periodResults);
-		if (selectedFeatureNames.Count > 0)
-		{
-			var validFeatures = featureGroups.SelectMany(g => g.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
-			selectedFeatureNames.RemoveWhere(f => !validFeatures.Contains(f));
-		}
+		ApplyFeatureSelectionIntentToCurrentDataset();
 
 		var dashboardResults = selectedFeatureNames.Count == 0
 			? periodResults
 			: periodResults.Where(r => selectedFeatureNames.Contains(r.Feature)).ToList();
 
-		metrics.TotalTests = dashboardResults.Count;
-		metrics.PassedTests = dashboardResults.Count(r => r.Status == TestStatus.Pass);
-		metrics.FailedTests = dashboardResults.Count(r => r.Status == TestStatus.Fail);
-		metrics.SkippedTests = dashboardResults.Count(r => r.Status == TestStatus.Skip);
-		metrics.PassRate = metrics.TotalTests > 0
-			? (double)metrics.PassedTests / metrics.TotalTests * 100.0
-			: 0.0;
-
-		metrics.FailingConfigurations = dashboardResults
-			.Where(r => r.Status == TestStatus.Fail)
-			.Select(r => r.ConfigurationId)
-			.Distinct()
-			.Count();
+		// Single-pass metrics — avoids 4+ separate enumeration passes over dashboardResults
+		{
+			int mTotal = 0, mPassed = 0, mFailed = 0, mSkipped = 0;
+			var failingConfigSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+			foreach (var r in dashboardResults)
+			{
+				mTotal++;
+				switch (r.Status)
+				{
+					case TestStatus.Pass: mPassed++; break;
+					case TestStatus.Fail: mFailed++; failingConfigSet.Add(r.ConfigurationId); break;
+					case TestStatus.Skip: mSkipped++; break;
+				}
+			}
+			metrics.TotalTests = mTotal;
+			metrics.PassedTests = mPassed;
+			metrics.FailedTests = mFailed;
+			metrics.SkippedTests = mSkipped;
+			metrics.PassRate = mTotal > 0 ? (double)mPassed / mTotal * 100.0 : 0.0;
+			metrics.FailingConfigurations = failingConfigSet.Count;
+		}
 
 		var previousStart = rangeStart.AddDays(-30);
 		var previousEnd = rangeStart;
@@ -410,15 +426,6 @@
 			.Distinct()
 			.Count();
 		metrics.FailingConfigurationsDelta = metrics.FailingConfigurations - previousFailingConfigs;
-
-		var triage = await TriageService.GetMorningTriageAsync();
-		if (triage != null)
-		{
-			metrics.NewFailures = triage.NewFailures.Count;
-			metrics.FixedTests = triage.FixedTests.Count;
-			metrics.LatestBuild = triage.TodayBuildId;
-			metrics.PreviousBuild = triage.YesterdayBuildId;
-		}
 
 		var rangeDays = Enumerable.Range(0, 30)
 			.Select(offset => rangeStart.AddDays(offset).Date)
@@ -468,11 +475,12 @@
 
 		topDomains = dashboardResults
 			.GroupBy(r => r.DomainId)
-			.Select(g => new BreakdownItem(
-				g.Key,
-				g.Count(r => r.Status == TestStatus.Fail),
-				g.Count(),
-				g.Count() > 0 ? (double)g.Count(r => r.Status == TestStatus.Pass) / g.Count() * 100.0 : 0.0))
+			.Select(g =>
+			{
+				int t = 0, p = 0, f = 0;
+				foreach (var r in g) { t++; if (r.Status == TestStatus.Pass) p++; else if (r.Status == TestStatus.Fail) f++; }
+				return new BreakdownItem(g.Key, f, t, t > 0 ? (double)p / t * 100.0 : 0.0);
+			})
 			.OrderByDescending(b => b.Failed)
 			.Take(6)
 			.ToList();
@@ -487,22 +495,24 @@
 
 		topFeatures = latestBuildResults
 			.GroupBy(r => r.Feature)
-			.Select(g => new BreakdownItem(
-				g.Key,
-				g.Count(r => r.Status == TestStatus.Fail),
-				g.Count(),
-				g.Count() > 0 ? (double)g.Count(r => r.Status == TestStatus.Pass) / g.Count() * 100.0 : 0.0))
+			.Select(g =>
+			{
+				int t = 0, p = 0, f = 0;
+				foreach (var r in g) { t++; if (r.Status == TestStatus.Pass) p++; else if (r.Status == TestStatus.Fail) f++; }
+				return new BreakdownItem(g.Key, f, t, t > 0 ? (double)p / t * 100.0 : 0.0);
+			})
 			.OrderByDescending(b => b.Failed)
 			.Take(6)
 			.ToList();
 
-		// Build configuration matrix with releases on X axis
+		// Pre-group by BuildId once: eliminates N+1 GetBuildTimestamp() lock acquisitions and the O(N²) matrix scan
 		var matrixRangeStart = rangeEnd.AddDays(-matrixDays);
-		var buildsInRange = dashboardResults
-			.Select(r => r.BuildId)
-			.Distinct()
-			.Select(bid => (BuildId: bid, Timestamp: TestDataService.GetBuildTimestamp(bid)))
-			.Where(b => b.Timestamp.HasValue && b.Timestamp.Value >= matrixRangeStart && b.Timestamp.Value < rangeEnd)
+		var byBuildId = dashboardResults
+			.GroupBy(r => r.BuildId, StringComparer.OrdinalIgnoreCase)
+			.ToDictionary(g => g.Key, g => (Results: g.ToList(), Timestamp: g.Min(r => r.Timestamp)), StringComparer.OrdinalIgnoreCase);
+		var buildsInRange = byBuildId
+			.Select(kv => (BuildId: kv.Key, Timestamp: (DateTime?)kv.Value.Timestamp))
+			.Where(b => b.Timestamp!.Value >= matrixRangeStart && b.Timestamp.Value < rangeEnd)
 			.OrderByDescending(b => b.Timestamp!.Value)
 			.Select(b => new BuildInfo(b.BuildId, b.Timestamp!.Value))
 			.ToList();
@@ -519,8 +529,7 @@
 			if (hideNoLatestRelease)
 			{
 				var latestBuildId = buildsInRange[0].BuildId;
-				var configsInLatest = dashboardResults
-					.Where(r => r.BuildId == latestBuildId)
+				var configsInLatest = byBuildId[latestBuildId].Results
 					.Select(r => r.ConfigurationId)
 					.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -535,17 +544,15 @@
 
 			foreach (var build in buildsInRange)
 			{
-				var buildResults = dashboardResults
-					.Where(r => r.BuildId == build.BuildId)
-					.ToList();
+				// O(1) lookup — results already grouped, no re-scan of dashboardResults
+				var buildResults = byBuildId[build.BuildId].Results;
 
 				// All configurations row
 				if (!matrixCells.ContainsKey(ConfigurationHistoryService.AllConfigurationsId))
 					matrixCells[ConfigurationHistoryService.AllConfigurationsId] = new();
 
-				var totalAll = buildResults.Count;
-				var passedAll = buildResults.Count(r => r.Status == TestStatus.Pass);
-				var failedAll = buildResults.Count(r => r.Status == TestStatus.Fail);
+				int totalAll = 0, passedAll = 0, failedAll = 0;
+				foreach (var r in buildResults) { totalAll++; if (r.Status == TestStatus.Pass) passedAll++; else if (r.Status == TestStatus.Fail) failedAll++; }
 				if (totalAll > 0)
 				{
 					var passRateAll = (double)passedAll / totalAll * 100.0;
@@ -565,9 +572,8 @@
 					if (!matrixCells.ContainsKey(g.Key))
 						matrixCells[g.Key] = new();
 
-					var total = g.Count();
-					var passed = g.Count(r => r.Status == TestStatus.Pass);
-					var failed = g.Count(r => r.Status == TestStatus.Fail);
+					int total = 0, passed = 0, failed = 0;
+					foreach (var r in g) { total++; if (r.Status == TestStatus.Pass) passed++; else if (r.Status == TestStatus.Fail) failed++; }
 					var passRate = total > 0 ? (double)passed / total * 100.0 : 0.0;
 
 					matrixCells[g.Key][build.BuildId] = new ReleaseMatrixCell(
@@ -628,6 +634,15 @@
 			worstConfigs = new();
 		}
 
+		var triage = await TriageService.GetMorningTriageAsync();
+		if (triage != null)
+		{
+			metrics.NewFailures = triage.NewFailures.Count;
+			metrics.FixedTests = triage.FixedTests.Count;
+			metrics.LatestBuild = triage.TodayBuildId;
+			metrics.PreviousBuild = triage.YesterdayBuildId;
+		}
+
 		}
 		catch (Exception ex)
 		{
@@ -648,9 +663,8 @@
 
 	private void OpenFeatureDialog()
 	{
-		BuildFeatureGroups(TestDataService.GetAllTestResults()
-			.Where(r => r.Timestamp >= rangeStart && r.Timestamp < rangeEnd)
-			.ToList());
+		// featureGroups is already built during RefreshAsync — no need to re-scan
+		ApplyFeatureSelectionIntentToCurrentDataset();
 		showFeatureDialog = true;
 	}
 
@@ -736,6 +750,8 @@
 
 	private async Task ApplyFeatureSelection()
 	{
+		BuildFeatureSelectionIntentFromCurrentSelection();
+		await SaveFeatureSelectionPreferencesAsync();
 		showFeatureDialog = false;
 		Snackbar.Add($"Applied {selectedFeatureNames.Count} feature(s)", Severity.Info);
 		await RefreshAsync();
@@ -743,7 +759,94 @@
 
 	private void CloseFeatureDialog()
 	{
+		ApplyFeatureSelectionIntentToCurrentDataset();
 		showFeatureDialog = false;
+	}
+
+	private async Task LoadFeatureSelectionPreferencesAsync()
+	{
+		var config = await UserDataService.GetDashboardConfigAsync(currentUsername);
+		if (config == null)
+		{
+			return;
+		}
+
+		selectedFeatureGroups = (config.FeatureFilterGroups ?? new List<string>())
+			.Where(g => !string.IsNullOrWhiteSpace(g))
+			.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+		explicitFeatureSelections = (config.FeatureFilterNames ?? new List<string>())
+			.Where(f => !string.IsNullOrWhiteSpace(f))
+			.ToHashSet(StringComparer.OrdinalIgnoreCase);
+	}
+
+	private async Task SaveFeatureSelectionPreferencesAsync()
+	{
+		var config = await UserDataService.GetDashboardConfigAsync(currentUsername)
+			?? new DashboardConfiguration { Username = currentUsername };
+
+		config.FeatureFilterGroups = selectedFeatureGroups
+			.OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+			.ToList();
+
+		config.FeatureFilterNames = explicitFeatureSelections
+			.OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+			.ToList();
+
+		await UserDataService.SaveDashboardConfigAsync(config);
+	}
+
+	private void ApplyFeatureSelectionIntentToCurrentDataset()
+	{
+		if (featureGroups.Count == 0)
+		{
+			selectedFeatureNames.Clear();
+			return;
+		}
+
+		var knownFeatures = featureGroups
+			.SelectMany(g => g.Value)
+			.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+		var fromGroups = ExpandSelectedGroupFeatures();
+		var fromExplicit = explicitFeatureSelections.Where(knownFeatures.Contains);
+
+		selectedFeatureNames = fromGroups
+			.Concat(fromExplicit)
+			.ToHashSet(StringComparer.OrdinalIgnoreCase);
+	}
+
+	private HashSet<string> ExpandSelectedGroupFeatures()
+	{
+		var selected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+		foreach (var group in selectedFeatureGroups)
+		{
+			if (!featureGroups.TryGetValue(group, out var features))
+			{
+				continue;
+			}
+
+			foreach (var feature in features)
+			{
+				selected.Add(feature);
+			}
+		}
+
+		return selected;
+	}
+
+	private void BuildFeatureSelectionIntentFromCurrentSelection()
+	{
+		selectedFeatureGroups = featureGroups
+			.Where(group => group.Value.Count > 0 && group.Value.All(f => selectedFeatureNames.Contains(f)))
+			.Select(group => group.Key)
+			.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+		var impliedByGroups = ExpandSelectedGroupFeatures();
+		explicitFeatureSelections = selectedFeatureNames
+			.Where(feature => !impliedByGroups.Contains(feature))
+			.ToHashSet(StringComparer.OrdinalIgnoreCase);
 	}
 
 	private void OnChartMouseMove(Microsoft.AspNetCore.Components.Web.MouseEventArgs args)

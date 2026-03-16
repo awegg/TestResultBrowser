@@ -67,6 +67,16 @@ public class HierarchyNode
     public string? TestFullName { get; set; }
 
     /// <summary>
+    /// Lifecycle hook classification for hook nodes.
+    /// </summary>
+    public TestLifecycleHookType LifecycleHookType { get; set; } = TestLifecycleHookType.None;
+
+    /// <summary>
+    /// Target test/suite associated with the hook node.
+    /// </summary>
+    public string? LifecycleHookTarget { get; set; }
+
+    /// <summary>
     /// Error message for failed test nodes (only populated for Test nodes with Status=Fail)
     /// </summary>
     public string? ErrorMessage { get; set; }
@@ -95,7 +105,8 @@ public enum HierarchyNodeType
     Domain,
     Feature,
     Suite,
-    Test
+    Test,
+    Hook
 }
 
 /// <summary>

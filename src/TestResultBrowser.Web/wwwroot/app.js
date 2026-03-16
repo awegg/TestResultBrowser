@@ -2,7 +2,7 @@ window.trb = window.trb || {};
 window.trb._sizeObservers = window.trb._sizeObservers || new WeakMap();
 
 window.trb.observeSize = (element, dotNetRef) => {
-    if (!element || !dotNetRef) {
+    if (!element || !dotNetRef || typeof element.getBoundingClientRect !== 'function') {
         return;
     }
 
@@ -13,6 +13,9 @@ window.trb.observeSize = (element, dotNetRef) => {
     }
 
     const notify = () => {
+        if (!element || typeof element.getBoundingClientRect !== 'function') {
+            return;
+        }
         const rect = element.getBoundingClientRect();
         if (!dotNetRef) {
             return;

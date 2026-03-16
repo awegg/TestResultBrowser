@@ -92,7 +92,9 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
             }
 
             // Calculate latest build stats
-            var latestBuildTests = testResults.Where(t => t.BuildId == result.LatestBuildId).ToList();
+            var latestBuildTests = testResults
+                .Where(t => t.BuildId == result.LatestBuildId && !t.IsLifecycleHook)
+                .ToList();
             result.TotalTests = latestBuildTests.Count;
             result.PassedTests = latestBuildTests.Count(t => t.Status == TestStatus.Pass);
             result.FailedTests = latestBuildTests.Count(t => t.Status == TestStatus.Fail);
@@ -245,24 +247,22 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                 // Take the LATEST result from the LATEST build (by timestamp)
                 // Note: selectedBuilds is sorted descending, so First() is the latest
                 var latestBuild = selectedBuilds.First();
-                var tests = suiteGroup
-                    .GroupBy(t => t.TestFullName)
-                    .Select(g =>
-                    {
-                        // Get all results from the latest build for this test
-                        var latestBuildResults = g.Where(t => t.BuildId == latestBuild).ToList();
+                var hookResults = GetLatestRepresentativeResults(suiteGroup.Where(t => t.IsLifecycleHook), latestBuild)
+                    .OrderBy(t => GetLifecycleHookSortOrder(t.LifecycleHookType))
+                    .ThenBy(t => t.LifecycleHookTarget ?? t.MethodName)
+                    .ToList();
 
-                        // If test exists in latest build, take the LATEST result by timestamp
-                        if (latestBuildResults.Any())
-                        {
-                            return latestBuildResults.OrderByDescending(t => t.Timestamp).First();
-                        }
+                foreach (var hookResult in hookResults)
+                {
+                    _logger.LogDebug("Selected lifecycle hook '{HookName}' from build {BuildId} (timestamp: {Timestamp}) with status {Status}",
+                        hookResult.TestFullName, hookResult.BuildId, hookResult.Timestamp, hookResult.Status);
 
-                        // Fallback: if test doesn't exist in latest build, take most recent from any build
-                        return g.OrderByDescending(t => BuildNumberExtractor.ExtractBuildNumber(t.BuildId))
-                                .ThenByDescending(t => t.Timestamp)
-                                .First();
-                    })
+                    var hookDisplayName = hookResult.Status == TestStatus.Fail
+                        ? GetLifecycleHookDisplayName(hookResult)
+                        : GetLifecycleHookDisplayName(hookResult).Replace(" failure", "");
+                    suiteNode.Children.Add(BuildLeafNode(hookResult, hookDisplayName, HierarchyNodeType.Hook, selectedBuilds, historyColumns, testResultsIndex));
+                }
+                var tests = GetLatestRepresentativeResults(suiteGroup.Where(t => !t.IsLifecycleHook), latestBuild)
                     .OrderBy(t => t.TestFullName)
                     .ToList();
 
@@ -271,48 +271,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                     // DEBUG: Log to verify we selected the correct test
                     _logger.LogDebug("Selected test '{TestName}' from build {BuildId} (timestamp: {Timestamp}) with status {Status}. ErrorMessage length: {ErrorLength}",
                         test.TestFullName, test.BuildId, test.Timestamp, test.Status, test.ErrorMessage?.Length ?? 0);
-
-                    var testNode = new HierarchyNode
-                    {
-                        Name = test.MethodName,
-                        NodeType = HierarchyNodeType.Test,
-                        NodeId = test.Id,
-                        TestFullName = test.TestFullName,  // Store for deduplication
-                        IndentLevel = 2,
-                        IsExpanded = false,
-                        ReportDirectoryPath = test.ReportDirectoryPath,
-                        WorkItemReferences = _workItemLinkService.GetTicketReferences(test.WorkItemIds),
-                        // Error fields will be populated from the latest build's result (see below)
-                        ErrorMessage = null,
-                        StackTrace = null
-                    };
-
-                    // Build history cells for this test
-                    testNode.HistoryCells = BuildHistoryCells(test, selectedBuilds, historyColumns, testResultsIndex);
-
-                    // Extract error information from the latest build's HistoryCellData
-                    // This ensures error messages match the result that determines the cell color
-                    if (testNode.HistoryCells.Any())
-                    {
-                        // First = latest build (selectedBuilds is sorted descending, so HistoryCells[0] is latest)
-                        var latestBuildCell = testNode.HistoryCells.First();
-                        if (latestBuildCell.SourceTestResult != null)
-                        {
-                            testNode.ErrorMessage = latestBuildCell.SourceTestResult.ErrorMessage;
-                            testNode.StackTrace = latestBuildCell.SourceTestResult.StackTrace;
-                            testNode.FirstErrorMessage = latestBuildCell.SourceTestResult.ErrorMessage;
-                        }
-                    }
-
-                    // Latest stats - use the test object which is already from the latest build
-                    testNode.LatestStats = new TestNodeStats
-                    {
-                        Passed = test.Status == TestStatus.Pass ? 1 : 0,
-                        Failed = test.Status == TestStatus.Fail ? 1 : 0,
-                        Skipped = test.Status == TestStatus.Skip ? 1 : 0
-                    };
-
-                    suiteNode.Children.Add(testNode);
+                    suiteNode.Children.Add(BuildLeafNode(test, GetDisplayTestName(test.ClassName, suiteName, test.MethodName), HierarchyNodeType.Test, selectedBuilds, historyColumns, testResultsIndex));
                 }
 
                 // Calculate suite stats using index for O(1) lookups
@@ -399,14 +358,16 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
         List<string> selectedBuilds,
         Dictionary<(string TestFullName, string BuildId), List<TestResult>> testResultsIndex)
     {
-        // Get all unique test full names under this node (handles deduplication)
-        var allTestFullNames = GetAllTestFullNamesUnderNode(node);
+        var testFullNames = new HashSet<string>();
+        var hookFullNames = new HashSet<string>();
+        CollectLeafNodeIdentifiers(node, testFullNames, hookFullNames);
+        var allLeafFullNames = testFullNames.Concat(hookFullNames).ToList();
 
         // Latest build stats using index - O(T) where T = tests under this node
         // Note: selectedBuilds is sorted descending, so First() is the latest
         var latestBuild = selectedBuilds.First();
         int latestPassed = 0, latestFailed = 0, latestSkipped = 0;
-        foreach (var testName in allTestFullNames)
+        foreach (var testName in testFullNames)
         {
             if (testResultsIndex.TryGetValue((testName, latestBuild), out var results))
             {
@@ -430,7 +391,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
             .Select(buildId =>
             {
                 int p = 0, f = 0, s = 0;
-                foreach (var testName in allTestFullNames)
+                foreach (var testName in testFullNames)
                 {
                     if (testResultsIndex.TryGetValue((testName, buildId), out var results))
                     {
@@ -441,26 +402,50 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
                     }
                 }
 
+
+                var hookFailures = 0;
+                foreach (var hookName in hookFullNames)
+                {
+                    if (testResultsIndex.TryGetValue((hookName, buildId), out var results)
+                        && results[0].Status == TestStatus.Fail)
+                    {
+                        hookFailures++;
+                    }
+                }
+
                 return new HistoryCellData
                 {
                     Passed = p,
                     Failed = f,
                     Skipped = s,
+                    HookFailures = hookFailures,
                     ReportDirectoryPath = null  // Parent nodes don't have a single report path
                 };
             })
             .ToList();
 
         // Totals across all builds - count unique test names
-        node.TotalTestsAcrossAllBuilds = allTestFullNames.Count;
+        node.TotalTestsAcrossAllBuilds = testFullNames.Count;
 
         // Total failures using index
         int totalFailures = 0;
-        foreach (var testName in allTestFullNames)
+        foreach (var testName in testFullNames)
         {
             foreach (var buildId in selectedBuilds)
             {
                 if (testResultsIndex.TryGetValue((testName, buildId), out var results)
+                    && results[0].Status == TestStatus.Fail)
+                {
+                    totalFailures++;
+                }
+            }
+        }
+
+        foreach (var hookName in hookFullNames)
+        {
+            foreach (var buildId in selectedBuilds)
+            {
+                if (testResultsIndex.TryGetValue((hookName, buildId), out var results)
                     && results[0].Status == TestStatus.Fail)
                 {
                     totalFailures++;
@@ -474,7 +459,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
         string? firstReportPath = null;
         foreach (var buildId in selectedBuilds)
         {
-            foreach (var testName in allTestFullNames)
+            foreach (var testName in allLeafFullNames)
             {
                 if (testResultsIndex.TryGetValue((testName, buildId), out var results))
                 {
@@ -500,7 +485,7 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
             TestResult? firstFailed = null;
             foreach (var buildId in selectedBuilds) // Latest build first
             {
-                foreach (var testName in allTestFullNames)
+                foreach (var testName in allLeafFullNames)
                 {
                     if (testResultsIndex.TryGetValue((testName, buildId), out var results))
                     {
@@ -523,25 +508,23 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
     }
 
     /// <summary>
-    /// Get all unique test full names under a node (recursively includes children)
-    /// This is used for proper deduplication when calculating parent stats
+    /// Collect unique leaf identifiers under a node, separating real tests from lifecycle hooks.
     /// </summary>
-    private HashSet<string> GetAllTestFullNamesUnderNode(HierarchyNode node)
+    private void CollectLeafNodeIdentifiers(HierarchyNode node, HashSet<string> testFullNames, HashSet<string> hookFullNames)
     {
-        var testFullNames = new HashSet<string>();
-
         if (node.NodeType == HierarchyNodeType.Test && !string.IsNullOrEmpty(node.TestFullName))
         {
             testFullNames.Add(node.TestFullName);
         }
+        else if (node.NodeType == HierarchyNodeType.Hook && !string.IsNullOrEmpty(node.TestFullName))
+        {
+            hookFullNames.Add(node.TestFullName);
+        }
 
         foreach (var child in node.Children)
         {
-            var childNames = GetAllTestFullNamesUnderNode(child);
-            testFullNames.UnionWith(childNames);
+            CollectLeafNodeIdentifiers(child, testFullNames, hookFullNames);
         }
-
-        return testFullNames;
     }
 
     /// <summary>
@@ -565,5 +548,151 @@ public class ConfigurationHistoryService : IConfigurationHistoryService
         
         var parts = suiteId.Split('_');
         return parts.Length > 1 ? parts[^1] : suiteId;
+    }
+
+    private List<TestResult> GetLatestRepresentativeResults(IEnumerable<TestResult> results, string latestBuild)
+    {
+        return results
+            .GroupBy(t => t.TestFullName)
+            .Select(g =>
+            {
+                var latestBuildResults = g.Where(t => t.BuildId == latestBuild).ToList();
+                if (latestBuildResults.Any())
+                {
+                    return latestBuildResults.OrderByDescending(t => t.Timestamp).First();
+                }
+
+                return g.OrderByDescending(t => BuildNumberExtractor.ExtractBuildNumber(t.BuildId))
+                    .ThenByDescending(t => t.Timestamp)
+                    .First();
+            })
+            .ToList();
+    }
+
+    private HierarchyNode BuildLeafNode(
+        TestResult test,
+        string displayName,
+        HierarchyNodeType nodeType,
+        List<string> selectedBuilds,
+        List<HistoryColumn> historyColumns,
+        Dictionary<(string TestFullName, string BuildId), List<TestResult>> testResultsIndex)
+    {
+        var node = new HierarchyNode
+        {
+            Name = displayName,
+            NodeType = nodeType,
+            NodeId = test.Id,
+            TestFullName = test.TestFullName,
+            LifecycleHookType = test.LifecycleHookType,
+            LifecycleHookTarget = test.LifecycleHookTarget,
+            IndentLevel = 2,
+            IsExpanded = false,
+            ReportDirectoryPath = test.ReportDirectoryPath,
+            WorkItemReferences = _workItemLinkService.GetTicketReferences(test.WorkItemIds),
+            ErrorMessage = null,
+            StackTrace = null
+        };
+
+        node.HistoryCells = BuildHistoryCells(test, selectedBuilds, historyColumns, testResultsIndex);
+
+        if (node.HistoryCells.Any())
+        {
+            var latestBuildCell = node.HistoryCells.First();
+            if (latestBuildCell.SourceTestResult != null)
+            {
+                node.ErrorMessage = latestBuildCell.SourceTestResult.ErrorMessage;
+                node.StackTrace = latestBuildCell.SourceTestResult.StackTrace;
+                node.FirstErrorMessage = latestBuildCell.SourceTestResult.ErrorMessage;
+            }
+        }
+
+        node.LatestStats = new TestNodeStats
+        {
+            Passed = test.Status == TestStatus.Pass ? 1 : 0,
+            Failed = test.Status == TestStatus.Fail ? 1 : 0,
+            Skipped = test.Status == TestStatus.Skip ? 1 : 0
+        };
+
+        return node;
+    }
+
+    private static int GetLifecycleHookSortOrder(TestLifecycleHookType hookType) => hookType switch
+    {
+        TestLifecycleHookType.BeforeAll => 0,
+        TestLifecycleHookType.BeforeEach => 1,
+        TestLifecycleHookType.AfterEach => 2,
+        TestLifecycleHookType.AfterAll => 3,
+        _ => 4
+    };
+
+    private static string GetLifecycleHookDisplayName(TestResult test)
+    {
+        var prefix = test.LifecycleHookType switch
+        {
+            TestLifecycleHookType.BeforeAll => "Setup failure (before all)",
+            TestLifecycleHookType.BeforeEach => "Setup failure (before each)",
+            TestLifecycleHookType.AfterEach => "Teardown failure (after each)",
+            TestLifecycleHookType.AfterAll => "Teardown failure (after all)",
+            _ => "Lifecycle hook failure"
+        };
+
+        return string.IsNullOrWhiteSpace(test.LifecycleHookTarget)
+            ? prefix
+            : $"{prefix} for {test.LifecycleHookTarget}";
+    }
+
+    /// <summary>
+    /// Build a concise display name by removing redundant class/suite prefixes from verbose test names.
+    /// Example: "Regression Tests for Alarm Configurations PEXC-28040 ..." with matching suite name
+    /// becomes "PEXC-28040 ...".
+    /// </summary>
+    private static string GetDisplayTestName(string? className, string? suiteName, string? methodName)
+    {
+        if (string.IsNullOrWhiteSpace(methodName))
+            return "<unknown>";
+
+        var trimmedMethodName = methodName.Trim();
+        var prefixCandidates = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(className))
+        {
+            var trimmedClassName = className.Trim();
+            prefixCandidates.Add(trimmedClassName);
+
+            var shortClassName = trimmedClassName.Split('.').LastOrDefault();
+            if (!string.IsNullOrWhiteSpace(shortClassName))
+                prefixCandidates.Add(shortClassName);
+        }
+
+        if (!string.IsNullOrWhiteSpace(suiteName))
+            prefixCandidates.Add(suiteName.Trim());
+
+        foreach (var prefix in prefixCandidates.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var reduced = TryStripPrefixedLabel(trimmedMethodName, prefix);
+            if (reduced != null)
+                return reduced;
+        }
+
+        return trimmedMethodName;
+    }
+
+    private static string? TryStripPrefixedLabel(string methodName, string prefix)
+    {
+        if (!methodName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        // Keep names that only happen to start similarly (no delimiter after prefix).
+        if (methodName.Length > prefix.Length)
+        {
+            var nextChar = methodName[prefix.Length];
+            if (char.IsLetterOrDigit(nextChar))
+                return null;
+        }
+
+        var remainder = methodName.Substring(prefix.Length)
+            .TrimStart(' ', '.', '-', '_', ':');
+
+        return string.IsNullOrWhiteSpace(remainder) ? null : remainder;
     }
 }

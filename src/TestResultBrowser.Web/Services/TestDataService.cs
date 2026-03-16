@@ -308,18 +308,22 @@ public class TestDataService : ITestDataService
     /// <inheritdoc/>
     public (DateTime? Earliest, DateTime? Latest) GetDateRange()
     {
-        var results = _testResults.Values;
-        if (!results.Any())
-            return (null, null);
-
-        return (results.Min(r => r.Timestamp), results.Max(r => r.Timestamp));
+        // Single-pass min/max — avoids 3 separate enumerations over the full collection
+        DateTime? min = null, max = null;
+        foreach (var r in _testResults.Values)
+        {
+            if (min == null || r.Timestamp < min) min = r.Timestamp;
+            if (max == null || r.Timestamp > max) max = r.Timestamp;
+        }
+        return (min, max);
     }
 
     /// <inheritdoc/>
     public IEnumerable<string> GetAllVersions()
     {
-        return _testResults.Values
-            .Select(r => r.ConfigurationId.Split('_').FirstOrDefault())
+        // Use index keys — O(configs) instead of O(all results)
+        return _byConfiguration.Keys
+            .Select(id => id.Split('_').FirstOrDefault())
             .Where(v => !string.IsNullOrEmpty(v))
             .Distinct()
             .OrderBy(v => v)!;
@@ -328,10 +332,11 @@ public class TestDataService : ITestDataService
     /// <inheritdoc/>
     public IEnumerable<string> GetAllNamedConfigs()
     {
-        return _testResults.Values
-            .Select(r =>
+        // Use index keys — O(configs) instead of O(all results)
+        return _byConfiguration.Keys
+            .Select(id =>
             {
-                var parts = r.ConfigurationId.Split('_');
+                var parts = id.Split('_');
                 return parts.Length >= 3 ? parts[2] : null;
             })
             .Where(nc => !string.IsNullOrEmpty(nc))
@@ -378,24 +383,21 @@ public class TestDataService : ITestDataService
     /// <inheritdoc/>
     public DateTime? GetBuildTimestamp(string buildId)
     {
-        // Return the earliest timestamp for this build
-        // Use lock to ensure thread-safe snapshot of result IDs
+        // Snapshot IDs under lock, then compute outside — avoids holding lock during O(N) LINQ evaluation
+        List<string>? snapshot;
         lock (_indexLock)
         {
-            if (_byBuild.TryGetValue(buildId, out var resultIds))
-            {
-                // Snapshot the IDs to avoid concurrent modification issues
-                var resultIdSnapshot = resultIds.ToList();
-
-                // Get minimum timestamp (earliest) deterministically
-                var timestamps = resultIdSnapshot
-                    .Select(id => _testResults.TryGetValue(id, out var result) ? result.Timestamp : (DateTime?)null)
-                    .Where(t => t.HasValue)
-                    .Select(t => t!.Value);
-
-                return timestamps.Any() ? timestamps.Min() : (DateTime?)null;
-            }
-            return null;
+            if (!_byBuild.TryGetValue(buildId, out var resultIds))
+                return null;
+            snapshot = new List<string>(resultIds);
         }
+
+        DateTime? min = null;
+        foreach (var id in snapshot)
+        {
+            if (_testResults.TryGetValue(id, out var r) && (min == null || r.Timestamp < min))
+                min = r.Timestamp;
+        }
+        return min;
     }
 }

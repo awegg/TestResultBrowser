@@ -170,7 +170,7 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
 
             // Retry logic with exponential backoff for network resilience
             var xmlFiles = await RetryWithBackoffAsync(
-                () => Task.FromResult(Directory.GetFiles(
+                () => Task.Run(() => Directory.GetFiles(
                     _options.FileSharePath,
                     "*.xml",
                     SearchOption.AllDirectories)),

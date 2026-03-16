@@ -21,6 +21,11 @@ public class HistoryCellData
     public int Skipped { get; set; }
 
     /// <summary>
+    /// Number of lifecycle hook failures associated with this node in this build.
+    /// </summary>
+    public int HookFailures { get; set; }
+
+    /// <summary>
     /// Total tests in this build
     /// </summary>
     public int Total => Passed + Failed + Skipped;
@@ -32,6 +37,7 @@ public class HistoryCellData
     {
         get
         {
+            if (HookFailures > 0) return HistoryCellStatus.HasFailures;
             if (Total == 0) return HistoryCellStatus.NoData;
             if (Failed > 0) return HistoryCellStatus.HasFailures;
             if (Skipped > 0 && Passed == 0) return HistoryCellStatus.AllSkipped;

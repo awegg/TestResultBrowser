@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using System.Text.RegularExpressions;
 using TestResultBrowser.Web.Common;
 using TestResultBrowser.Web.Models;
 
@@ -10,6 +11,10 @@ namespace TestResultBrowser.Web.Services;
 /// </summary>
 public class JUnitParserService : IJUnitParserService
 {
+    private static readonly Regex LifecycleHookRegex = new(
+        "[\\\"'`]?(before all|after all|before each|after each)[\\\"'`]?\\s+hook\\s+for\\s+[\\\"'`](.+?)[\\\"'`]?$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     private readonly IVersionMapperService _versionMapper;
     private readonly ILogger<JUnitParserService> _logger;
 
@@ -175,6 +180,8 @@ public class JUnitParserService : IJUnitParserService
             var version = _versionMapper.MapVersion(parsedPath.VersionRaw);
             var versionStr = version ?? "<unknown>";
 
+            var lifecycleHookInfo = ParseLifecycleHookInfo(className, methodName);
+
             var configurationId = $"{versionStr}_{parsedPath.TestType}_{parsedPath.NamedConfig}_{parsedPath.DomainId}";
             var testFullName = $"{className}.{methodName}";
             var testResultId = $"{configurationId}_{parsedPath.BuildId}_{testFullName}";
@@ -223,6 +230,8 @@ public class JUnitParserService : IJUnitParserService
                 TestFullName = testFullName,
                 ClassName = className,
                 MethodName = methodName,
+                LifecycleHookType = lifecycleHookInfo.HookType,
+                LifecycleHookTarget = lifecycleHookInfo.Target,
                 Status = status,
                 ExecutionTimeSeconds = executionTime,
                 Timestamp = testTimestamp,
@@ -242,5 +251,32 @@ public class JUnitParserService : IJUnitParserService
 
             results.Add(testResult);
         }
+    }
+
+    private static (TestLifecycleHookType HookType, string? Target) ParseLifecycleHookInfo(string className, string methodName)
+    {
+        foreach (var candidate in new[] { className, methodName })
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+                continue;
+
+            var match = LifecycleHookRegex.Match(candidate.Trim());
+            if (!match.Success)
+                continue;
+
+            var hookType = match.Groups[1].Value.Trim().ToLowerInvariant() switch
+            {
+                "before all" => TestLifecycleHookType.BeforeAll,
+                "after all" => TestLifecycleHookType.AfterAll,
+                "before each" => TestLifecycleHookType.BeforeEach,
+                "after each" => TestLifecycleHookType.AfterEach,
+                _ => TestLifecycleHookType.Unknown
+            };
+
+            var target = match.Groups[2].Value.Trim();
+            return (hookType, string.IsNullOrWhiteSpace(target) ? null : target);
+        }
+
+        return (TestLifecycleHookType.None, null);
     }
 }

@@ -1,8 +1,10 @@
 @using TestResultBrowser.Web.Models
 @using TestResultBrowser.Web.Services
+@using TestResultBrowser.Web.Common
 @using MudBlazor
 @inject ITestReportUrlService TestReportUrlService
 @inject IReportAssetService ReportAssetService
+@inject ITestDataService TestDataService
 
 @if (IsOpen && TestResult != null)
 {
@@ -32,8 +34,12 @@
 
                             <!-- Test Name -->
                             <div class="mb-3">
-                                <h6>Test Name</h6>
-                                <p>@TestResult.TestFullName</p>
+                                <h6>@(TestResult.IsLifecycleHook ? "Hook" : "Test Name")</h6>
+                                <p>@GetDisplayName(TestResult)</p>
+                                @if (TestResult.IsLifecycleHook && !string.IsNullOrWhiteSpace(TestResult.LifecycleHookTarget))
+                                {
+                                    <div style="font-size: 0.9rem; color: #64748b;">Affected target: @TestResult.LifecycleHookTarget</div>
+                                }
                             </div>
 
                             <!-- Error Message -->
@@ -91,6 +97,56 @@
                                             }
                                         </tbody>
                                     </table>
+                                </div>
+                            }
+
+                            <!-- Cross-Config Matrix -->
+                            @if (_isLoadingCrossConfig)
+                            {
+                                <div class="mb-3">
+                                    <h6>All Configurations</h6>
+                                    <div class="cross-config-loading">Loading cross-configuration data...</div>
+                                </div>
+                            }
+                            else if (_matrixBuildIds.Count > 0)
+                            {
+                                <div class="mb-3">
+                                    <h6>All Configurations</h6>
+                                    <div class="ccm-wrap">
+                                        <table class="ccm-table">
+                                            <thead>
+                                                <tr>
+                                                    <th class="ccm-config-header"></th>
+                                                    @foreach (var bid in _matrixBuildIds)
+                                                    {
+                                                        <th class="ccm-build-header" title="@bid">@GetAbbreviatedBuild(bid)</th>
+                                                    }
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var configId in _matrixConfigIds)
+                                                {
+                                                    var isCurrentConfig = string.Equals(configId, TestResult?.ConfigurationId, StringComparison.OrdinalIgnoreCase);
+                                                    <tr>
+                                                        <td class="ccm-config-label @(isCurrentConfig ? "ccm-config-current" : "")" title="@configId">
+                                                            @configId
+                                                            @if (isCurrentConfig) { <span class="cross-config-current-badge">current</span> }
+                                                        </td>
+                                                        @foreach (var bid in _matrixBuildIds)
+                                                        {
+                                                            var cellResult = _crossConfigMatrix.TryGetValue(configId, out var bmap) && bmap.TryGetValue(bid, out var cr) ? cr : null;
+                                                            var dotClass = GetDotClass(cellResult);
+                                                            var tip = GetCellTooltip(bid, cellResult);
+                                                            var isActive = cellResult != null && IsActiveCrossConfig(cellResult);
+                                                            <td class="ccm-cell @(isActive ? "ccm-cell-active" : "")" title="@tip" @onclick="(() => OnMatrixCellClick(cellResult))">
+                                                                <span class="ccm-dot @dotClass">&#x25CF;</span>
+                                                            </td>
+                                                        }
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             }
 
@@ -188,7 +244,16 @@
     [Parameter]
     public EventCallback OnClose { get; set; }
 
+    [Parameter]
+    public List<string>? CurrentWindowBuildIds { get; set; }
+
     private string? selectedHistoryId;
+    private List<TestResult> _crossConfigResults = new();
+    private bool _isLoadingCrossConfig;
+    private List<string> _matrixBuildIds = new();
+    private List<string> _matrixConfigIds = new();
+    private Dictionary<string, Dictionary<string, TestResult>> _crossConfigMatrix = new(StringComparer.OrdinalIgnoreCase);
+    private string? _lastCrossConfigTestName;
     private ReportAssetInfo? AssetInfo { get; set; }
     private bool IsLoadingAssets { get; set; }
     private string? lastAssetTestId;
@@ -204,6 +269,7 @@
     protected override async Task OnParametersSetAsync()
     {
         await LoadAssetsAsync();
+        await LoadCrossConfigResultsAsync();
     }
 
     private string? BuildFlakyIndicator()
@@ -246,6 +312,27 @@
         await OnClose.InvokeAsync();
     }
 
+    private static string GetDisplayName(TestResult testResult)
+    {
+        if (!testResult.IsLifecycleHook)
+        {
+            return testResult.TestFullName;
+        }
+
+        var prefix = testResult.LifecycleHookType switch
+        {
+            TestLifecycleHookType.BeforeAll => "Setup failure (before all)",
+            TestLifecycleHookType.BeforeEach => "Setup failure (before each)",
+            TestLifecycleHookType.AfterEach => "Teardown failure (after each)",
+            TestLifecycleHookType.AfterAll => "Teardown failure (after all)",
+            _ => "Lifecycle hook failure"
+        };
+
+        return string.IsNullOrWhiteSpace(testResult.LifecycleHookTarget)
+            ? prefix
+            : $"{prefix} for {testResult.LifecycleHookTarget}";
+    }
+
     private string GetReportUrl()
     {
         var reportPath = ActiveTest?.ReportDirectoryPath ?? string.Empty;
@@ -275,13 +362,139 @@
         if (!string.IsNullOrEmpty(selectedHistoryId))
         {
             var match = History.FirstOrDefault(h => string.Equals(h.Id, selectedHistoryId, StringComparison.OrdinalIgnoreCase));
-            if (match != null)
-            {
-                return match;
-            }
+            if (match != null) return match;
+
+            var crossMatch = _crossConfigResults.FirstOrDefault(r => string.Equals(r.Id, selectedHistoryId, StringComparison.OrdinalIgnoreCase));
+            if (crossMatch != null) return crossMatch;
         }
 
         return History[0];
+    }
+
+    private int _lastWindowBuildIdsHash;
+
+    private async Task LoadCrossConfigResultsAsync()
+    {
+        if (!IsOpen || TestResult == null)
+        {
+            _crossConfigResults = new();
+            _matrixBuildIds = new();
+            _matrixConfigIds = new();
+            _crossConfigMatrix = new(StringComparer.OrdinalIgnoreCase);
+            _lastCrossConfigTestName = null;
+            return;
+        }
+
+        var testName = TestResult.TestFullName;
+        var windowHash = CurrentWindowBuildIds?.Count > 0 
+            ? CurrentWindowBuildIds.Aggregate(0, (h, b) => HashCode.Combine(h, StringComparer.OrdinalIgnoreCase.GetHashCode(b)))
+            : 0;
+        if (string.Equals(_lastCrossConfigTestName, testName, StringComparison.OrdinalIgnoreCase) 
+            && _lastWindowBuildIdsHash == windowHash)
+        {
+            return;
+        }
+
+        _isLoadingCrossConfig = true;
+        StateHasChanged();
+        try
+        {
+            var allResults = await Task.Run(() => TestDataService.GetTestResultsByTestName(testName).ToList());
+
+            if (CurrentWindowBuildIds?.Count > 0)
+            {
+                var buildSet = new HashSet<string>(CurrentWindowBuildIds, StringComparer.OrdinalIgnoreCase);
+                allResults = allResults.Where(r => buildSet.Contains(r.BuildId)).ToList();
+            }
+
+            // One result per (build, config): prefer Fail > Skip > Pass, then latest timestamp
+            allResults = allResults
+                .GroupBy(r => $"{r.BuildId}|{r.ConfigurationId}")
+                .Select(g => g
+                    .OrderBy(r => r.Status == TestStatus.Fail ? 0 : r.Status == TestStatus.Skip ? 1 : 2)
+                    .ThenByDescending(r => r.Timestamp)
+                    .First())
+                .ToList();
+
+            _crossConfigResults = allResults;
+            BuildCrossConfigMatrix(allResults, out _matrixBuildIds, out _matrixConfigIds, out _crossConfigMatrix);
+            _lastCrossConfigTestName = testName;
+            _lastWindowBuildIdsHash = windowHash;
+        }
+        finally
+        {
+            _isLoadingCrossConfig = false;
+            StateHasChanged();
+        }
+    }
+    private static void BuildCrossConfigMatrix(
+        List<TestResult> results,
+        out List<string> buildIds,
+        out List<string> configIds,
+        out Dictionary<string, Dictionary<string, TestResult>> matrix)
+    {
+        matrix = new Dictionary<string, Dictionary<string, TestResult>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var r in results)
+        {
+            if (!matrix.TryGetValue(r.ConfigurationId, out var buildMap))
+            {
+                buildMap = new Dictionary<string, TestResult>(StringComparer.OrdinalIgnoreCase);
+                matrix[r.ConfigurationId] = buildMap;
+            }
+            buildMap[r.BuildId] = r;
+        }
+
+        buildIds = results
+            .Select(r => r.BuildId)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(b => BuildNumberExtractor.ExtractBuildNumber(b))
+            .ToList();
+
+        configIds = results
+            .Select(r => r.ConfigurationId)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(c => c, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string GetAbbreviatedBuild(string buildId)
+    {
+        var num = BuildNumberExtractor.ExtractBuildNumber(buildId);
+        return num > 0 ? $"#{num}" : buildId;
+    }
+
+    private static string GetDotClass(TestResult? result) => result?.Status switch
+    {
+        TestStatus.Fail => "ccm-dot-fail",
+        TestStatus.Skip => "ccm-dot-skip",
+        TestStatus.Pass => "ccm-dot-pass",
+        _ => "ccm-dot-none"
+    };
+
+    private static string GetCellTooltip(string buildId, TestResult? result)
+    {
+        if (result == null) return $"{buildId}: Not run";
+        var status = result.Status switch
+        {
+            TestStatus.Fail => "Failed",
+            TestStatus.Skip => "Skipped",
+            _ => "Passed"
+        };
+        var parts = new List<string> { $"{buildId}: {status}", result.ConfigurationId, result.Timestamp.ToString("yyyy-MM-dd HH:mm") };
+        if (!string.IsNullOrEmpty(result.ErrorMessage))
+            parts.Add(result.ErrorMessage.Length > 120 ? result.ErrorMessage[..120] + "\u2026" : result.ErrorMessage);
+        return string.Join("\n", parts);
+    }
+
+    private bool IsActiveCrossConfig(TestResult item)
+    {
+        return string.Equals(selectedHistoryId, item.Id, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task OnMatrixCellClick(TestResult? result)
+    {
+        if (result == null) return;
+        await SelectHistory(result);
     }
 
     private async Task LoadAssetsAsync()
@@ -393,6 +606,109 @@
         outline: 2px solid #5b67f2;
         outline-offset: -2px;
     }
+
+    .cross-config-current-badge {
+        display: inline-block;
+        margin-left: 6px;
+        padding: 1px 6px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        border-radius: 4px;
+        background-color: #e0e7ff;
+        color: #4338ca;
+        vertical-align: middle;
+    }
+
+    .cross-config-loading {
+        background: #f0f4f8;
+        border: 1px solid #d8e1ea;
+        border-radius: 6px;
+        padding: 12px;
+        color: #4b5563;
+        font-size: 0.9rem;
+    }
+
+    .ccm-wrap {
+        overflow-x: auto;
+        max-height: 280px;
+        overflow-y: auto;
+    }
+
+    .ccm-table {
+        border-collapse: collapse;
+        font-size: 0.82rem;
+        white-space: nowrap;
+    }
+
+    .ccm-table thead th {
+        position: sticky;
+        top: 0;
+        background: #f8f9fa;
+        z-index: 1;
+    }
+
+    .ccm-config-header {
+        min-width: 10px;
+    }
+
+    .ccm-build-header {
+        width: 36px;
+        text-align: center;
+        font-weight: 600;
+        padding: 4px 4px;
+        color: #374151;
+        font-size: 0.75rem;
+        cursor: default;
+    }
+
+    .ccm-config-label {
+        padding: 3px 10px 3px 0;
+        text-overflow: ellipsis;
+        overflow: hidden;
+        max-width: 280px;
+        white-space: nowrap;
+        color: #374151;
+        font-size: 0.82rem;
+    }
+
+    .ccm-config-label.ccm-config-current {
+        font-weight: 600;
+    }
+
+    .ccm-cell {
+        text-align: center;
+        padding: 2px 3px;
+        border-radius: 3px;
+        cursor: default;
+        transition: background 0.1s;
+    }
+
+    .ccm-cell:has(.ccm-dot-fail),
+    .ccm-cell:has(.ccm-dot-skip),
+    .ccm-cell:has(.ccm-dot-pass) {
+        cursor: pointer;
+    }
+
+    .ccm-cell:hover {
+        background: #e8eaf6;
+    }
+
+    .ccm-cell-active {
+        background: #dde1fb;
+        outline: 2px solid #5b67f2;
+        outline-offset: -2px;
+    }
+
+    .ccm-dot {
+        font-size: 0.95rem;
+        line-height: 1;
+        display: inline-block;
+    }
+
+    .ccm-dot-fail { color: #dc3545; }
+    .ccm-dot-skip { color: #d4a017; }
+    .ccm-dot-pass { color: #28a745; }
+    .ccm-dot-none { color: #d1d5db; }
 
     @@media (max-width: 1000px) {
         .test-details-grid {
