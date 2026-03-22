@@ -120,9 +120,15 @@ public class ConfigurationHistoryTests : IAsyncLifetime
         var configOptions = await _page.QuerySelectorAllAsync(".modal-body [style*='padding: 12px']");
         configOptions.Count.ShouldBeGreaterThan(1, "Should have multiple configuration options");
 
-        // Click the second configuration option
+        // Click the second configuration option (dialog is multi-select, requires Apply to close)
         await configOptions[1].ClickAsync();
-        await _page.WaitForTimeoutAsync(2000); // Wait for dialog to close and data to load
+        await _page.WaitForTimeoutAsync(500);
+
+        // Click Apply to close the dialog and apply the configuration
+        var applyConfigButton = await _page.QuerySelectorAsync(".modal-footer button.btn-primary");
+        applyConfigButton.ShouldNotBeNull("Apply button in config dialog should exist");
+        await applyConfigButton!.ClickAsync();
+        await _page.WaitForSelectorAsync(".modal", new PageWaitForSelectorOptions { State = WaitForSelectorState.Detached, Timeout = 10000 }); // Wait for dialog to close and data to load
 
         // Verify configuration changed
         var newConfigButton = await _page.QuerySelectorAsync(".header-config");

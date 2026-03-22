@@ -95,6 +95,21 @@ public class HierarchyNode
     /// Work item references associated with this test node (empty for non-test nodes).
     /// </summary>
     public List<WorkItemReference> WorkItemReferences { get; set; } = new();
+
+    /// <summary>
+    /// Additional badges rendered next to the node name.
+    /// </summary>
+    public List<HierarchyNodeBadge> Badges { get; set; } = new();
+
+    /// <summary>
+    /// Optional action label rendered for this node.
+    /// </summary>
+    public string? ActionLabel { get; set; }
+
+    /// <summary>
+    /// Whether the node action has been activated (e.g. acknowledged).
+    /// </summary>
+    public bool IsAcknowledged { get; set; }
 }
 
 /// <summary>

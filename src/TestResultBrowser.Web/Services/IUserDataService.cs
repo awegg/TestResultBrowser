@@ -41,4 +41,19 @@ public interface IUserDataService
     /// Save or update dashboard configuration
     /// </summary>
     Task<DashboardConfiguration> SaveDashboardConfigAsync(DashboardConfiguration config);
+
+    /// <summary>
+    /// Get all shared morning-triage acknowledgements.
+    /// </summary>
+    Task<List<MorningTriageAcknowledgement>> GetMorningTriageAcknowledgementsAsync();
+
+    /// <summary>
+    /// Save or update a shared morning-triage acknowledgement.
+    /// </summary>
+    Task<MorningTriageAcknowledgement> SaveMorningTriageAcknowledgementAsync(MorningTriageAcknowledgement acknowledgement);
+
+    /// <summary>
+    /// Delete a shared morning-triage acknowledgement.
+    /// </summary>
+    Task<bool> DeleteMorningTriageAcknowledgementAsync(string acknowledgementId);
 }

@@ -9,11 +9,16 @@ namespace TestResultBrowser.Web.Services;
 public class TriageService : ITriageService
 {
     private readonly ITestDataService _testDataService;
+    private readonly IFailureClassificationService _failureClassificationService;
     private readonly ILogger<TriageService> _logger;
 
-    public TriageService(ITestDataService testDataService, ILogger<TriageService> logger)
+    public TriageService(
+        ITestDataService testDataService,
+        IFailureClassificationService failureClassificationService,
+        ILogger<TriageService> logger)
     {
         _testDataService = testDataService;
+        _failureClassificationService = failureClassificationService;
         _logger = logger;
     }
 
@@ -41,23 +46,52 @@ public class TriageService : ITriageService
         string yesterdayBuildId,
         List<string>? selectedDomains = null)
     {
+        return await GetMorningTriageAsync(todayBuildId, new List<string> { yesterdayBuildId }, selectedDomains);
+    }
+
+    /// <inheritdoc/>
+    public async Task<MorningTriageResult?> GetMorningTriageAsync(
+        string todayBuildId,
+        List<string> baselineBuildIds,
+        List<string>? selectedDomains = null)
+    {
         return await Task.Run(() =>
         {
-            _logger.LogInformation("Starting morning triage: {Today} vs {Yesterday}", todayBuildId, yesterdayBuildId);
+            var baselines = baselineBuildIds?
+                .Where(buildId => !string.IsNullOrWhiteSpace(buildId))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList() ?? new List<string>();
+
+            if (baselines.Count == 0)
+            {
+                _logger.LogWarning("No baseline builds supplied for triage comparison.");
+                return null;
+            }
+
+            var primaryBaseline = baselines[0];
+
+            _logger.LogInformation("Starting morning triage: {Today} vs {Baselines}", todayBuildId, string.Join(", ", baselines));
 
             // Get test results for both builds
             var todayTests = _testDataService.GetTestResultsByBuild(todayBuildId).ToList();
-            var yesterdayTests = _testDataService.GetTestResultsByBuild(yesterdayBuildId).ToList();
+            var baselineTests = baselines
+                .Select(buildId => (BuildId: buildId, Tests: _testDataService.GetTestResultsByBuild(buildId).ToList()))
+                .ToList();
+            var primaryBaselineTests = baselineTests[0].Tests;
 
             // Apply domain filter if specified
             if (selectedDomains != null && selectedDomains.Any())
             {
                 var domainSet = new HashSet<string>(selectedDomains);
                 todayTests = todayTests.Where(t => domainSet.Contains(t.DomainId)).ToList();
-                yesterdayTests = yesterdayTests.Where(t => domainSet.Contains(t.DomainId)).ToList();
+                for (var i = 0; i < baselineTests.Count; i++)
+                {
+                    baselineTests[i] = (baselineTests[i].BuildId, baselineTests[i].Tests.Where(t => domainSet.Contains(t.DomainId)).ToList());
+                }
+                primaryBaselineTests = baselineTests[0].Tests;
             }
 
-            if (!todayTests.Any() || !yesterdayTests.Any())
+            if (!todayTests.Any() || baselineTests.All(item => item.Tests.Count == 0))
             {
                 _logger.LogWarning("No test results found for comparison");
                 return null;
@@ -68,9 +102,13 @@ public class TriageService : ITriageService
                 .GroupBy(t => (t.TestFullName, t.ConfigurationId))
                 .ToDictionary(g => g.Key, g => g.OrderByDescending(t => t.Timestamp).First());
 
-            var yesterdayByKey = yesterdayTests
-                .GroupBy(t => (t.TestFullName, t.ConfigurationId))
-                .ToDictionary(g => g.Key, g => g.OrderByDescending(t => t.Timestamp).First());
+            var baselineLookups = baselineTests
+                .Select(item => item.Tests
+                    .GroupBy(t => (t.TestFullName, t.ConfigurationId))
+                    .ToDictionary(g => g.Key, g => g.OrderByDescending(t => t.Timestamp).First()))
+                .ToList();
+
+            var primaryBaselineByKey = baselineLookups[0];
 
             var newFailuresMap = new Dictionary<(string TestFullName, string DomainId, string FeatureId), TriageNewFailure>();
             var fixedTestsMap = new Dictionary<(string TestFullName, string DomainId, string FeatureId), TriageFixedTest>();
@@ -78,12 +116,22 @@ public class TriageService : ITriageService
 
             foreach (var (key, todayResult) in todayByKey)
             {
-                if (!yesterdayByKey.TryGetValue(key, out var yesterdayResult))
+                var matchingBaselines = baselineLookups
+                    .Select(lookup => lookup.TryGetValue(key, out var baselineResult) ? baselineResult : null)
+                    .Where(result => result != null)
+                    .Select(result => result!)
+                    .ToList();
+
+                if (matchingBaselines.Count == 0)
                 {
                     continue;
                 }
 
-                if (todayResult.Status == TestStatus.Fail && yesterdayResult.Status == TestStatus.Pass)
+                var passedInAnyBaseline = matchingBaselines.Any(result => result.Status == TestStatus.Pass);
+                var failedInPrimaryBaseline = primaryBaselineByKey.TryGetValue(key, out var primaryBaselineResult)
+                    && primaryBaselineResult.Status == TestStatus.Fail;
+
+                if (todayResult.Status == TestStatus.Fail && passedInAnyBaseline)
                 {
                     var bucketKey = (todayResult.TestFullName, todayResult.DomainId, todayResult.FeatureId);
                     if (!newFailuresMap.TryGetValue(bucketKey, out var entry))
@@ -96,13 +144,15 @@ public class TriageService : ITriageService
                             AffectedConfigs = new List<string>(),
                             ErrorMessage = todayResult.ErrorMessage ?? "No error message",
                             StackTrace = todayResult.StackTrace,
-                            FailedOn = todayResult.Timestamp
+                            FailedOn = todayResult.Timestamp,
+                            Category = _failureClassificationService.Classify(todayResult),
+                            FailureSignature = _failureClassificationService.BuildFailureSignature(todayResult)
                         };
                         newFailuresMap[bucketKey] = entry;
                     }
                     entry.AffectedConfigs.Add(todayResult.ConfigurationId);
                 }
-                else if (todayResult.Status == TestStatus.Pass && yesterdayResult.Status == TestStatus.Fail)
+                else if (todayResult.Status == TestStatus.Pass && failedInPrimaryBaseline)
                 {
                     var bucketKey = (todayResult.TestFullName, todayResult.DomainId, todayResult.FeatureId);
                     if (!fixedTestsMap.TryGetValue(bucketKey, out var entry))
@@ -119,7 +169,7 @@ public class TriageService : ITriageService
                     }
                     entry.FixedInConfigs.Add(todayResult.ConfigurationId);
                 }
-                else if (todayResult.Status == TestStatus.Fail && yesterdayResult.Status == TestStatus.Fail)
+                else if (todayResult.Status == TestStatus.Fail && !passedInAnyBaseline)
                 {
                     stillFailing.Add(todayResult);
                 }
@@ -134,8 +184,23 @@ public class TriageService : ITriageService
             var todayPassRate = todayTotal > 0 ? (double)todayPassed / todayTotal * 100 : 0;
 
             int yesterdayPassed = 0, yesterdayTotal = 0;
-            foreach (var t in yesterdayTests) { if (t.Status != TestStatus.Skip) { yesterdayTotal++; if (t.Status == TestStatus.Pass) yesterdayPassed++; } }
+            foreach (var t in primaryBaselineTests) { if (t.Status != TestStatus.Skip) { yesterdayTotal++; if (t.Status == TestStatus.Pass) yesterdayPassed++; } }
             var yesterdayPassRate = yesterdayTotal > 0 ? (double)yesterdayPassed / yesterdayTotal * 100 : 0;
+
+            var expectedConfigurations = GetExpectedConfigurations(todayBuildId, primaryBaseline, selectedDomains);
+            var actualConfigurations = todayTests
+                .Select(t => t.ConfigurationId)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var missingConfigurations = expectedConfigurations
+                .Where(configId => !actualConfigurations.Contains(configId))
+                .OrderBy(configId => configId, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var completenessDrop = yesterdayTotal > 0
+                ? Math.Max(0, yesterdayTotal - todayTotal)
+                : 0;
+            var isRunComplete = missingConfigurations.Count == 0 && (yesterdayTotal == 0 || todayTotal >= yesterdayTotal * 0.9);
+            var completenessMessage = BuildCompletenessMessage(isRunComplete, missingConfigurations.Count, completenessDrop, todayTotal, yesterdayTotal);
 
             _logger.LogInformation(
                 "Triage complete: {NewFailures} new failures, {FixedTests} fixed, {StillFailing} still failing",
@@ -144,16 +209,80 @@ public class TriageService : ITriageService
             return new MorningTriageResult
             {
                 TodayBuildId = todayBuildId,
-                YesterdayBuildId = yesterdayBuildId,
+                YesterdayBuildId = primaryBaseline,
                 NewFailures = newFailures,
                 FixedTests = fixedTests,
                 StillFailing = stillFailing,
                 TodayPassRate = todayPassRate,
                 YesterdayPassRate = yesterdayPassRate,
                 TotalTestsToday = todayTotal,
-                TotalTestsYesterday = yesterdayTotal
+                TotalTestsYesterday = yesterdayTotal,
+                ExpectedConfigurations = expectedConfigurations,
+                MissingConfigurations = missingConfigurations,
+                IsRunComplete = isRunComplete,
+                CompletenessMessage = completenessMessage
             };
         }).ConfigureAwait(false);
+    }
+
+    private List<string> GetExpectedConfigurations(string todayBuildId, string yesterdayBuildId, List<string>? selectedDomains)
+    {
+        var buildIds = _testDataService.GetAllBuildIds()
+            .OrderByDescending(BuildNumberExtractor.ExtractBuildNumber)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(5)
+            .ToList();
+
+        if (!buildIds.Contains(todayBuildId, StringComparer.OrdinalIgnoreCase))
+        {
+            buildIds.Insert(0, todayBuildId);
+        }
+
+        if (!buildIds.Contains(yesterdayBuildId, StringComparer.OrdinalIgnoreCase))
+        {
+            buildIds.Insert(1, yesterdayBuildId);
+        }
+
+        var domainSet = selectedDomains != null && selectedDomains.Any()
+            ? new HashSet<string>(selectedDomains, StringComparer.OrdinalIgnoreCase)
+            : null;
+
+        return buildIds
+            .Take(5)
+            .SelectMany(buildId => _testDataService.GetTestResultsByBuild(buildId))
+            .Where(test => domainSet == null || domainSet.Contains(test.DomainId))
+            .Select(test => test.ConfigurationId)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(configId => configId, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string BuildCompletenessMessage(bool isRunComplete, int missingConfigCount, int completenessDrop, int todayTotal, int yesterdayTotal)
+    {
+        if (isRunComplete)
+        {
+            return "Run looks complete for overnight triage.";
+        }
+
+        var parts = new List<string>();
+        if (missingConfigCount > 0)
+        {
+            parts.Add($"{missingConfigCount} configurations missing");
+        }
+
+        if (completenessDrop > 0)
+        {
+            parts.Add($"{completenessDrop} fewer executed tests than previous run");
+        }
+
+        if (parts.Count == 0 && todayTotal < yesterdayTotal)
+        {
+            parts.Add("test volume is lower than previous run");
+        }
+
+        return parts.Count == 0
+            ? "Run may be incomplete."
+            : string.Join("; ", parts) + ".";
     }
 
     /// <inheritdoc/>

@@ -48,6 +48,16 @@ public class TestResultBrowserOptions
     /// Cache configuration settings
     /// </summary>
     public CacheSettings Cache { get; set; } = new();
+
+    /// <summary>
+    /// Optional ownership mapping for morning triage display.
+    /// </summary>
+    public Dictionary<string, string> DomainOwners { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Optional feature ownership mapping for morning triage display.
+    /// </summary>
+    public Dictionary<string, string> FeatureOwners { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 /// <summary>

@@ -2,18 +2,25 @@
 @rendermode InteractiveServer
 @using TestResultBrowser.Web.Models
 @using TestResultBrowser.Web.Services
+@using TestResultBrowser.Web.Common
+@using Microsoft.Extensions.Options
 @using MudBlazor
 @using Microsoft.AspNetCore.Components
 @using Microsoft.JSInterop
 @using TestResultBrowser.Web.Components
 @inject IConfigurationHistoryService ConfigHistoryService
+@inject ITriageService TriageService
 @inject IUserDataService UserDataService
 @inject IFeatureGroupingService FeatureGroupingService
+@inject IFlakyTestDetectionService FlakyTestDetectionService
+@inject IWorkItemLinkService WorkItemLinkService
+@inject IOptions<TestResultBrowserOptions> BrowserOptions
 @inject ISnackbar Snackbar
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JS
+@inject ITestDataService TestDataService
 
-<PageTitle>Configuration History</PageTitle>
+<PageTitle>@(isTriageMode ? "Triage History" : "Configuration History")</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
     
@@ -26,17 +33,66 @@
                       Class="header-control header-config text-left"
                       Style="justify-content: flex-start;">
                 <MudIcon Icon="@Icons.Material.Filled.Settings" Class="mr-2"></MudIcon>
-                @if (string.IsNullOrEmpty(selectedConfiguration))
+                @if (selectedConfigurations.Count == 0)
                 {
                     <span>Select configuration…</span>
                 }
+                else if (selectedConfigurations.Count == 1)
+                {
+                    <span>@ConfigurationLabelHelper.GetConfigurationLabel(selectedConfigurations.First())</span>
+                }
                 else
                 {
-                    <span>@ConfigurationLabelHelper.GetConfigurationLabel(selectedConfiguration)</span>
+                    <span>@selectedConfigurations.Count configurations selected</span>
                 }
                 <MudSpacer />
                 <MudIcon Icon="@Icons.Material.Filled.MoreVert"></MudIcon>
             </MudButton>
+
+            @if (isTriageMode)
+            {
+                <MudSelect T="string"
+                           Label="Current build"
+                           Dense="true"
+                           Variant="Variant.Outlined"
+                           Class="header-control triage-build-select"
+                           Value="@selectedCurrentBuild" ValueChanged="@OnCurrentBuildChanged">
+                    @foreach (var build in availableBuilds)
+                    {
+                        <MudSelectItem T="string" Value="@build">@build</MudSelectItem>
+                    }
+                </MudSelect>
+
+                <MudMenu Variant="Variant.Outlined"
+                         Color="Color.Primary"
+                         Dense="true"
+                         Label="@GetBaselineMenuLabel()"
+                         Class="header-control triage-baseline-menu">
+                    <div style="padding:0.75rem; width:340px; max-height:420px; overflow:auto;">
+                        <MudTextField T="string"
+                                      Value="@baselineBuildSearch"
+                                      ValueChanged="OnBaselineSearchChanged"
+                                      Placeholder="Search baselines"
+                                      Dense="true"
+                                      Variant="Variant.Outlined"
+                                      Immediate="true"
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Search" />
+                        <div style="display:flex; gap:0.35rem; margin:0.5rem 0; flex-wrap:wrap;">
+                            <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="SelectVisibleBaselineBuilds">Select visible</MudButton>
+                            <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="ClearBaselineBuilds">Clear</MudButton>
+                        </div>
+                        @foreach (var build in GetFilteredBaselineBuildOptions())
+                        {
+                            <MudCheckBox T="bool"
+                                         Value="@selectedBaselineBuilds.Contains(build)"
+                                         ValueChanged="@(isChecked => ToggleBaselineBuild(build, isChecked))"
+                                         Label="@build"
+                                         Dense="true" />
+                        }
+                    </div>
+                </MudMenu>
+            }
 
             <MudNumericField Value="@numberOfBuilds"
                              ValueChanged="@(async (int newValue) => await OnNumberOfBuildsChanged(newValue))"
@@ -68,7 +124,7 @@
         <MudItem xs="12" md="12" Class="main-content">
             @* Quick Actions *@
             <MudPaper Class="mb-4 pa-2">
-                <div class="d-flex gap-2">
+                <div class="d-flex gap-2 align-center">
                     <LoadFilterDropdown @ref="loadFilterDropdown" Username="@currentUsername" OnFilterLoaded="ApplyFilter" OnCopyLinkRequested="CopyFilterLink" />
                     <MudButton Variant="Variant.Outlined" Color="Color.Info" OnClick="OpenSaveFilterDialog" Disabled="@(historyResult == null)">
                         <MudIcon Icon="@Icons.Material.Filled.Save" Class="mr-1" /> Save Filter
@@ -86,11 +142,50 @@
                         </MudTooltip>
                     }
                 </div>
+                @if (isTriageMode)
+                {
+                    <div class="d-flex gap-3 align-center mt-2">
+                        <MudSwitch T="bool" Dense="true" Color="Color.Primary"
+                                   Value="hideFlakyTests"
+                                   ValueChanged="@(async (bool v) => { hideFlakyTests = v; historyResult = await BuildTriageHistoryResultAsync(); })">Hide flaky</MudSwitch>
+                        <MudSwitch T="bool" Dense="true" Color="Color.Primary"
+                                   Value="hideInfrastructureIssues"
+                                   ValueChanged="@(async (bool v) => { hideInfrastructureIssues = v; historyResult = await BuildTriageHistoryResultAsync(); })">Hide infra/setup</MudSwitch>
+                        <MudSwitch T="bool" Dense="true" Color="Color.Primary"
+                                   Value="hideAcknowledgedFailures"
+                                   ValueChanged="@(async (bool v) => { hideAcknowledgedFailures = v; historyResult = await BuildTriageHistoryResultAsync(); })">Hide acknowledged</MudSwitch>
+                    </div>
+                }
             </MudPaper>
 
             @* Stats Section *@
             @if (historyResult != null)
             {
+                @if (isTriageMode && triageResult != null)
+                {
+                    <MudPaper Class="mb-4 pa-3" Style="@GetTriageBannerStyle()">
+                        <MudStack Row="true" AlignItems="AlignItems.Start" Justify="Justify.SpaceBetween" Style="gap:1rem; flex-wrap:wrap;">
+                            <div>
+                                <MudText Typo="Typo.subtitle1" Style="font-weight:700;">What changed vs selected builds</MudText>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                    @triageResult.TodayBuildId (@GetBuildDisplayTime(triageResult.TodayBuildId)) vs @GetBaselineSummaryText()
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="@(triageResult.IsRunComplete ? Color.Success : Color.Warning)">
+                                    @triageResult.CompletenessMessage
+                                </MudText>
+                            </div>
+                            <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+                                <MudChip T="string" Color="Color.Error" Variant="Variant.Filled">New failures: @triageVisibleFailureCount</MudChip>
+                                <MudChip T="string" Color="Color.Success" Variant="Variant.Outlined">Fixed: @triageResult.FixedTests.Count</MudChip>
+                                <MudChip T="string" Color="Color.Warning" Variant="Variant.Outlined">Still failing: @triageResult.StillFailing.Count</MudChip>
+                                <MudChip T="string" Color="@(triageResult.MissingConfigurations.Count == 0 ? Color.Success : Color.Warning)" Variant="Variant.Outlined">Missing configs: @triageResult.MissingConfigurations.Count</MudChip>
+                            </div>
+                        </MudStack>
+                    </MudPaper>
+                }
+
+                @if (!isTriageMode)
+                {
                 <MudGrid Class="mb-4">
                     <MudItem xs="12" sm="6" md="2">
                         <MudCard Class="slim-card" Variant="Variant.Outlined">
@@ -139,12 +234,13 @@
                         </MudCard>
                     </MudItem>
                 </MudGrid>
+                }
 
                 @* Hierarchical Tree View *@
                 <MudPaper Class="pa-4">
-                    @if (historyResult.HierarchyNodes.Count == 0)
+                    @if (historyResult.TotalTests == 0 && !historyResult.HierarchyNodes.Any(n => n.Children.Count > 0))
                     {
-                        <MudText Color="Color.Default" Typo="Typo.body2">No test results found for selected configuration.</MudText>
+                        <MudText Color="Color.Default" Typo="Typo.body2">@(isTriageMode ? "No regressions found for the selected comparison." : "No test results found for selected configuration.")</MudText>
                     }
                     else
                     {
@@ -157,7 +253,8 @@
                                 {
                                     <HierarchyTreeView Node="filtered" 
                                                        HistoryColumns="historyResult.HistoryColumns"
-                                                       OnTestSelected="@((testInfo) => SelectTest(testInfo))" />
+                                                       OnTestSelected="@((testInfo) => SelectTest(testInfo))"
+                                                       OnNodeAction="@OnNodeAction" />
                                 }
                             }
                         </div>
@@ -170,9 +267,9 @@
                     <MudProgressCircular Size="Size.Large" Indeterminate="true" />
                 </MudContainer>
             }
-            else if (!string.IsNullOrEmpty(selectedConfiguration))
+            else if (selectedConfigurations.Any())
             {
-                <MudAlert Severity="Severity.Info">Select a configuration and click Refresh to load data.</MudAlert>
+                <MudAlert Severity="Severity.Info">Select configurations and click Refresh to load data.</MudAlert>
             }
         </MudItem>
     </MudGrid>
@@ -195,13 +292,13 @@
                     <div style="max-height: 500px; overflow-y: auto;">
                         @foreach (var configMeta in GetFilteredConfigurations())
                         {
-                            <div style="padding: 12px; cursor: pointer; background-color: @(configMeta.Id == selectedConfiguration ? "#e3f2fd" : "transparent"); border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;"
-                                 @onclick="@(() => SelectConfigurationFromDialog(configMeta.Id))">
+                            <div style="padding: 12px; cursor: pointer; background-color: @(selectedConfigurations.Contains(configMeta.Id) ? "#e3f2fd" : "transparent"); border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;"
+                                 @onclick="@(() => ToggleConfigurationFromDialog(configMeta.Id))">
                                 <div style="flex: 1;">
                                     <div style="font-weight: 500;">@ConfigurationLabelHelper.GetConfigurationLabel(configMeta.Id)</div>
                                     <div style="font-size: 0.85rem; color: #666; margin-top: 2px;">Last updated: @configMeta.LastUpdateDisplay</div>
                                 </div>
-                                @if (configMeta.Id == selectedConfiguration)
+                                @if (selectedConfigurations.Contains(configMeta.Id))
                                 {
                                     <span style="color: #1976d2; font-size: 1.2rem;">✓</span>
                                 }
@@ -210,6 +307,7 @@
                     </div>
                 </div>
                 <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" @onclick="ApplyConfigurationSelection">Apply</button>
                     <button type="button" class="btn btn-secondary" @onclick="() => showConfigurationDialog = false">Cancel</button>
                 </div>
             </div>
@@ -252,16 +350,31 @@
 
     [SupplyParameterFromQuery(Name = "feature")]
     public string? FeatureFromUrl { get; set; }
+
+    [SupplyParameterFromQuery(Name = "mode")]
+    public string? ModeFromUrl { get; set; }
+
+    [SupplyParameterFromQuery(Name = "currentBuild")]
+    public string? CurrentBuildFromUrl { get; set; }
+
+    [SupplyParameterFromQuery(Name = "baselineBuild")]
+    public string? BaselineBuildsFromUrl { get; set; }
     
     private List<string> availableConfigurations = new();
     private List<ConfigurationMetadata> configurationMetadata = new();
     private string selectedConfiguration = string.Empty;
+    private HashSet<string> selectedConfigurations = new(StringComparer.OrdinalIgnoreCase);
     private ConfigurationHistoryResult? historyResult;
+    private MorningTriageResult? triageResult;
     private int numberOfBuilds = 5;
     private bool isLoading = false;
     private string searchText = string.Empty;
+    private bool isTriageMode;
     private bool showConfigurationDialog = false;
     private bool showOnlyFailed = false;
+    private bool hideFlakyTests = false;
+    private bool hideInfrastructureIssues = false;
+    private bool hideAcknowledgedFailures = false;
     private SelectedTestInfo? selectedTestInfo = null;  // Track selected test with column info
     private bool showFeatureDialog = false;   // Controls feature selection dialog
     private bool showTestDetailsDialog = false;  // Controls test details modal
@@ -275,33 +388,54 @@
     private int? lastAppliedFilterId;  // Tracks the last applied filter for sharing
     private bool featureFromUrlApplied = false;
     private string? lastFeatureFromUrl;
+    private List<string> availableBuilds = new();
+    private string selectedCurrentBuild = string.Empty;
+    private HashSet<string> selectedBaselineBuilds = new(StringComparer.OrdinalIgnoreCase);
+    private string baselineBuildSearch = string.Empty;
+    private HashSet<string> flakyTestNames = new(StringComparer.OrdinalIgnoreCase);
+    private string? flakySignature;
+    private Dictionary<string, MorningTriageAcknowledgement> acknowledgementsById = new(StringComparer.OrdinalIgnoreCase);
+    private int triageVisibleFailureCount;
 
     // Expand All protection
     private const int MAX_EXPAND_ALL_NODES = 5000;
 
     protected override async Task OnInitializedAsync()
     {
-        var totalStopwatch = System.Diagnostics.Stopwatch.StartNew();
+        isTriageMode = string.Equals(ModeFromUrl, "triage", StringComparison.OrdinalIgnoreCase)
+            || new Uri(NavigationManager.Uri).AbsolutePath.TrimEnd('/').Equals("/morning-triage", StringComparison.OrdinalIgnoreCase);
 
-        var sw = System.Diagnostics.Stopwatch.StartNew();
         await LoadAvailableConfigurations();
+        availableBuilds = (await ConfigHistoryService.GetAvailableBuildsAsync())
+            .OrderByDescending(BuildNumberExtractor.ExtractBuildNumber)
+            .ToList();
 
         await LoadFeatureSelectionPreferencesAsync();
 
-        sw.Restart();
         // Apply saved filter from URL (if provided)
         var filterApplied = await ApplyFilterFromUrlAsync();
 
         // Load from URL parameters if present (has priority)
-        if (!string.IsNullOrEmpty(ConfigFromUrl) && availableConfigurations.Contains(ConfigFromUrl))
+        if (!string.IsNullOrEmpty(ConfigFromUrl))
         {
-            selectedConfiguration = ConfigFromUrl;
+            var parsedConfigs = ConfigFromUrl
+                .Split(new[] { ',', '|' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(availableConfigurations.Contains)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (parsedConfigs.Any())
+            {
+                selectedConfigurations = parsedConfigs;
+                selectedConfiguration = parsedConfigs.First();
+            }
         }
         else if (availableConfigurations.Count > 0 && string.IsNullOrEmpty(selectedConfiguration))
         {
             // Only set default if no URL parameter was provided
             selectedConfiguration = availableConfigurations[0];
+            selectedConfigurations.Add(selectedConfiguration);
         }
+
+        InitializeSelectedBuilds();
 
         // Load from URL parameters if present
         if (BuildsFromUrl.HasValue && BuildsFromUrl.Value >= 1 && BuildsFromUrl.Value <= 20)
@@ -310,13 +444,10 @@
         }
 
         // Load data after selection is finalized
-        if (!filterApplied && !string.IsNullOrEmpty(selectedConfiguration))
+        if (!filterApplied && selectedConfigurations.Any())
         {
-            sw.Restart();
             await RefreshData();
         }
-
-        totalStopwatch.Stop();
     }
 
     protected override async Task OnParametersSetAsync()
@@ -324,13 +455,28 @@
         // Handle URL changes (browser back/forward)
         bool needsRefresh = false;
         
-        if (!string.IsNullOrEmpty(ConfigFromUrl) && ConfigFromUrl != selectedConfiguration)
+        isTriageMode = string.Equals(ModeFromUrl, "triage", StringComparison.OrdinalIgnoreCase)
+            || new Uri(NavigationManager.Uri).AbsolutePath.TrimEnd('/').Equals("/morning-triage", StringComparison.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrEmpty(ConfigFromUrl))
         {
-            if (availableConfigurations.Contains(ConfigFromUrl))
+            var requestedConfigs = ConfigFromUrl
+                .Split(new[] { ',', '|' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(availableConfigurations.Contains)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (requestedConfigs.Any() && !requestedConfigs.SetEquals(selectedConfigurations))
             {
-                selectedConfiguration = ConfigFromUrl;
+                selectedConfiguration = requestedConfigs.First();
+                selectedConfigurations = requestedConfigs;
                 needsRefresh = true;
             }
+        }
+
+        if (!string.Equals(CurrentBuildFromUrl, selectedCurrentBuild, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(BaselineBuildsFromUrl, string.Join(",", selectedBaselineBuilds), StringComparison.OrdinalIgnoreCase))
+        {
+            InitializeSelectedBuilds();
+            needsRefresh = true;
         }
         
         if (BuildsFromUrl.HasValue && BuildsFromUrl.Value != numberOfBuilds)
@@ -357,12 +503,9 @@
 
     private async Task LoadAvailableConfigurations()
     {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             configurationMetadata = await ConfigHistoryService.GetConfigurationsWithMetadataAsync();
-
-            sw.Restart();
             availableConfigurations = configurationMetadata.Select(c => c.Id).ToList();
             // Don't set default here - let OnInitializedAsync handle it to respect URL params
         }
@@ -370,6 +513,135 @@
         {
             Snackbar.Add($"Error loading configurations: {ex.Message}", Severity.Error);
         }
+    }
+
+    private void InitializeSelectedBuilds()
+    {
+        if (!string.IsNullOrWhiteSpace(CurrentBuildFromUrl) && availableBuilds.Contains(CurrentBuildFromUrl, StringComparer.OrdinalIgnoreCase))
+        {
+            selectedCurrentBuild = availableBuilds.First(build => string.Equals(build, CurrentBuildFromUrl, StringComparison.OrdinalIgnoreCase));
+        }
+        else
+        {
+            selectedCurrentBuild = availableBuilds.FirstOrDefault() ?? string.Empty;
+        }
+
+        selectedBaselineBuilds.Clear();
+        if (!string.IsNullOrWhiteSpace(BaselineBuildsFromUrl))
+        {
+            foreach (var build in BaselineBuildsFromUrl.Split(new[] { ',', '|' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                if (availableBuilds.Contains(build, StringComparer.OrdinalIgnoreCase)
+                    && !string.Equals(build, selectedCurrentBuild, StringComparison.OrdinalIgnoreCase))
+                {
+                    selectedBaselineBuilds.Add(availableBuilds.First(item => string.Equals(item, build, StringComparison.OrdinalIgnoreCase)));
+                }
+            }
+        }
+
+        if (selectedBaselineBuilds.Count == 0)
+        {
+            var fallback = availableBuilds.Skip(1).FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(fallback))
+            {
+                selectedBaselineBuilds.Add(fallback);
+            }
+        }
+    }
+
+    private void EnsureSelectedBuilds()
+    {
+        if (!availableBuilds.Contains(selectedCurrentBuild, StringComparer.OrdinalIgnoreCase))
+        {
+            selectedCurrentBuild = availableBuilds.FirstOrDefault() ?? string.Empty;
+        }
+
+        selectedBaselineBuilds.RemoveWhere(build => !availableBuilds.Contains(build, StringComparer.OrdinalIgnoreCase)
+            || string.Equals(build, selectedCurrentBuild, StringComparison.OrdinalIgnoreCase));
+
+        if (selectedBaselineBuilds.Count == 0)
+        {
+            var fallback = availableBuilds.FirstOrDefault(build => !string.Equals(build, selectedCurrentBuild, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(fallback))
+            {
+                selectedBaselineBuilds.Add(fallback);
+            }
+        }
+    }
+
+    private List<string> GetBaselineBuildOptions()
+    {
+        return availableBuilds
+            .Where(build => !string.Equals(build, selectedCurrentBuild, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    private List<string> GetFilteredBaselineBuildOptions()
+    {
+        var options = GetBaselineBuildOptions();
+        if (string.IsNullOrWhiteSpace(baselineBuildSearch))
+        {
+            return options;
+        }
+
+        return options
+            .Where(build => build.Contains(baselineBuildSearch, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    private string GetBaselineMenuLabel()
+    {
+        return selectedBaselineBuilds.Count switch
+        {
+            0 => "Compare against",
+            1 => $"Compare against: {selectedBaselineBuilds.First()}",
+            _ => $"Compare against: {selectedBaselineBuilds.Count} builds"
+        };
+    }
+
+    private Task OnBaselineSearchChanged(string value)
+    {
+        baselineBuildSearch = value;
+        return Task.CompletedTask;
+    }
+
+    private void OnCurrentBuildChanged(string value)
+    {
+        selectedCurrentBuild = value;
+        UpdateUrl();
+    }
+
+    private Task ToggleBaselineBuild(string build, bool isChecked)
+    {
+        if (isChecked)
+        {
+            selectedBaselineBuilds.Add(build);
+        }
+        else
+        {
+            selectedBaselineBuilds.Remove(build);
+        }
+
+        UpdateUrl();
+        return Task.CompletedTask;
+    }
+
+    private Task SelectVisibleBaselineBuilds()
+    {
+        foreach (var build in GetFilteredBaselineBuildOptions())
+        {
+            selectedBaselineBuilds.Add(build);
+        }
+
+        UpdateUrl();
+        return Task.CompletedTask;
+    }
+
+    private Task ClearBaselineBuilds()
+    {
+        selectedBaselineBuilds.Clear();
+        UpdateUrl();
+        return Task.CompletedTask;
     }
 
 
@@ -384,9 +656,27 @@
             .ToList();
     }
 
-    private async Task SelectConfigurationFromDialog(string config)
+    private void ToggleConfigurationFromDialog(string config)
     {
-        selectedConfiguration = config;
+        if (selectedConfigurations.Contains(config))
+        {
+            selectedConfigurations.Remove(config);
+        }
+        else
+        {
+            selectedConfigurations.Add(config);
+        }
+    }
+
+    private async Task ApplyConfigurationSelection()
+    {
+        if (!selectedConfigurations.Any())
+        {
+            Snackbar.Add("Please select at least one configuration", Severity.Warning);
+            return;
+        }
+
+        selectedConfiguration = selectedConfigurations.First();
         showConfigurationDialog = false;
         UpdateUrl();
         await RefreshData();
@@ -402,17 +692,14 @@
     {
         var uri = NavigationManager.GetUriWithQueryParameters(new Dictionary<string, object?>
         {
-            ["config"] = selectedConfiguration,
-            ["builds"] = numberOfBuilds
+            ["config"] = string.Join(",", selectedConfigurations.OrderBy(x => x, StringComparer.OrdinalIgnoreCase)),
+            ["builds"] = numberOfBuilds,
+            ["mode"] = isTriageMode ? "triage" : null,
+            ["currentBuild"] = isTriageMode ? selectedCurrentBuild : null,
+            ["baselineBuild"] = isTriageMode ? string.Join(",", selectedBaselineBuilds.OrderByDescending(BuildNumberExtractor.ExtractBuildNumber)) : null,
+            ["feature"] = selectedFeatureNames.Any() ? string.Join(",", selectedFeatureNames.OrderBy(x => x, StringComparer.OrdinalIgnoreCase)) : null
         });
         NavigationManager.NavigateTo(uri, replace: true);
-    }
-
-    private async Task OnConfigurationChanged(string newConfig)
-    {
-        selectedConfiguration = newConfig;
-        UpdateUrl();
-        await RefreshData();
     }
 
     private async Task OnNumberOfBuildsChanged(int newValue)
@@ -424,20 +711,30 @@
 
     private async Task RefreshData()
     {
-        if (string.IsNullOrEmpty(selectedConfiguration))
+        if (!selectedConfigurations.Any())
         {
-            Snackbar.Add("Please select a configuration first", Severity.Warning);
+            Snackbar.Add("Please select at least one configuration first", Severity.Warning);
             return;
         }
-
-        var totalSw = System.Diagnostics.Stopwatch.StartNew();
 
         try
         {
             isLoading = true;
+            triageResult = null;
 
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            historyResult = await ConfigHistoryService.GetConfigurationHistoryAsync(selectedConfiguration, numberOfBuilds);
+            if (isTriageMode)
+            {
+                EnsureSelectedBuilds();
+                triageResult = await TriageService.GetMorningTriageAsync(selectedCurrentBuild, selectedBaselineBuilds.ToList(), null);
+                acknowledgementsById = (await UserDataService.GetMorningTriageAcknowledgementsAsync())
+                    .ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
+                historyResult = await BuildTriageHistoryResultAsync();
+            }
+            else
+            {
+                var histories = await Task.WhenAll(selectedConfigurations.Select(config => ConfigHistoryService.GetConfigurationHistoryAsync(config, numberOfBuilds)));
+                historyResult = MergeConfigurationHistoryResults(histories.ToList());
+            }
 
             BuildFeatureGroups();
             ApplyFeatureSelectionIntentToCurrentConfiguration();
@@ -453,7 +750,6 @@
         finally
         {
             isLoading = false;
-            totalSw.Stop();
         }
     }
 
@@ -659,8 +955,9 @@
             Snackbar.Add($"Failed to save preferences: {ex.Message}", Severity.Warning);
         }
         showFeatureDialog = false;
+        UpdateUrl();
+        await RefreshData();
         Snackbar.Add($"Applied {selectedFeatureNames.Count} feature(s)", Severity.Info);
-        StateHasChanged();
     }
     private async Task LoadFeatureSelectionPreferencesAsync()
     {
@@ -748,6 +1045,401 @@
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
+    private async Task<ConfigurationHistoryResult> BuildTriageHistoryResultAsync()
+    {
+        if (triageResult == null)
+        {
+            return new ConfigurationHistoryResult();
+        }
+
+        if (hideFlakyTests)
+        {
+            await EnsureTriageFlakyTestsLoadedAsync();
+        }
+        else
+        {
+            flakyTestNames.Clear();
+            flakySignature = null;
+        }
+
+        var filterBySpecificConfigurations = selectedConfigurations.Any()
+            && !selectedConfigurations.Contains(ConfigurationHistoryService.AllConfigurationsId, StringComparer.OrdinalIgnoreCase);
+
+        var rows = triageResult.NewFailures
+            .Where(failure => !filterBySpecificConfigurations || failure.AffectedConfigs.Any(selectedConfigurations.Contains))
+            .SelectMany(failure => failure.AffectedConfigs
+                .Where(configId => !filterBySpecificConfigurations || selectedConfigurations.Contains(configId))
+                .Select(configId => new TriageRow(failure, configId)))
+            .Where(row => !hideFlakyTests || !flakyTestNames.Contains(row.Failure.TestFullName))
+            .Where(row => !hideInfrastructureIssues || row.Failure.Category == MorningFailureCategory.Product)
+            .Where(row => !hideAcknowledgedFailures || GetAcknowledgement(row) == null)
+            .ToList();
+
+        triageVisibleFailureCount = rows.Count;
+
+        var buildIds = BuildTriageHistoryWindow();
+        var historyColumns = buildIds
+            .Select((buildId, index) => new HistoryColumn
+            {
+                BuildId = buildId,
+                BuildTime = TestDataService.GetBuildTimestamp(buildId) ?? DateTime.UtcNow,
+                ColumnIndex = index
+            })
+            .ToList();
+
+        var domainNodes = rows
+            .GroupBy(row => row.Failure.DomainId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => BuildTriageDomainNode(group.Key, group.ToList(), buildIds))
+            .OrderBy(node => node.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        // Wrap all domain nodes in a single synthetic root — same pattern as config history —
+        // so the tree renders as one table with one header row instead of one table per domain.
+        var rootNode = new HierarchyNode
+        {
+            Name = "Root",
+            NodeType = HierarchyNodeType.Domain,
+            NodeId = "triage-root",
+            IndentLevel = -1,
+            IsExpanded = false,
+            Children = domainNodes
+        };
+        PopulateAggregateNode(rootNode, buildIds.Count);
+
+        return new ConfigurationHistoryResult
+        {
+            ConfigurationId = filterBySpecificConfigurations
+                ? string.Join(", ", selectedConfigurations.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+                : ConfigurationHistoryService.AllConfigurationsId,
+            LatestBuildId = buildIds.FirstOrDefault() ?? selectedCurrentBuild,
+            LatestBuildTime = TestDataService.GetBuildTimestamp(buildIds.FirstOrDefault() ?? selectedCurrentBuild) ?? DateTime.UtcNow,
+            TotalTests = rows.Count,
+            PassedTests = 0,
+            FailedTests = rows.Count,
+            SkippedTests = 0,
+            HistoryColumns = historyColumns,
+            HierarchyNodes = new List<HierarchyNode> { rootNode }
+        };
+    }
+
+    private List<string> BuildTriageHistoryWindow()
+    {
+        var maxBuilds = Math.Max(2, numberOfBuilds);
+        var builds = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(selectedCurrentBuild))
+        {
+            builds.Add(selectedCurrentBuild);
+        }
+
+        foreach (var baseline in selectedBaselineBuilds.OrderByDescending(BuildNumberExtractor.ExtractBuildNumber))
+        {
+            if (!builds.Contains(baseline, StringComparer.OrdinalIgnoreCase))
+            {
+                builds.Add(baseline);
+            }
+        }
+
+        var oldestBaseline = selectedBaselineBuilds.Count > 0
+            ? selectedBaselineBuilds.Min(BuildNumberExtractor.ExtractBuildNumber)
+            : int.MaxValue;
+
+        foreach (var build in availableBuilds
+            .Where(build => !builds.Contains(build, StringComparer.OrdinalIgnoreCase))
+            .Where(build => BuildNumberExtractor.ExtractBuildNumber(build) < oldestBaseline)
+            .OrderByDescending(BuildNumberExtractor.ExtractBuildNumber))
+        {
+            if (builds.Count >= maxBuilds)
+            {
+                break;
+            }
+
+            builds.Add(build);
+        }
+
+        return builds.Take(maxBuilds).ToList();
+    }
+
+    private HierarchyNode BuildTriageDomainNode(string domainId, List<TriageRow> rows, List<string> buildIds)
+    {
+        var featureNodes = rows
+            .GroupBy(row => row.Failure.FeatureId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => BuildTriageFeatureNode(group.Key, group.ToList(), buildIds))
+            .OrderBy(node => node.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var node = new HierarchyNode
+        {
+            Name = domainId,
+            NodeType = HierarchyNodeType.Domain,
+            NodeId = $"triage-domain:{domainId}",
+            IndentLevel = 0,
+            IsExpanded = true,
+            Children = featureNodes,
+            Badges = BuildOwnerBadges(BrowserOptions.Value.DomainOwners, domainId)
+        };
+        PopulateAggregateNode(node, buildIds.Count);
+        return node;
+    }
+
+    private HierarchyNode BuildTriageFeatureNode(string featureId, List<TriageRow> rows, List<string> buildIds)
+    {
+        var suiteNodes = rows
+            .GroupBy(row => row.ConfigurationId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => BuildTriageConfigurationNode(group.Key, group.ToList(), buildIds))
+            .OrderBy(node => node.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var node = new HierarchyNode
+        {
+            Name = featureId,
+            NodeType = HierarchyNodeType.Feature,
+            NodeId = $"triage-feature:{featureId}",
+            IndentLevel = 1,
+            IsExpanded = false,
+            Children = suiteNodes,
+            Badges = BuildOwnerBadges(BrowserOptions.Value.FeatureOwners, featureId)
+        };
+        PopulateAggregateNode(node, buildIds.Count);
+        return node;
+    }
+
+    private HierarchyNode BuildTriageConfigurationNode(string configurationId, List<TriageRow> rows, List<string> buildIds)
+    {
+        var testNodes = rows
+            .Select(row => BuildTriageTestNode(row, buildIds))
+            .OrderBy(node => node.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var node = new HierarchyNode
+        {
+            Name = ConfigurationLabelHelper.GetConfigurationLabel(configurationId),
+            NodeType = HierarchyNodeType.Suite,
+            NodeId = $"triage-config:{configurationId}",
+            IndentLevel = 2,
+            IsExpanded = false,
+            Children = testNodes
+        };
+        PopulateAggregateNode(node, buildIds.Count);
+        return node;
+    }
+
+    private HierarchyNode BuildTriageTestNode(TriageRow row, List<string> buildIds)
+    {
+        var historyCells = buildIds
+            .Select(buildId => TestDataService.GetTestResultFast(buildId, row.Failure.TestFullName, row.ConfigurationId))
+            .Select(result => new HistoryCellData
+            {
+                Passed = result?.Status == TestStatus.Pass ? 1 : 0,
+                Failed = result?.Status == TestStatus.Fail ? 1 : 0,
+                Skipped = result?.Status == TestStatus.Skip ? 1 : 0,
+                ReportDirectoryPath = result?.ReportDirectoryPath,
+                SourceTestResult = result
+            })
+            .ToList();
+
+        var latestKnownResult = historyCells.Select(cell => cell.SourceTestResult).FirstOrDefault(result => result != null);
+        var badges = new List<HierarchyNodeBadge>();
+        if (row.Failure.Category != MorningFailureCategory.Product)
+        {
+            badges.Add(new HierarchyNodeBadge { Text = row.Failure.Category == MorningFailureCategory.Setup ? "Setup" : "Infra", Tone = HierarchyBadgeTone.Warning });
+        }
+
+        if (GetAcknowledgement(row) is { } acknowledgement)
+        {
+            badges.Add(new HierarchyNodeBadge { Text = $"Ack: {acknowledgement.AcknowledgedBy}", Tone = HierarchyBadgeTone.Success });
+        }
+
+        var node = new HierarchyNode
+        {
+            Name = latestKnownResult?.MethodName ?? row.Failure.TestFullName,
+            NodeType = HierarchyNodeType.Test,
+            NodeId = BuildTriageNodeId(row),
+            IndentLevel = 3,
+            TestFullName = row.Failure.TestFullName,
+            ReportDirectoryPath = latestKnownResult?.ReportDirectoryPath,
+            ErrorMessage = row.Failure.ErrorMessage,
+            StackTrace = row.Failure.StackTrace,
+            FirstErrorMessage = row.Failure.ErrorMessage,
+            WorkItemReferences = WorkItemLinkService.GetTicketReferences(latestKnownResult?.WorkItemIds ?? new List<string>()),
+            HistoryCells = historyCells,
+            Badges = badges,
+            ActionLabel = "ack-toggle",
+            IsAcknowledged = GetAcknowledgement(row) != null
+        };
+        PopulateAggregateNode(node, buildIds.Count);
+        return node;
+    }
+
+    private List<HierarchyNodeBadge> BuildOwnerBadges(Dictionary<string, string> owners, string key)
+    {
+        return owners.TryGetValue(key, out var owner)
+            ? new List<HierarchyNodeBadge> { new() { Text = owner, Tone = HierarchyBadgeTone.Info } }
+            : new List<HierarchyNodeBadge>();
+    }
+
+    private void PopulateAggregateNode(HierarchyNode node, int buildCount)
+    {
+        if (node.Children.Count == 0)
+        {
+            var latest = node.HistoryCells.FirstOrDefault() ?? new HistoryCellData();
+            node.LatestStats = new TestNodeStats { Passed = latest.Passed, Failed = latest.Failed, Skipped = latest.Skipped };
+            return;
+        }
+
+        node.HistoryCells = Enumerable.Range(0, buildCount)
+            .Select(index =>
+            {
+                var cell = new HistoryCellData();
+                foreach (var child in node.Children)
+                {
+                    if (index >= child.HistoryCells.Count)
+                    {
+                        continue;
+                    }
+
+                    cell.Passed += child.HistoryCells[index].Passed;
+                    cell.Failed += child.HistoryCells[index].Failed;
+                    cell.Skipped += child.HistoryCells[index].Skipped;
+                    cell.HookFailures += child.HistoryCells[index].HookFailures;
+                }
+                return cell;
+            })
+            .ToList();
+
+        var latestCell = node.HistoryCells.FirstOrDefault() ?? new HistoryCellData();
+        node.LatestStats = new TestNodeStats { Passed = latestCell.Passed, Failed = latestCell.Failed, Skipped = latestCell.Skipped };
+    }
+
+    private async Task EnsureTriageFlakyTestsLoadedAsync()
+    {
+        if (triageResult == null)
+        {
+            return;
+        }
+
+        var signature = string.Join("\n", triageResult.NewFailures.Select(f => f.TestFullName).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(name => name, StringComparer.OrdinalIgnoreCase));
+        if (string.Equals(flakySignature, signature, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var thresholds = BrowserOptions.Value.FlakyTestThresholds;
+        var testNames = triageResult.NewFailures.Select(f => f.TestFullName).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var reports = await Task.Run(() =>
+        {
+            var history = new List<TestResult>();
+            foreach (var testName in testNames)
+            {
+                history.AddRange(TestDataService.GetTestResultsByTestName(testName)
+                    .OrderByDescending(r => r.Timestamp)
+                    .Take(thresholds.RollingWindowSize));
+            }
+
+            return FlakyTestDetectionService.DetectFlakyTests(history, Math.Clamp(thresholds.TriggerPercentage / 100.0, 0.0, 1.0), thresholds.RollingWindowSize);
+        });
+
+        flakyTestNames = reports.Select(report => report.TestFullName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        flakySignature = signature;
+    }
+
+    private MorningTriageAcknowledgement? GetAcknowledgement(TriageRow row)
+    {
+        acknowledgementsById.TryGetValue(BuildAcknowledgementId(row), out var acknowledgement);
+        return acknowledgement;
+    }
+
+    private string BuildAcknowledgementId(TriageRow row)
+    {
+        return $"{row.Failure.TestFullName}|{row.ConfigurationId}|{row.Failure.FailureSignature}".ToLowerInvariant();
+    }
+
+    private string BuildTriageNodeId(TriageRow row) => $"triage-test:{row.ConfigurationId}:{row.Failure.TestFullName}";
+
+    private async Task OnNodeAction(HierarchyNode node)
+    {
+        if (!isTriageMode || triageResult == null || node.NodeType != HierarchyNodeType.Test)
+        {
+            return;
+        }
+
+        var row = triageResult.NewFailures
+            .SelectMany(failure => failure.AffectedConfigs.Select(configId => new TriageRow(failure, configId)))
+            .FirstOrDefault(item => string.Equals(BuildTriageNodeId(item), node.NodeId, StringComparison.OrdinalIgnoreCase));
+
+        if (row == null)
+        {
+            return;
+        }
+
+        var ackId = BuildAcknowledgementId(row);
+        if (acknowledgementsById.ContainsKey(ackId))
+        {
+            await UserDataService.DeleteMorningTriageAcknowledgementAsync(ackId);
+            acknowledgementsById.Remove(ackId);
+        }
+        else
+        {
+            var acknowledgement = await UserDataService.SaveMorningTriageAcknowledgementAsync(new MorningTriageAcknowledgement
+            {
+                Id = ackId,
+                TestFullName = row.Failure.TestFullName,
+                ConfigurationId = row.ConfigurationId,
+                FailureSignature = row.Failure.FailureSignature,
+                DomainId = row.Failure.DomainId,
+                FeatureId = row.Failure.FeatureId,
+                AcknowledgedBy = currentUsername
+            });
+            acknowledgementsById[acknowledgement.Id] = acknowledgement;
+        }
+
+        historyResult = await BuildTriageHistoryResultAsync();
+        StateHasChanged();
+    }
+
+    private ConfigurationHistoryResult MergeConfigurationHistoryResults(List<ConfigurationHistoryResult> histories)
+    {
+        if (histories.Count == 1)
+        {
+            return histories[0];
+        }
+
+        var merged = new ConfigurationHistoryResult
+        {
+            ConfigurationId = string.Join(", ", selectedConfigurations.OrderBy(x => x, StringComparer.OrdinalIgnoreCase)),
+            LatestBuildId = histories.FirstOrDefault()?.LatestBuildId ?? string.Empty,
+            LatestBuildTime = histories.FirstOrDefault()?.LatestBuildTime ?? DateTime.UtcNow,
+            TotalTests = histories.Sum(history => history.TotalTests),
+            PassedTests = histories.Sum(history => history.PassedTests),
+            FailedTests = histories.Sum(history => history.FailedTests),
+            SkippedTests = histories.Sum(history => history.SkippedTests),
+            HistoryColumns = histories.FirstOrDefault()?.HistoryColumns ?? new List<HistoryColumn>(),
+            HierarchyNodes = histories.SelectMany(history => history.HierarchyNodes).ToList()
+        };
+
+        return merged;
+    }
+
+    private sealed record TriageRow(TriageNewFailure Failure, string ConfigurationId);
+
+    private string GetTriageBannerStyle() => $"border-left: 4px solid {(triageResult?.IsRunComplete == true ? "#2e7d32" : "#ed6c02")};";
+
+    private string GetBuildDisplayTime(string buildId)
+    {
+        var timestamp = TestDataService.GetBuildTimestamp(buildId);
+        return timestamp?.ToLocalTime().ToString("MM/dd/yyyy HH:mm") ?? "Unknown";
+    }
+
+    private string GetBaselineSummaryText()
+    {
+        return selectedBaselineBuilds.Count switch
+        {
+            0 => "no baseline selected",
+            1 => $"{selectedBaselineBuilds.First()} ({GetBuildDisplayTime(selectedBaselineBuilds.First())})",
+            _ => $"{selectedBaselineBuilds.Count} selected baselines"
+        };
+    }
+
 
     private HierarchyNode? GetFilteredNode(HierarchyNode node)
     {
@@ -771,6 +1463,12 @@
                 TestFullName = node.TestFullName,
                 LifecycleHookType = node.LifecycleHookType,
                 LifecycleHookTarget = node.LifecycleHookTarget,
+                ErrorMessage = node.ErrorMessage,
+                StackTrace = node.StackTrace,
+                FirstErrorMessage = node.FirstErrorMessage,
+                ActionLabel = node.ActionLabel,
+                IsAcknowledged = node.IsAcknowledged,
+                Badges = new List<HierarchyNodeBadge>(node.Badges),
                 WorkItemReferences = new List<WorkItemReference>(node.WorkItemReferences),
                 HistoryCells = new List<HistoryCellData>(node.HistoryCells),
                 LatestStats = new TestNodeStats
@@ -813,6 +1511,12 @@
             TestFullName = node.TestFullName,
             LifecycleHookType = node.LifecycleHookType,
             LifecycleHookTarget = node.LifecycleHookTarget,
+            ErrorMessage = node.ErrorMessage,
+            StackTrace = node.StackTrace,
+            FirstErrorMessage = node.FirstErrorMessage,
+            ActionLabel = node.ActionLabel,
+            IsAcknowledged = node.IsAcknowledged,
+            Badges = new List<HierarchyNodeBadge>(node.Badges),
             WorkItemReferences = new List<WorkItemReference>(node.WorkItemReferences),
             HistoryCells = new List<HistoryCellData>(node.HistoryCells),
             LatestStats = new TestNodeStats
@@ -874,6 +1578,12 @@
             TestFullName = node.TestFullName,
             LifecycleHookType = node.LifecycleHookType,
             LifecycleHookTarget = node.LifecycleHookTarget,
+            ErrorMessage = node.ErrorMessage,
+            StackTrace = node.StackTrace,
+            FirstErrorMessage = node.FirstErrorMessage,
+            ActionLabel = node.ActionLabel,
+            IsAcknowledged = node.IsAcknowledged,
+            Badges = new List<HierarchyNodeBadge>(node.Badges),
             WorkItemReferences = new List<WorkItemReference>(node.WorkItemReferences),
             HistoryCells = new List<HistoryCellData>(node.HistoryCells),
             LatestStats = new TestNodeStats
@@ -947,6 +1657,7 @@
             availableConfigurations.Contains(filter.SelectedConfiguration))
         {
             selectedConfiguration = filter.SelectedConfiguration;
+            selectedConfigurations = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { filter.SelectedConfiguration };
         }
 
         if (filter.NumberOfBuilds.HasValue)
@@ -1016,6 +1727,7 @@
             Snackbar.Add("Failed to copy link", Severity.Error);
         }
     }
+
 }
 
 <style>
@@ -1031,7 +1743,16 @@
     }
 
     .header-config {
-        flex: 1 1 420px;
+        flex: 1 1 200px;
+        min-width: 160px;
+    }
+
+    .triage-build-select {
+        flex: 1 1 180px;
+    }
+
+    .triage-baseline-menu {
+        flex: 2 1 220px;
     }
 
     .builds-field {

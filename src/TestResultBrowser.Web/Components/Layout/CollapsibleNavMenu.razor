@@ -1,0 +1,40 @@
+@rendermode InteractiveServer
+@using MudBlazor
+@inject IJSRuntime JS
+@inject ILogger<CollapsibleNavMenu> Logger
+
+<MudDrawer @bind-Open="@_open" ClipMode="DrawerClipMode.Always" Elevation="2">
+    <MudDrawerHeader Style="padding: 8px 16px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
+            <MudText Typo="Typo.h6">Test Results</MudText>
+            <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" OnClick="@Toggle" Size="Size.Small" />
+        </div>
+    </MudDrawerHeader>
+    <NavMenu />
+</MudDrawer>
+
+@if (!_open)
+{
+    <div style="position:fixed; top:8px; left:8px; z-index:1400;">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Primary" Size="Size.Small" OnClick="@Toggle" />
+    </div>
+}
+
+@code {
+    private bool _open = true;
+
+    private async Task Toggle()
+    {
+        var previous = _open;
+        _open = !_open;
+        try
+        {
+            await JS.InvokeVoidAsync("trb.setDrawerMargin", _open);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to update drawer margin via JS");
+            _open = previous;
+        }
+    }
+}

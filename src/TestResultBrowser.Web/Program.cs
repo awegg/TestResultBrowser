@@ -38,6 +38,7 @@ builder.Services.AddSingleton<IConfigurationHistoryService, ConfigurationHistory
 builder.Services.AddSingleton<IUserDataService, UserDataService>();
 builder.Services.AddSingleton<IWorkItemLinkService, WorkItemLinkService>();
 builder.Services.AddSingleton<IFailureGroupingService, FailureGroupingService>();
+builder.Services.AddSingleton<IFailureClassificationService, FailureClassificationService>();
 builder.Services.AddSingleton<IFlakyTestDetectionService, FlakyTestDetectionService>();
 builder.Services.AddSingleton<IFeatureGroupingService, FeatureGroupingService>();
 builder.Services.AddSingleton<ITestReportUrlService, TestReportUrlService>();
