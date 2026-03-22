@@ -30,5 +30,5 @@ public record TriageNewFailure
     public MorningFailureCategory Category { get; init; } = MorningFailureCategory.Product;
 
     /// <summary>Normalized signature for matching repeated failures across refreshes</summary>
-    public string FailureSignature { get; init; } = string.Empty;
+    public required string FailureSignature { get; init; }
 }

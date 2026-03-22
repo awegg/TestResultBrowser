@@ -53,7 +53,7 @@ public class SmokeTests : IAsyncLifetime
         await _page.WaitForLoadStateAsync(LoadState.NetworkIdle);
 
         // Assert: Page loaded - stats cards are hidden in triage mode; verify the triage page title
-        await _page.WaitForTimeoutAsync(2000);
+        await _page.WaitForFunctionAsync("() => document.title === 'Triage History'", null, new PageWaitForFunctionOptions { Timeout = 10000 });
         var pageTitle = await _page.TitleAsync();
         pageTitle.ShouldBe("Triage History", "Morning Triage should load the triage page");
     }

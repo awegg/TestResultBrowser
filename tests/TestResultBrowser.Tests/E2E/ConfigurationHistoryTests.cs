@@ -128,7 +128,7 @@ public class ConfigurationHistoryTests : IAsyncLifetime
         var applyConfigButton = await _page.QuerySelectorAsync(".modal-footer button.btn-primary");
         applyConfigButton.ShouldNotBeNull("Apply button in config dialog should exist");
         await applyConfigButton!.ClickAsync();
-        await _page.WaitForTimeoutAsync(2000); // Wait for dialog to close and data to load
+        await _page.WaitForSelectorAsync(".modal", new PageWaitForSelectorOptions { State = WaitForSelectorState.Detached, Timeout = 10000 }); // Wait for dialog to close and data to load
 
         // Verify configuration changed
         var newConfigButton = await _page.QuerySelectorAsync(".header-config");

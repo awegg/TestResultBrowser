@@ -56,7 +56,7 @@
                            Dense="true"
                            Variant="Variant.Outlined"
                            Class="header-control triage-build-select"
-                           @bind-Value="selectedCurrentBuild">
+                           Value="@selectedCurrentBuild" ValueChanged="@OnCurrentBuildChanged">
                     @foreach (var build in availableBuilds)
                     {
                         <MudSelectItem T="string" Value="@build">@build</MudSelectItem>
@@ -402,7 +402,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        isTriageMode = string.Equals(ModeFromUrl, "triage", StringComparison.OrdinalIgnoreCase);
+        isTriageMode = string.Equals(ModeFromUrl, "triage", StringComparison.OrdinalIgnoreCase)
+            || new Uri(NavigationManager.Uri).AbsolutePath.TrimEnd('/').Equals("/morning-triage", StringComparison.OrdinalIgnoreCase);
 
         await LoadAvailableConfigurations();
         availableBuilds = (await ConfigHistoryService.GetAvailableBuildsAsync())
@@ -454,7 +455,8 @@
         // Handle URL changes (browser back/forward)
         bool needsRefresh = false;
         
-        isTriageMode = string.Equals(ModeFromUrl, "triage", StringComparison.OrdinalIgnoreCase);
+        isTriageMode = string.Equals(ModeFromUrl, "triage", StringComparison.OrdinalIgnoreCase)
+            || new Uri(NavigationManager.Uri).AbsolutePath.TrimEnd('/').Equals("/morning-triage", StringComparison.OrdinalIgnoreCase);
 
         if (!string.IsNullOrEmpty(ConfigFromUrl))
         {
@@ -603,6 +605,12 @@
         return Task.CompletedTask;
     }
 
+    private void OnCurrentBuildChanged(string value)
+    {
+        selectedCurrentBuild = value;
+        UpdateUrl();
+    }
+
     private Task ToggleBaselineBuild(string build, bool isChecked)
     {
         if (isChecked)
@@ -614,6 +622,7 @@
             selectedBaselineBuilds.Remove(build);
         }
 
+        UpdateUrl();
         return Task.CompletedTask;
     }
 
@@ -624,12 +633,14 @@
             selectedBaselineBuilds.Add(build);
         }
 
+        UpdateUrl();
         return Task.CompletedTask;
     }
 
     private Task ClearBaselineBuilds()
     {
         selectedBaselineBuilds.Clear();
+        UpdateUrl();
         return Task.CompletedTask;
     }
 
@@ -1646,6 +1657,7 @@
             availableConfigurations.Contains(filter.SelectedConfiguration))
         {
             selectedConfiguration = filter.SelectedConfiguration;
+            selectedConfigurations = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { filter.SelectedConfiguration };
         }
 
         if (filter.NumberOfBuilds.HasValue)
@@ -1715,6 +1727,7 @@
             Snackbar.Add("Failed to copy link", Severity.Error);
         }
     }
+
 }
 
 <style>

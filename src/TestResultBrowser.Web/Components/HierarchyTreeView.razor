@@ -87,7 +87,7 @@ else
 
                     @if (Node.ActionLabel != null && OnNodeAction.HasDelegate)
                     {
-                        <MudTooltip Text="@(Node.IsAcknowledged ? "Clear acknowledgement" : "Acknowledge")">
+                        <MudTooltip Text="@(Node.IsAcknowledged ? $"Clear acknowledgement – {Node.ActionLabel}" : $"Acknowledge – {Node.ActionLabel}")">
                             <MudIconButton Icon="@(Node.IsAcknowledged ? Icons.Material.Filled.CheckCircle : Icons.Material.Outlined.CheckCircle)"
                                            Color="@(Node.IsAcknowledged ? Color.Success : Color.Default)"
                                            Size="Size.Small"
