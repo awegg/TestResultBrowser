@@ -40,3 +40,8 @@ window.trb.unobserveSize = (element) => {
         window.trb._sizeObservers.delete(element);
     }
 };
+
+window.trb.setDrawerMargin = (open) => {
+    const main = document.querySelector('.mud-main-content');
+    if (main) main.style.marginLeft = open ? '' : '0';
+};

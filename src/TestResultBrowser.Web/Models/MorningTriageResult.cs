@@ -31,4 +31,16 @@ public record MorningTriageResult
 
     /// <summary>Total count of tests in yesterday's run</summary>
     public required int TotalTestsYesterday { get; init; }
+
+    /// <summary>Configurations expected for the overnight run window</summary>
+    public required List<string> ExpectedConfigurations { get; init; }
+
+    /// <summary>Configurations missing from today's run</summary>
+    public required List<string> MissingConfigurations { get; init; }
+
+    /// <summary>Whether the current run appears complete enough for normal triage</summary>
+    public required bool IsRunComplete { get; init; }
+
+    /// <summary>Human-readable completeness summary for the overnight banner</summary>
+    public required string CompletenessMessage { get; init; }
 }

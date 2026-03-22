@@ -35,7 +35,7 @@
             </thead>
             <tbody>
                 <Virtualize Items="@Node.Children" Context="child" OverscanCount="10" SpacerElement="tr">
-                    <HierarchyTreeView Node="child" HistoryColumns="HistoryColumns" IsRootNode="false" OnTestSelected="OnTestSelected" />
+                    <HierarchyTreeView Node="child" HistoryColumns="HistoryColumns" IsRootNode="false" OnTestSelected="OnTestSelected" OnNodeAction="OnNodeAction" />
                 </Virtualize>
             </tbody>
         </table>
@@ -62,6 +62,14 @@ else
                 <MudText Typo="Typo.body2" style="flex: 1; display: flex; align-items: center; gap: 6px;">
                     @Node.Name
 
+                    @if (Node.Badges.Any())
+                    {
+                        @foreach (var badge in Node.Badges)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="@GetBadgeColor(badge.Tone)" Variant="Variant.Outlined">@badge.Text</MudChip>
+                        }
+                    }
+
                     @if ((Node.NodeType == HierarchyNodeType.Test || Node.NodeType == HierarchyNodeType.Hook) && Node.WorkItemReferences.Any())
                     {
                         <div class="workitem-link-group">
@@ -75,6 +83,16 @@ else
                     @if (Node.NodeType == HierarchyNodeType.Hook)
                     {
                         <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">Hook</MudChip>
+                    }
+
+                    @if (Node.ActionLabel != null && OnNodeAction.HasDelegate)
+                    {
+                        <MudTooltip Text="@(Node.IsAcknowledged ? "Clear acknowledgement" : "Acknowledge")">
+                            <MudIconButton Icon="@(Node.IsAcknowledged ? Icons.Material.Filled.CheckCircle : Icons.Material.Outlined.CheckCircle)"
+                                           Color="@(Node.IsAcknowledged ? Color.Success : Color.Default)"
+                                           Size="Size.Small"
+                                           OnClick="@(() => OnNodeAction.InvokeAsync(Node))" />
+                        </MudTooltip>
                     }
                 </MudText>
             </div>
@@ -177,14 +195,14 @@ else
         {
             @foreach (var child in Node.Children)
             {
-                <HierarchyTreeView Node="child" HistoryColumns="HistoryColumns" IsRootNode="false" OnTestSelected="OnTestSelected" />
+                <HierarchyTreeView Node="child" HistoryColumns="HistoryColumns" IsRootNode="false" OnTestSelected="OnTestSelected" OnNodeAction="OnNodeAction" />
             }
         }
         else
         {
             @* Use Virtualize directly without nested table to maintain column alignment *@
             <Virtualize Items="@Node.Children" Context="child" OverscanCount="10" SpacerElement="tr">
-                <HierarchyTreeView Node="child" HistoryColumns="HistoryColumns" IsRootNode="false" OnTestSelected="OnTestSelected" />
+                <HierarchyTreeView Node="child" HistoryColumns="HistoryColumns" IsRootNode="false" OnTestSelected="OnTestSelected" OnNodeAction="OnNodeAction" />
             </Virtualize>
         }
     }
@@ -203,6 +221,9 @@ else
 
     [Parameter]
     public EventCallback<SelectedTestInfo> OnTestSelected { get; set; }
+
+    [Parameter]
+    public EventCallback<HierarchyNode> OnNodeAction { get; set; }
 
     private void ToggleExpanded()
     {
@@ -231,6 +252,15 @@ else
         HierarchyNodeType.Test => Icons.Material.Filled.CheckCircle,
         HierarchyNodeType.Hook => Icons.Material.Filled.ReportProblem,
         _ => Icons.Material.Filled.Help
+    };
+
+    private static Color GetBadgeColor(HierarchyBadgeTone tone) => tone switch
+    {
+        HierarchyBadgeTone.Info => Color.Info,
+        HierarchyBadgeTone.Success => Color.Success,
+        HierarchyBadgeTone.Warning => Color.Warning,
+        HierarchyBadgeTone.Error => Color.Error,
+        _ => Color.Default
     };
 
     private record DeltaInfo(string BaseText, bool HasDelta, string DeltaText, string DeltaClass);

@@ -25,4 +25,10 @@ public record TriageNewFailure
 
     /// <summary>Optional stack trace</summary>
     public string? StackTrace { get; init; }
+
+    /// <summary>Failure category used for triage noise filtering</summary>
+    public MorningFailureCategory Category { get; init; } = MorningFailureCategory.Product;
+
+    /// <summary>Normalized signature for matching repeated failures across refreshes</summary>
+    public string FailureSignature { get; init; } = string.Empty;
 }

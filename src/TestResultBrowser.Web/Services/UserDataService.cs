@@ -12,6 +12,7 @@ public class UserDataService : IUserDataService
     private readonly string _databasePath;
     private const string FiltersCollection = "savedfilters";
     private const string DashboardCollection = "dashboards";
+    private const string MorningAcknowledgementsCollection = "morningtriageacks";
 
     public UserDataService(ILogger<UserDataService> logger, IConfiguration configuration)
     {
@@ -91,7 +92,9 @@ public class UserDataService : IUserDataService
         {
             using var db = new LiteDatabase(_databasePath);
             var collection = db.GetCollection<SavedFilterConfiguration>(FiltersCollection);
-            var filters = collection.Find(f => f.SavedBy == username).ToList();
+            var filters = collection.FindAll()
+                .Where(f => string.Equals(f.SavedBy, username, StringComparison.OrdinalIgnoreCase))
+                .ToList();
             
             _logger.LogInformation("Retrieved {Count} filters for user '{Username}'", filters.Count, username);
             
@@ -229,6 +232,60 @@ public class UserDataService : IUserDataService
         }
     }
 
+    public Task<List<MorningTriageAcknowledgement>> GetMorningTriageAcknowledgementsAsync()
+    {
+        try
+        {
+            using var db = new LiteDatabase(_databasePath);
+            var collection = db.GetCollection<MorningTriageAcknowledgement>(MorningAcknowledgementsCollection);
+            var acknowledgements = collection.FindAll()
+                .OrderByDescending(item => item.AcknowledgedAt)
+                .ToList();
+            return Task.FromResult(acknowledgements);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error loading morning triage acknowledgements");
+            throw;
+        }
+    }
+
+    public Task<MorningTriageAcknowledgement> SaveMorningTriageAcknowledgementAsync(MorningTriageAcknowledgement acknowledgement)
+    {
+        try
+        {
+            using var db = new LiteDatabase(_databasePath);
+            var collection = db.GetCollection<MorningTriageAcknowledgement>(MorningAcknowledgementsCollection);
+            acknowledgement.AcknowledgedAt = DateTime.UtcNow;
+            acknowledgement.Id = string.IsNullOrWhiteSpace(acknowledgement.Id)
+                ? $"{acknowledgement.TestFullName}|{acknowledgement.ConfigurationId}|{acknowledgement.FailureSignature}".ToLowerInvariant()
+                : acknowledgement.Id;
+
+            collection.Upsert(acknowledgement);
+            return Task.FromResult(acknowledgement);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error saving morning triage acknowledgement for {Test}/{Config}", acknowledgement.TestFullName, acknowledgement.ConfigurationId);
+            throw;
+        }
+    }
+
+    public Task<bool> DeleteMorningTriageAcknowledgementAsync(string acknowledgementId)
+    {
+        try
+        {
+            using var db = new LiteDatabase(_databasePath);
+            var collection = db.GetCollection<MorningTriageAcknowledgement>(MorningAcknowledgementsCollection);
+            return Task.FromResult(collection.Delete(acknowledgementId));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting morning triage acknowledgement {AcknowledgementId}", acknowledgementId);
+            throw;
+        }
+    }
+
     private void EnsureIndexes()
     {
         try
@@ -239,6 +296,10 @@ public class UserDataService : IUserDataService
 
             var dashboards = db.GetCollection<DashboardConfiguration>(DashboardCollection);
             dashboards.EnsureIndex(d => d.Username);
+
+            var acknowledgements = db.GetCollection<MorningTriageAcknowledgement>(MorningAcknowledgementsCollection);
+            acknowledgements.EnsureIndex(a => a.Id, true);
+            acknowledgements.EnsureIndex(a => a.AcknowledgedAt);
         }
         catch (Exception ex)
         {

@@ -27,6 +27,15 @@ public interface ITriageService
         List<string>? selectedDomains = null);
 
     /// <summary>
+    /// Performs morning triage analysis for one current build against multiple baselines.
+    /// A test counts as a new failure if it fails in the current build and passed in any selected baseline.
+    /// </summary>
+    Task<MorningTriageResult?> GetMorningTriageAsync(
+        string todayBuildId,
+        List<string> baselineBuildIds,
+        List<string>? selectedDomains = null);
+
+    /// <summary>
     /// Performs release triage for a specific release build, optionally compared to a previous candidate
     /// </summary>
     /// <param name="releaseBuildId">Current release build ID</param>

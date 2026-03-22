@@ -52,9 +52,10 @@ public class SmokeTests : IAsyncLifetime
         await _page.GotoAsync($"{BaseUrl}/morning-triage");
         await _page.WaitForLoadStateAsync(LoadState.NetworkIdle);
 
-        // Assert: Page loaded - should have MudCard elements (stats cards)
-        var statsCards = await _page.QuerySelectorAllAsync("div.mud-card");
-        statsCards.Count.ShouldBeGreaterThan(0, "Morning Triage page should display stats cards");
+        // Assert: Page loaded - stats cards are hidden in triage mode; verify the triage page title
+        await _page.WaitForTimeoutAsync(2000);
+        var pageTitle = await _page.TitleAsync();
+        pageTitle.ShouldBe("Triage History", "Morning Triage should load the triage page");
     }
 
     [Trait("Category", "E2E")]
