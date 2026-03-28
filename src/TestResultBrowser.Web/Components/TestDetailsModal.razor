@@ -294,6 +294,7 @@
     private ReportAssetInfo? AssetInfo { get; set; }
     private bool IsLoadingAssets { get; set; }
     private string? lastAssetTestId;
+    private string? lastIncomingTestId;
     private const int FlakyWindow = 20;
 
     private TestResult? ActiveTest => GetActiveTestResult();
@@ -313,6 +314,12 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        if (!string.Equals(lastIncomingTestId, TestResult?.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            selectedHistoryId = TestResult?.Id;
+            lastIncomingTestId = TestResult?.Id;
+        }
+
         await LoadAssetsAsync();
         await LoadCrossConfigResultsAsync();
     }
@@ -418,7 +425,7 @@
             if (crossMatch != null) return crossMatch;
         }
 
-        return History[0];
+        return TestResult ?? History.FirstOrDefault();
     }
 
     private int _lastWindowBuildIdsHash;

@@ -935,37 +935,59 @@
             && !string.IsNullOrWhiteSpace(selectedTestInfo.TestNode.ActionLabel);
     }
 
-    private bool IsSelectedTestAcknowledged(TestResult _)
+    private bool IsSelectedTestAcknowledged(TestResult testResult)
     {
-        return selectedTestInfo?.TestNode?.IsAcknowledged == true;
+        var targetNode = ResolveTriageNodeForTestResult(testResult) ?? selectedTestInfo?.TestNode;
+        return targetNode?.IsAcknowledged == true;
     }
 
-    private async Task ToggleSelectedTestAcknowledgement(TestResult _)
+    private async Task ToggleSelectedTestAcknowledgement(TestResult testResult)
     {
-        if (selectedTestInfo?.TestNode == null)
+        var targetNode = ResolveTriageNodeForTestResult(testResult) ?? selectedTestInfo?.TestNode;
+        if (targetNode == null)
         {
             return;
         }
 
-        var nodeId = selectedTestInfo.TestNode.NodeId;
-        var columnIndex = selectedTestInfo.ColumnIndex;
+        var selectedNodeId = selectedTestInfo?.TestNode.NodeId;
+        var selectedColumnIndex = selectedTestInfo?.ColumnIndex;
 
-        await OnNodeAction(selectedTestInfo.TestNode);
+        await OnNodeAction(targetNode);
 
-        if (historyResult?.HierarchyNodes == null)
+        if (historyResult?.HierarchyNodes == null || string.IsNullOrWhiteSpace(selectedNodeId) || !selectedColumnIndex.HasValue)
         {
             return;
         }
 
-        var refreshedNode = FindNodeById(historyResult.HierarchyNodes, nodeId);
-        if (refreshedNode != null)
+        var refreshedSelectedNode = FindNodeById(historyResult.HierarchyNodes, selectedNodeId);
+        if (refreshedSelectedNode != null
+            && string.Equals(refreshedSelectedNode.NodeId, selectedNodeId, StringComparison.OrdinalIgnoreCase))
         {
             selectedTestInfo = new SelectedTestInfo
             {
-                TestNode = refreshedNode,
-                ColumnIndex = columnIndex
+                TestNode = refreshedSelectedNode,
+                ColumnIndex = selectedColumnIndex.Value
             };
         }
+    }
+
+    private HierarchyNode? ResolveTriageNodeForTestResult(TestResult testResult)
+    {
+        if (historyResult?.HierarchyNodes == null)
+        {
+            return null;
+        }
+
+        foreach (var nodeId in BuildCandidateNodeIds(testResult))
+        {
+            var node = FindNodeById(historyResult.HierarchyNodes, nodeId);
+            if (node != null)
+            {
+                return node;
+            }
+        }
+
+        return null;
     }
 
     private static HierarchyNode? FindNodeById(IEnumerable<HierarchyNode> nodes, string nodeId)
@@ -1345,8 +1367,14 @@
         return triageResult?.StillFailing
             .Where(result => !filterBySpecificConfigurations || selectedConfigurations.Contains(result.ConfigurationId))
             .Where(result => !hideFlakyTests || !flakyTestNames.Contains(result.TestFullName))
-            .Select(result => new { Result = result, Category = FailureClassificationService.Classify(result) })
+            .Select(result => new
+            {
+                Result = result,
+                Category = FailureClassificationService.Classify(result),
+                Acknowledgement = GetAcknowledgement(result)
+            })
             .Where(item => !hideInfrastructureIssues || item.Category == MorningFailureCategory.Product)
+            .Where(item => !hideAcknowledgedFailures || item.Acknowledgement == null)
             .Select(item =>
             {
                 var badges = new List<HierarchyNodeBadge>();
@@ -1355,17 +1383,22 @@
                     badges.Add(new HierarchyNodeBadge { Text = item.Category == MorningFailureCategory.Setup ? "Setup" : "Infra", Tone = HierarchyBadgeTone.Warning });
                 }
 
+                if (item.Acknowledgement != null)
+                {
+                    badges.Add(new HierarchyNodeBadge { Text = $"Ack: {item.Acknowledgement.AcknowledgedBy}", Tone = HierarchyBadgeTone.Success });
+                }
+
                 return new TriageDisplayRow(
                     item.Result.DomainId,
                     item.Result.FeatureId,
                     item.Result.ConfigurationId,
                     item.Result.TestFullName,
-                    $"triage-still:{item.Result.ConfigurationId}:{item.Result.TestFullName}",
+                    BuildStillFailingNodeId(item.Result),
                     item.Result.ErrorMessage,
                     item.Result.StackTrace,
                     badges,
-                    false,
-                    null);
+                    item.Acknowledgement != null,
+                    "ack-toggle");
             })
             .ToList() ?? new List<TriageDisplayRow>();
     }
@@ -1739,12 +1772,72 @@
         return acknowledgement;
     }
 
+    private MorningTriageAcknowledgement? GetAcknowledgement(TestResult result)
+    {
+        acknowledgementsById.TryGetValue(BuildAcknowledgementId(result), out var acknowledgement);
+        return acknowledgement;
+    }
+
     private string BuildAcknowledgementId(TriageRow row)
     {
         return $"{row.Failure.TestFullName}|{row.ConfigurationId}|{row.Failure.FailureSignature}".ToLowerInvariant();
     }
 
+    private string BuildAcknowledgementId(TestResult result)
+    {
+        var failureSignature = FailureClassificationService.BuildFailureSignature(result);
+        return $"{result.TestFullName}|{result.ConfigurationId}|{failureSignature}".ToLowerInvariant();
+    }
+
     private string BuildTriageNodeId(TriageRow row) => $"triage-test:{row.ConfigurationId}:{row.Failure.TestFullName}";
+
+    private static string BuildStillFailingNodeId(TestResult result) => $"triage-still:{result.ConfigurationId}:{result.TestFullName}";
+
+    private static IEnumerable<string> BuildCandidateNodeIds(TestResult result)
+    {
+        yield return $"triage-test:{result.ConfigurationId}:{result.TestFullName}";
+        yield return BuildStillFailingNodeId(result);
+        yield return $"triage-fixed:{result.ConfigurationId}:{result.TestFullName}";
+    }
+
+    private TriageAcknowledgementTarget? ResolveAcknowledgementTarget(HierarchyNode node)
+    {
+        if (triageResult == null)
+        {
+            return null;
+        }
+
+        var newFailureRow = triageResult.NewFailures
+            .SelectMany(failure => failure.AffectedConfigs.Select(configId => new TriageRow(failure, configId)))
+            .FirstOrDefault(item => string.Equals(BuildTriageNodeId(item), node.NodeId, StringComparison.OrdinalIgnoreCase));
+
+        if (newFailureRow != null)
+        {
+            return new TriageAcknowledgementTarget(
+                BuildAcknowledgementId(newFailureRow),
+                newFailureRow.Failure.TestFullName,
+                newFailureRow.ConfigurationId,
+                newFailureRow.Failure.FailureSignature,
+                newFailureRow.Failure.DomainId,
+                newFailureRow.Failure.FeatureId);
+        }
+
+        var stillFailingResult = triageResult.StillFailing
+            .FirstOrDefault(result => string.Equals(BuildStillFailingNodeId(result), node.NodeId, StringComparison.OrdinalIgnoreCase));
+
+        if (stillFailingResult == null)
+        {
+            return null;
+        }
+
+        return new TriageAcknowledgementTarget(
+            BuildAcknowledgementId(stillFailingResult),
+            stillFailingResult.TestFullName,
+            stillFailingResult.ConfigurationId,
+            FailureClassificationService.BuildFailureSignature(stillFailingResult),
+            stillFailingResult.DomainId,
+            stillFailingResult.FeatureId);
+    }
 
     private async Task OnNodeAction(HierarchyNode node)
     {
@@ -1753,31 +1846,27 @@
             return;
         }
 
-        var row = triageResult.NewFailures
-            .SelectMany(failure => failure.AffectedConfigs.Select(configId => new TriageRow(failure, configId)))
-            .FirstOrDefault(item => string.Equals(BuildTriageNodeId(item), node.NodeId, StringComparison.OrdinalIgnoreCase));
-
-        if (row == null)
+        var target = ResolveAcknowledgementTarget(node);
+        if (target == null)
         {
             return;
         }
 
-        var ackId = BuildAcknowledgementId(row);
-        if (acknowledgementsById.ContainsKey(ackId))
+        if (acknowledgementsById.ContainsKey(target.Id))
         {
-            await UserDataService.DeleteMorningTriageAcknowledgementAsync(ackId);
-            acknowledgementsById.Remove(ackId);
+            await UserDataService.DeleteMorningTriageAcknowledgementAsync(target.Id);
+            acknowledgementsById.Remove(target.Id);
         }
         else
         {
             var acknowledgement = await UserDataService.SaveMorningTriageAcknowledgementAsync(new MorningTriageAcknowledgement
             {
-                Id = ackId,
-                TestFullName = row.Failure.TestFullName,
-                ConfigurationId = row.ConfigurationId,
-                FailureSignature = row.Failure.FailureSignature,
-                DomainId = row.Failure.DomainId,
-                FeatureId = row.Failure.FeatureId,
+                Id = target.Id,
+                TestFullName = target.TestFullName,
+                ConfigurationId = target.ConfigurationId,
+                FailureSignature = target.FailureSignature,
+                DomainId = target.DomainId,
+                FeatureId = target.FeatureId,
                 AcknowledgedBy = currentUsername
             });
             acknowledgementsById[acknowledgement.Id] = acknowledgement;
@@ -1823,6 +1912,14 @@
         List<HierarchyNodeBadge> Badges,
         bool IsAcknowledged,
         string? ActionLabel);
+
+    private sealed record TriageAcknowledgementTarget(
+        string Id,
+        string TestFullName,
+        string ConfigurationId,
+        string FailureSignature,
+        string DomainId,
+        string FeatureId);
 
     private enum TriageSummaryFilter
     {
