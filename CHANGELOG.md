@@ -2,6 +2,21 @@
 
 ---
 
+## 28 March 2026
+
+### Added
+
+- **Action-first test details header** — The test details modal now exposes the most useful actions immediately in the header: Polarion, Open Screenshot, Open Video, Open Full Report, and Acknowledge where the current page supports triage acknowledgements.
+- **Clickable Morning Triage summary chips** — The `New failures`, `Fixed`, `Still failing`, and `Missing configs` chips now act as real filters instead of static counters. The selected view is preserved in the URL, so reload and back/forward keep the same triage state.
+
+### Improved
+
+- **Morning Triage acknowledgement workflow** — Acknowledged rows are easier to scan, group acknowledgement propagates upward when all children are acknowledged, and redundant acknowledgement markers were removed to free horizontal space.
+- **Home chart hover alignment** — The pass-rate trend hover now tracks the chart correctly, so the guide line and tooltip no longer drift away from the hovered day.
+- **System Status responsiveness** — System Status now renders immediately and fills in its summary asynchronously from a cached snapshot instead of blocking the page on expensive aggregations.
+- **Home dashboard hierarchy** — The configuration matrix was moved to the top of Home so the cross-configuration view is visible before the KPI and trend sections.
+
+
 ## 15 March 2026
 
 ### Added

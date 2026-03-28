@@ -210,4 +210,45 @@ public class ConfigurationHistoryTests : IAsyncLifetime
             System.Console.WriteLine("✓ Workflow test completed successfully up to test details dialog");
         }
     }
+
+    [Trait("Category", "E2E")]
+    [Fact]
+    public async Task MorningTriage_FilterChip_PersistsInUrlAcrossReload()
+    {
+        await _page!.GotoAsync($"{BaseUrl}/configuration-history?mode=triage");
+        await _page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+        await _page.GetByText("What changed vs selected builds").WaitForAsync();
+
+        var fixedChip = _page.Locator("button").Filter(new() { HasTextString = "Fixed:" }).First;
+        await fixedChip.WaitForAsync();
+        await fixedChip.ClickAsync();
+
+        await _page.WaitForFunctionAsync("() => window.location.search.includes('triageFilter=fixed')");
+
+        var urlAfterClick = _page.Url;
+        urlAfterClick.ShouldContain("triageFilter=fixed");
+
+        await _page.ReloadAsync();
+        await _page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+        _page.Url.ShouldContain("triageFilter=fixed");
+
+        var fixedChipAfterReload = _page.Locator("button").Filter(new() { HasTextString = "Fixed:" }).First;
+        await fixedChipAfterReload.WaitForAsync();
+        (await fixedChipAfterReload.IsVisibleAsync()).ShouldBeTrue();
+    }
+
+    [Trait("Category", "E2E")]
+    [Fact]
+    public async Task MorningTriage_MissingConfigsFilter_RendersMissingConfigurationView()
+    {
+        await _page!.GotoAsync($"{BaseUrl}/configuration-history?mode=triage&triageFilter=missing-configs");
+        await _page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+
+        var missingConfigHeading = _page.GetByText("Configurations missing from", new() { Exact = false });
+        await missingConfigHeading.WaitForAsync();
+
+        (await missingConfigHeading.IsVisibleAsync()).ShouldBeTrue();
+        _page.Url.ShouldContain("triageFilter=missing-configs");
+        (await _page.GetByText("Test Hierarchy").CountAsync()).ShouldBe(0);
+    }
 }

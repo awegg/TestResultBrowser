@@ -56,6 +56,24 @@
 	}
 	else
 	{
+		@* Configuration Matrix with Sparklines *@
+		<MudPaper Class="panel-card" Style="min-height: auto; margin-bottom: 0.5rem;">
+			<div class="matrix-header-row">
+				<div class="panel-header">Configuration Matrix (Last @matrixDays Days)</div>
+				<div class="matrix-controls">
+					<MudSwitch T="bool" Dense="true" Color="Color.Primary" @bind-Value="hideNoLatestRelease" @bind-Value:after="OnHideNoLatestReleaseChanged" Class="matrix-filter-toggle">
+						<span class="matrix-filter-label">Hide N/A last release</span>
+					</MudSwitch>
+					<MudSelect T="int" Dense="true" Variant="Variant.Outlined" Value="@matrixDays" ValueChanged="OnMatrixDaysChanged" Class="matrix-days-select">
+						<MudSelectItem Value="7">7 days</MudSelectItem>
+						<MudSelectItem Value="14">14 days</MudSelectItem>
+						<MudSelectItem Value="30">30 days</MudSelectItem>
+					</MudSelect>
+				</div>
+			</div>
+			<MatrixWithSparklines @key="@($"{matrixDays}-{hideNoLatestRelease}")" Matrix="configMatrix" HideNoLatestRelease="hideNoLatestRelease" OnCellClick="NavigateToConfigHistory" />
+		</MudPaper>
+
 		@* KPI Strip *@
 		<div class="kpi-strip">
 			<div class="kpi-item">
@@ -119,13 +137,15 @@
 							<span>@((yMin + yRange / 2).ToString("F1"))%</span>
 							<span>@yMin.ToString("F1")%</span>
 						</div>
-						<div class="chart-svg-area" @ref="chartAreaRef" @onmousemove="OnChartMouseMove" @onmouseleave="OnChartMouseLeave">
+						<div class="chart-svg-area" @ref="chartAreaRef">
 							<svg width="100%" height="220" viewBox="0 0 800 220" preserveAspectRatio="none">
 								<rect x="0" y="0" width="800" height="220" rx="10" ry="10" fill="#0f172a" />
 								@* Grid lines *@
 								<line x1="0" y1="55" x2="800" y2="55" stroke="#1e293b" stroke-width="1" />
 								<line x1="0" y1="110" x2="800" y2="110" stroke="#1e293b" stroke-width="1" />
 								<line x1="0" y1="165" x2="800" y2="165" stroke="#1e293b" stroke-width="1" />
+								<rect x="0" y="0" width="800" height="220" fill="transparent" style="pointer-events: all;"
+								      @onmousemove="OnChartMouseMove" @onmouseleave="OnChartMouseLeave" />
 								@foreach (var series in renderedSeries)
 								{
 									foreach (var segment in series.Segments)
@@ -249,25 +269,6 @@
 				</MudPaper>
 			</MudItem>
 
-			@* Configuration Matrix with Sparklines *@
-			<MudItem xs="12">
-				<MudPaper Class="panel-card" Style="min-height: auto;">
-					<div class="matrix-header-row">
-						<div class="panel-header">Configuration Matrix (Last @matrixDays Days)</div>
-						<div class="matrix-controls">
-							<MudSwitch T="bool" Dense="true" Color="Color.Primary" @bind-Value="hideNoLatestRelease" @bind-Value:after="OnHideNoLatestReleaseChanged" Class="matrix-filter-toggle">
-								<span class="matrix-filter-label">Hide N/A last release</span>
-							</MudSwitch>
-							<MudSelect T="int" Dense="true" Variant="Variant.Outlined" Value="@matrixDays" ValueChanged="OnMatrixDaysChanged" Class="matrix-days-select">
-								<MudSelectItem Value="7">7 days</MudSelectItem>
-								<MudSelectItem Value="14">14 days</MudSelectItem>
-								<MudSelectItem Value="30">30 days</MudSelectItem>
-							</MudSelect>
-						</div>
-					</div>
-						<MatrixWithSparklines @key="@($"{matrixDays}-{hideNoLatestRelease}")" Matrix="configMatrix" HideNoLatestRelease="hideNoLatestRelease" OnCellClick="NavigateToConfigHistory" />
-				</MudPaper>
-			</MudItem>
 		</MudGrid>
 
 		<div class="dashboard-footer">

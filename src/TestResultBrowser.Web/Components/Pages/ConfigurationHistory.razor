@@ -13,6 +13,7 @@
 @inject IUserDataService UserDataService
 @inject IFeatureGroupingService FeatureGroupingService
 @inject IFlakyTestDetectionService FlakyTestDetectionService
+@inject IFailureClassificationService FailureClassificationService
 @inject IWorkItemLinkService WorkItemLinkService
 @inject IOptions<TestResultBrowserOptions> BrowserOptions
 @inject ISnackbar Snackbar
@@ -175,10 +176,26 @@
                                 </MudText>
                             </div>
                             <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
-                                <MudChip T="string" Color="Color.Error" Variant="Variant.Filled">New failures: @triageVisibleFailureCount</MudChip>
-                                <MudChip T="string" Color="Color.Success" Variant="Variant.Outlined">Fixed: @triageResult.FixedTests.Count</MudChip>
-                                <MudChip T="string" Color="Color.Warning" Variant="Variant.Outlined">Still failing: @triageResult.StillFailing.Count</MudChip>
-                                <MudChip T="string" Color="@(triageResult.MissingConfigurations.Count == 0 ? Color.Success : Color.Warning)" Variant="Variant.Outlined">Missing configs: @triageResult.MissingConfigurations.Count</MudChip>
+                                <MudChip T="string"
+                                         Color="Color.Error"
+                                         Variant="@(selectedTriageSummaryFilter == TriageSummaryFilter.NewFailures ? Variant.Filled : Variant.Outlined)"
+                                         OnClick="@(async () => await SetTriageSummaryFilter(TriageSummaryFilter.NewFailures))"
+                                         Style="cursor:pointer;">New failures: @triageVisibleFailureCount</MudChip>
+                                <MudChip T="string"
+                                         Color="Color.Success"
+                                         Variant="@(selectedTriageSummaryFilter == TriageSummaryFilter.FixedTests ? Variant.Filled : Variant.Outlined)"
+                                         OnClick="@(async () => await SetTriageSummaryFilter(TriageSummaryFilter.FixedTests))"
+                                         Style="cursor:pointer;">Fixed: @triageResult.FixedTests.Count</MudChip>
+                                <MudChip T="string"
+                                         Color="Color.Warning"
+                                         Variant="@(selectedTriageSummaryFilter == TriageSummaryFilter.StillFailing ? Variant.Filled : Variant.Outlined)"
+                                         OnClick="@(async () => await SetTriageSummaryFilter(TriageSummaryFilter.StillFailing))"
+                                         Style="cursor:pointer;">Still failing: @triageResult.StillFailing.Count</MudChip>
+                                <MudChip T="string"
+                                         Color="@(triageResult.MissingConfigurations.Count == 0 ? Color.Success : Color.Warning)"
+                                         Variant="@(selectedTriageSummaryFilter == TriageSummaryFilter.MissingConfigurations ? Variant.Filled : Variant.Outlined)"
+                                         OnClick="@(async () => await SetTriageSummaryFilter(TriageSummaryFilter.MissingConfigurations))"
+                                         Style="cursor:pointer;">Missing configs: @triageResult.MissingConfigurations.Count</MudChip>
                             </div>
                         </MudStack>
                     </MudPaper>
@@ -238,9 +255,27 @@
 
                 @* Hierarchical Tree View *@
                 <MudPaper Class="pa-4">
-                    @if (historyResult.TotalTests == 0 && !historyResult.HierarchyNodes.Any(n => n.Children.Count > 0))
+                    @if (isTriageMode && selectedTriageSummaryFilter == TriageSummaryFilter.MissingConfigurations)
                     {
-                        <MudText Color="Color.Default" Typo="Typo.body2">@(isTriageMode ? "No regressions found for the selected comparison." : "No test results found for selected configuration.")</MudText>
+                        var missingConfigurations = GetFilteredMissingConfigurations();
+                        @if (missingConfigurations.Count == 0)
+                        {
+                            <MudText Color="Color.Default" Typo="Typo.body2">No missing configurations for the selected comparison.</MudText>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.subtitle2" Class="mb-2">Configurations missing from @triageResult?.TodayBuildId</MudText>
+                            <MudChipSet T="string">
+                                @foreach (var configId in missingConfigurations)
+                                {
+                                    <MudChip T="string" Color="Color.Warning" Variant="Variant.Outlined">@ConfigurationLabelHelper.GetConfigurationLabel(configId)</MudChip>
+                                }
+                            </MudChipSet>
+                        }
+                    }
+                    else if (historyResult.TotalTests == 0 && !historyResult.HierarchyNodes.Any(n => n.Children.Count > 0))
+                    {
+                        <MudText Color="Color.Default" Typo="Typo.body2">@(isTriageMode ? GetEmptyTriageFilterMessage() : "No test results found for selected configuration.")</MudText>
                     }
                     else
                     {
@@ -329,6 +364,9 @@
                   BuildId="@GetSelectedBuildId()"
                   History="@GetTestHistory()"
                   CurrentWindowBuildIds="@GetCurrentWindowBuildIds()"
+                  CanAcknowledge="@CanAcknowledgeSelectedTest()"
+                  IsAcknowledgedEvaluator="@IsSelectedTestAcknowledged"
+                  OnAcknowledge="@ToggleSelectedTestAcknowledgement"
                   OnClose="@CloseTestDetails" />
 
 @* Save Filter Dialog *@
@@ -359,6 +397,9 @@
 
     [SupplyParameterFromQuery(Name = "baselineBuild")]
     public string? BaselineBuildsFromUrl { get; set; }
+
+    [SupplyParameterFromQuery(Name = "triageFilter")]
+    public string? TriageFilterFromUrl { get; set; }
     
     private List<string> availableConfigurations = new();
     private List<ConfigurationMetadata> configurationMetadata = new();
@@ -396,6 +437,7 @@
     private string? flakySignature;
     private Dictionary<string, MorningTriageAcknowledgement> acknowledgementsById = new(StringComparer.OrdinalIgnoreCase);
     private int triageVisibleFailureCount;
+    private TriageSummaryFilter selectedTriageSummaryFilter = TriageSummaryFilter.NewFailures;
 
     // Expand All protection
     private const int MAX_EXPAND_ALL_NODES = 5000;
@@ -411,6 +453,8 @@
             .ToList();
 
         await LoadFeatureSelectionPreferencesAsync();
+
+        ApplyTriageSummaryFilterFromUrl();
 
         // Apply saved filter from URL (if provided)
         var filterApplied = await ApplyFilterFromUrlAsync();
@@ -457,6 +501,16 @@
         
         isTriageMode = string.Equals(ModeFromUrl, "triage", StringComparison.OrdinalIgnoreCase)
             || new Uri(NavigationManager.Uri).AbsolutePath.TrimEnd('/').Equals("/morning-triage", StringComparison.OrdinalIgnoreCase);
+
+        var requestedTriageFilter = ParseTriageSummaryFilter(TriageFilterFromUrl);
+        if (requestedTriageFilter != selectedTriageSummaryFilter)
+        {
+            selectedTriageSummaryFilter = requestedTriageFilter;
+            if (isTriageMode)
+            {
+                needsRefresh = true;
+            }
+        }
 
         if (!string.IsNullOrEmpty(ConfigFromUrl))
         {
@@ -697,7 +751,8 @@
             ["mode"] = isTriageMode ? "triage" : null,
             ["currentBuild"] = isTriageMode ? selectedCurrentBuild : null,
             ["baselineBuild"] = isTriageMode ? string.Join(",", selectedBaselineBuilds.OrderByDescending(BuildNumberExtractor.ExtractBuildNumber)) : null,
-            ["feature"] = selectedFeatureNames.Any() ? string.Join(",", selectedFeatureNames.OrderBy(x => x, StringComparer.OrdinalIgnoreCase)) : null
+            ["feature"] = selectedFeatureNames.Any() ? string.Join(",", selectedFeatureNames.OrderBy(x => x, StringComparer.OrdinalIgnoreCase)) : null,
+            ["triageFilter"] = isTriageMode ? FormatTriageSummaryFilter(selectedTriageSummaryFilter) : null
         });
         NavigationManager.NavigateTo(uri, replace: true);
     }
@@ -872,6 +927,87 @@
 
     private List<string>? GetCurrentWindowBuildIds() =>
         historyResult?.HistoryColumns?.Select(c => c.BuildId).ToList();
+
+    private bool CanAcknowledgeSelectedTest()
+    {
+        return isTriageMode
+            && selectedTestInfo?.TestNode != null
+            && !string.IsNullOrWhiteSpace(selectedTestInfo.TestNode.ActionLabel);
+    }
+
+    private bool IsSelectedTestAcknowledged(TestResult testResult)
+    {
+        var targetNode = ResolveTriageNodeForTestResult(testResult) ?? selectedTestInfo?.TestNode;
+        return targetNode?.IsAcknowledged == true;
+    }
+
+    private async Task ToggleSelectedTestAcknowledgement(TestResult testResult)
+    {
+        var targetNode = ResolveTriageNodeForTestResult(testResult) ?? selectedTestInfo?.TestNode;
+        if (targetNode == null)
+        {
+            return;
+        }
+
+        var selectedNodeId = selectedTestInfo?.TestNode.NodeId;
+        var selectedColumnIndex = selectedTestInfo?.ColumnIndex;
+
+        await OnNodeAction(targetNode);
+
+        if (historyResult?.HierarchyNodes == null || string.IsNullOrWhiteSpace(selectedNodeId) || !selectedColumnIndex.HasValue)
+        {
+            return;
+        }
+
+        var refreshedSelectedNode = FindNodeById(historyResult.HierarchyNodes, selectedNodeId);
+        if (refreshedSelectedNode != null
+            && string.Equals(refreshedSelectedNode.NodeId, selectedNodeId, StringComparison.OrdinalIgnoreCase))
+        {
+            selectedTestInfo = new SelectedTestInfo
+            {
+                TestNode = refreshedSelectedNode,
+                ColumnIndex = selectedColumnIndex.Value
+            };
+        }
+    }
+
+    private HierarchyNode? ResolveTriageNodeForTestResult(TestResult testResult)
+    {
+        if (historyResult?.HierarchyNodes == null)
+        {
+            return null;
+        }
+
+        foreach (var nodeId in BuildCandidateNodeIds(testResult))
+        {
+            var node = FindNodeById(historyResult.HierarchyNodes, nodeId);
+            if (node != null)
+            {
+                return node;
+            }
+        }
+
+        return null;
+    }
+
+    private static HierarchyNode? FindNodeById(IEnumerable<HierarchyNode> nodes, string nodeId)
+    {
+        foreach (var node in nodes)
+        {
+            if (string.Equals(node.NodeId, nodeId, StringComparison.OrdinalIgnoreCase))
+            {
+                return node;
+            }
+
+            var childMatch = FindNodeById(node.Children, nodeId);
+            if (childMatch != null)
+            {
+                return childMatch;
+            }
+        }
+
+        return null;
+    }
 
     private void OpenFeatureDialog()
     {
@@ -1065,18 +1201,6 @@
         var filterBySpecificConfigurations = selectedConfigurations.Any()
             && !selectedConfigurations.Contains(ConfigurationHistoryService.AllConfigurationsId, StringComparer.OrdinalIgnoreCase);
 
-        var rows = triageResult.NewFailures
-            .Where(failure => !filterBySpecificConfigurations || failure.AffectedConfigs.Any(selectedConfigurations.Contains))
-            .SelectMany(failure => failure.AffectedConfigs
-                .Where(configId => !filterBySpecificConfigurations || selectedConfigurations.Contains(configId))
-                .Select(configId => new TriageRow(failure, configId)))
-            .Where(row => !hideFlakyTests || !flakyTestNames.Contains(row.Failure.TestFullName))
-            .Where(row => !hideInfrastructureIssues || row.Failure.Category == MorningFailureCategory.Product)
-            .Where(row => !hideAcknowledgedFailures || GetAcknowledgement(row) == null)
-            .ToList();
-
-        triageVisibleFailureCount = rows.Count;
-
         var buildIds = BuildTriageHistoryWindow();
         var historyColumns = buildIds
             .Select((buildId, index) => new HistoryColumn
@@ -1087,14 +1211,38 @@
             })
             .ToList();
 
+        var newFailureRows = triageResult.NewFailures
+            .Where(failure => !filterBySpecificConfigurations || failure.AffectedConfigs.Any(selectedConfigurations.Contains))
+            .SelectMany(failure => failure.AffectedConfigs
+                .Where(configId => !filterBySpecificConfigurations || selectedConfigurations.Contains(configId))
+                .Select(configId => new TriageRow(failure, configId)))
+            .Where(row => !hideFlakyTests || !flakyTestNames.Contains(row.Failure.TestFullName))
+            .Where(row => !hideInfrastructureIssues || row.Failure.Category == MorningFailureCategory.Product)
+            .Where(row => !hideAcknowledgedFailures || GetAcknowledgement(row) == null)
+            .ToList();
+
+        triageVisibleFailureCount = newFailureRows.Count;
+
+        return selectedTriageSummaryFilter switch
+        {
+            TriageSummaryFilter.FixedTests => BuildTriageHistoryResultFromDisplayRows(BuildFixedTriageRows(filterBySpecificConfigurations, buildIds), buildIds, historyColumns),
+            TriageSummaryFilter.StillFailing => BuildTriageHistoryResultFromDisplayRows(BuildStillFailingRows(filterBySpecificConfigurations, buildIds), buildIds, historyColumns),
+            TriageSummaryFilter.MissingConfigurations => BuildTriageHistoryResultFromDisplayRows(new List<TriageDisplayRow>(), buildIds, historyColumns),
+            _ => BuildTriageHistoryResultFromDisplayRows(BuildNewFailureDisplayRows(newFailureRows), buildIds, historyColumns)
+        };
+    }
+
+    private ConfigurationHistoryResult BuildTriageHistoryResultFromDisplayRows(List<TriageDisplayRow> rows, List<string> buildIds, List<HistoryColumn> historyColumns)
+    {
+        var filterBySpecificConfigurations = selectedConfigurations.Any()
+            && !selectedConfigurations.Contains(ConfigurationHistoryService.AllConfigurationsId, StringComparer.OrdinalIgnoreCase);
+
         var domainNodes = rows
-            .GroupBy(row => row.Failure.DomainId, StringComparer.OrdinalIgnoreCase)
-            .Select(group => BuildTriageDomainNode(group.Key, group.ToList(), buildIds))
+            .GroupBy(row => row.DomainId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => BuildTriageDisplayDomainNode(group.Key, group.ToList(), buildIds))
             .OrderBy(node => node.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        // Wrap all domain nodes in a single synthetic root — same pattern as config history —
-        // so the tree renders as one table with one header row instead of one table per domain.
         var rootNode = new HierarchyNode
         {
             Name = "Root",
@@ -1119,6 +1267,280 @@
             SkippedTests = 0,
             HistoryColumns = historyColumns,
             HierarchyNodes = new List<HierarchyNode> { rootNode }
+        };
+    }
+
+    private async Task SetTriageSummaryFilter(TriageSummaryFilter filter)
+    {
+        if (selectedTriageSummaryFilter == filter)
+        {
+            return;
+        }
+
+        selectedTriageSummaryFilter = filter;
+        UpdateUrl();
+        historyResult = await BuildTriageHistoryResultAsync();
+    }
+
+    private void ApplyTriageSummaryFilterFromUrl()
+    {
+        selectedTriageSummaryFilter = ParseTriageSummaryFilter(TriageFilterFromUrl);
+    }
+
+    private static TriageSummaryFilter ParseTriageSummaryFilter(string? value)
+    {
+        return value?.Trim().ToLowerInvariant() switch
+        {
+            "fixed" => TriageSummaryFilter.FixedTests,
+            "still-failing" => TriageSummaryFilter.StillFailing,
+            "missing-configs" => TriageSummaryFilter.MissingConfigurations,
+            _ => TriageSummaryFilter.NewFailures
+        };
+    }
+
+    private static string FormatTriageSummaryFilter(TriageSummaryFilter filter)
+    {
+        return filter switch
+        {
+            TriageSummaryFilter.FixedTests => "fixed",
+            TriageSummaryFilter.StillFailing => "still-failing",
+            TriageSummaryFilter.MissingConfigurations => "missing-configs",
+            _ => "new-failures"
+        };
+    }
+
+    private List<TriageDisplayRow> BuildNewFailureDisplayRows(List<TriageRow> rows)
+    {
+        return rows.Select(row =>
+        {
+            var badges = new List<HierarchyNodeBadge>();
+            if (row.Failure.Category != MorningFailureCategory.Product)
+            {
+                badges.Add(new HierarchyNodeBadge { Text = row.Failure.Category == MorningFailureCategory.Setup ? "Setup" : "Infra", Tone = HierarchyBadgeTone.Warning });
+            }
+
+            if (GetAcknowledgement(row) is { } acknowledgement)
+            {
+                badges.Add(new HierarchyNodeBadge { Text = $"Ack: {acknowledgement.AcknowledgedBy}", Tone = HierarchyBadgeTone.Success });
+            }
+
+            return new TriageDisplayRow(
+                row.Failure.DomainId,
+                row.Failure.FeatureId,
+                row.ConfigurationId,
+                row.Failure.TestFullName,
+                BuildTriageNodeId(row),
+                row.Failure.ErrorMessage,
+                row.Failure.StackTrace,
+                badges,
+                GetAcknowledgement(row) != null,
+                "ack-toggle");
+        }).ToList();
+    }
+
+    private List<TriageDisplayRow> BuildFixedTriageRows(bool filterBySpecificConfigurations, List<string> buildIds)
+    {
+        return triageResult?.FixedTests
+            .Where(fixedTest => !filterBySpecificConfigurations || fixedTest.FixedInConfigs.Any(selectedConfigurations.Contains))
+            .SelectMany(fixedTest => fixedTest.FixedInConfigs
+                .Where(configId => !filterBySpecificConfigurations || selectedConfigurations.Contains(configId))
+                .Select(configId =>
+                {
+                    var failedResult = GetFirstFailedResult(buildIds, fixedTest.TestFullName, configId);
+                    return new TriageDisplayRow(
+                        fixedTest.DomainId,
+                        fixedTest.FeatureId,
+                        configId,
+                        fixedTest.TestFullName,
+                        $"triage-fixed:{configId}:{fixedTest.TestFullName}",
+                        failedResult?.ErrorMessage,
+                        failedResult?.StackTrace,
+                        new List<HierarchyNodeBadge> { new() { Text = "Fixed", Tone = HierarchyBadgeTone.Success } },
+                        false,
+                        null);
+                }))
+            .ToList() ?? new List<TriageDisplayRow>();
+    }
+
+    private List<TriageDisplayRow> BuildStillFailingRows(bool filterBySpecificConfigurations, List<string> buildIds)
+    {
+        return triageResult?.StillFailing
+            .Where(result => !filterBySpecificConfigurations || selectedConfigurations.Contains(result.ConfigurationId))
+            .Where(result => !hideFlakyTests || !flakyTestNames.Contains(result.TestFullName))
+            .Select(result => new
+            {
+                Result = result,
+                Category = FailureClassificationService.Classify(result),
+                Acknowledgement = GetAcknowledgement(result)
+            })
+            .Where(item => !hideInfrastructureIssues || item.Category == MorningFailureCategory.Product)
+            .Where(item => !hideAcknowledgedFailures || item.Acknowledgement == null)
+            .Select(item =>
+            {
+                var badges = new List<HierarchyNodeBadge>();
+                if (item.Category != MorningFailureCategory.Product)
+                {
+                    badges.Add(new HierarchyNodeBadge { Text = item.Category == MorningFailureCategory.Setup ? "Setup" : "Infra", Tone = HierarchyBadgeTone.Warning });
+                }
+
+                if (item.Acknowledgement != null)
+                {
+                    badges.Add(new HierarchyNodeBadge { Text = $"Ack: {item.Acknowledgement.AcknowledgedBy}", Tone = HierarchyBadgeTone.Success });
+                }
+
+                return new TriageDisplayRow(
+                    item.Result.DomainId,
+                    item.Result.FeatureId,
+                    item.Result.ConfigurationId,
+                    item.Result.TestFullName,
+                    BuildStillFailingNodeId(item.Result),
+                    item.Result.ErrorMessage,
+                    item.Result.StackTrace,
+                    badges,
+                    item.Acknowledgement != null,
+                    "ack-toggle");
+            })
+            .ToList() ?? new List<TriageDisplayRow>();
+    }
+
+    private TestResult? GetFirstFailedResult(List<string> buildIds, string testFullName, string configurationId)
+    {
+        foreach (var buildId in buildIds)
+        {
+            var result = TestDataService.GetTestResultFast(buildId, testFullName, configurationId);
+            if (result?.Status == TestStatus.Fail)
+            {
+                return result;
+            }
+        }
+
+        return null;
+    }
+
+    private HierarchyNode BuildTriageDisplayDomainNode(string domainId, List<TriageDisplayRow> rows, List<string> buildIds)
+    {
+        var featureNodes = rows
+            .GroupBy(row => row.FeatureId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => BuildTriageDisplayFeatureNode(group.Key, group.ToList(), buildIds))
+            .OrderBy(node => node.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var node = new HierarchyNode
+        {
+            Name = domainId,
+            NodeType = HierarchyNodeType.Domain,
+            NodeId = $"triage-domain:{selectedTriageSummaryFilter}:{domainId}",
+            IndentLevel = 0,
+            IsExpanded = true,
+            Children = featureNodes,
+            Badges = BuildOwnerBadges(BrowserOptions.Value.DomainOwners, domainId)
+        };
+        PopulateAggregateNode(node, buildIds.Count);
+        return node;
+    }
+
+    private HierarchyNode BuildTriageDisplayFeatureNode(string featureId, List<TriageDisplayRow> rows, List<string> buildIds)
+    {
+        var configurationNodes = rows
+            .GroupBy(row => row.ConfigurationId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => BuildTriageDisplayConfigurationNode(group.Key, group.ToList(), buildIds))
+            .OrderBy(node => node.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var node = new HierarchyNode
+        {
+            Name = featureId,
+            NodeType = HierarchyNodeType.Feature,
+            NodeId = $"triage-feature:{selectedTriageSummaryFilter}:{featureId}",
+            IndentLevel = 1,
+            IsExpanded = false,
+            Children = configurationNodes,
+            Badges = BuildOwnerBadges(BrowserOptions.Value.FeatureOwners, featureId)
+        };
+        PopulateAggregateNode(node, buildIds.Count);
+        return node;
+    }
+
+    private HierarchyNode BuildTriageDisplayConfigurationNode(string configurationId, List<TriageDisplayRow> rows, List<string> buildIds)
+    {
+        var testNodes = rows
+            .Select(row => BuildTriageDisplayTestNode(row, buildIds))
+            .OrderBy(node => node.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var node = new HierarchyNode
+        {
+            Name = ConfigurationLabelHelper.GetConfigurationLabel(configurationId),
+            NodeType = HierarchyNodeType.Suite,
+            NodeId = $"triage-config:{selectedTriageSummaryFilter}:{configurationId}",
+            IndentLevel = 2,
+            IsExpanded = false,
+            Children = testNodes
+        };
+        PopulateAggregateNode(node, buildIds.Count);
+        return node;
+    }
+
+    private HierarchyNode BuildTriageDisplayTestNode(TriageDisplayRow row, List<string> buildIds)
+    {
+        var historyCells = buildIds
+            .Select(buildId => TestDataService.GetTestResultFast(buildId, row.TestFullName, row.ConfigurationId))
+            .Select(result => new HistoryCellData
+            {
+                Passed = result?.Status == TestStatus.Pass ? 1 : 0,
+                Failed = result?.Status == TestStatus.Fail ? 1 : 0,
+                Skipped = result?.Status == TestStatus.Skip ? 1 : 0,
+                ReportDirectoryPath = result?.ReportDirectoryPath,
+                SourceTestResult = result
+            })
+            .ToList();
+
+        var latestKnownResult = historyCells.Select(cell => cell.SourceTestResult).FirstOrDefault(result => result != null);
+        var node = new HierarchyNode
+        {
+            Name = latestKnownResult?.MethodName ?? row.TestFullName,
+            NodeType = HierarchyNodeType.Test,
+            NodeId = row.NodeId,
+            IndentLevel = 3,
+            TestFullName = row.TestFullName,
+            ReportDirectoryPath = latestKnownResult?.ReportDirectoryPath,
+            ErrorMessage = row.ErrorMessage,
+            StackTrace = row.StackTrace,
+            FirstErrorMessage = row.ErrorMessage,
+            WorkItemReferences = WorkItemLinkService.GetTicketReferences(latestKnownResult?.WorkItemIds ?? new List<string>()),
+            HistoryCells = historyCells,
+            Badges = row.Badges,
+            ActionLabel = row.ActionLabel,
+            IsAcknowledged = row.IsAcknowledged
+        };
+        PopulateAggregateNode(node, buildIds.Count);
+        return node;
+    }
+
+    private List<string> GetFilteredMissingConfigurations()
+    {
+        if (triageResult == null)
+        {
+            return new List<string>();
+        }
+
+        var missingConfigurations = triageResult.MissingConfigurations;
+        var filterBySpecificConfigurations = selectedConfigurations.Any()
+            && !selectedConfigurations.Contains(ConfigurationHistoryService.AllConfigurationsId, StringComparer.OrdinalIgnoreCase);
+
+        return filterBySpecificConfigurations
+            ? missingConfigurations.Where(selectedConfigurations.Contains).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList()
+            : missingConfigurations.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private string GetEmptyTriageFilterMessage()
+    {
+        return selectedTriageSummaryFilter switch
+        {
+            TriageSummaryFilter.FixedTests => "No fixed tests found for the selected comparison.",
+            TriageSummaryFilter.StillFailing => "No still-failing tests found for the selected comparison.",
+            TriageSummaryFilter.MissingConfigurations => "No missing configurations for the selected comparison.",
+            _ => "No regressions found for the selected comparison."
         };
     }
 
@@ -1309,6 +1731,7 @@
 
         var latestCell = node.HistoryCells.FirstOrDefault() ?? new HistoryCellData();
         node.LatestStats = new TestNodeStats { Passed = latestCell.Passed, Failed = latestCell.Failed, Skipped = latestCell.Skipped };
+        node.IsAcknowledged = node.Children.Count > 0 && node.Children.All(child => child.IsAcknowledged);
     }
 
     private async Task EnsureTriageFlakyTestsLoadedAsync()
@@ -1349,12 +1772,72 @@
         return acknowledgement;
     }
 
+    private MorningTriageAcknowledgement? GetAcknowledgement(TestResult result)
+    {
+        acknowledgementsById.TryGetValue(BuildAcknowledgementId(result), out var acknowledgement);
+        return acknowledgement;
+    }
+
     private string BuildAcknowledgementId(TriageRow row)
     {
         return $"{row.Failure.TestFullName}|{row.ConfigurationId}|{row.Failure.FailureSignature}".ToLowerInvariant();
     }
 
+    private string BuildAcknowledgementId(TestResult result)
+    {
+        var failureSignature = FailureClassificationService.BuildFailureSignature(result);
+        return $"{result.TestFullName}|{result.ConfigurationId}|{failureSignature}".ToLowerInvariant();
+    }
+
     private string BuildTriageNodeId(TriageRow row) => $"triage-test:{row.ConfigurationId}:{row.Failure.TestFullName}";
+
+    private static string BuildStillFailingNodeId(TestResult result) => $"triage-still:{result.ConfigurationId}:{result.TestFullName}";
+
+    private static IEnumerable<string> BuildCandidateNodeIds(TestResult result)
+    {
+        yield return $"triage-test:{result.ConfigurationId}:{result.TestFullName}";
+        yield return BuildStillFailingNodeId(result);
+        yield return $"triage-fixed:{result.ConfigurationId}:{result.TestFullName}";
+    }
+
+    private TriageAcknowledgementTarget? ResolveAcknowledgementTarget(HierarchyNode node)
+    {
+        if (triageResult == null)
+        {
+            return null;
+        }
+
+        var newFailureRow = triageResult.NewFailures
+            .SelectMany(failure => failure.AffectedConfigs.Select(configId => new TriageRow(failure, configId)))
+            .FirstOrDefault(item => string.Equals(BuildTriageNodeId(item), node.NodeId, StringComparison.OrdinalIgnoreCase));
+
+        if (newFailureRow != null)
+        {
+            return new TriageAcknowledgementTarget(
+                BuildAcknowledgementId(newFailureRow),
+                newFailureRow.Failure.TestFullName,
+                newFailureRow.ConfigurationId,
+                newFailureRow.Failure.FailureSignature,
+                newFailureRow.Failure.DomainId,
+                newFailureRow.Failure.FeatureId);
+        }
+
+        var stillFailingResult = triageResult.StillFailing
+            .FirstOrDefault(result => string.Equals(BuildStillFailingNodeId(result), node.NodeId, StringComparison.OrdinalIgnoreCase));
+
+        if (stillFailingResult == null)
+        {
+            return null;
+        }
+
+        return new TriageAcknowledgementTarget(
+            BuildAcknowledgementId(stillFailingResult),
+            stillFailingResult.TestFullName,
+            stillFailingResult.ConfigurationId,
+            FailureClassificationService.BuildFailureSignature(stillFailingResult),
+            stillFailingResult.DomainId,
+            stillFailingResult.FeatureId);
+    }
 
     private async Task OnNodeAction(HierarchyNode node)
     {
@@ -1363,31 +1846,27 @@
             return;
         }
 
-        var row = triageResult.NewFailures
-            .SelectMany(failure => failure.AffectedConfigs.Select(configId => new TriageRow(failure, configId)))
-            .FirstOrDefault(item => string.Equals(BuildTriageNodeId(item), node.NodeId, StringComparison.OrdinalIgnoreCase));
-
-        if (row == null)
+        var target = ResolveAcknowledgementTarget(node);
+        if (target == null)
         {
             return;
         }
 
-        var ackId = BuildAcknowledgementId(row);
-        if (acknowledgementsById.ContainsKey(ackId))
+        if (acknowledgementsById.ContainsKey(target.Id))
         {
-            await UserDataService.DeleteMorningTriageAcknowledgementAsync(ackId);
-            acknowledgementsById.Remove(ackId);
+            await UserDataService.DeleteMorningTriageAcknowledgementAsync(target.Id);
+            acknowledgementsById.Remove(target.Id);
         }
         else
         {
             var acknowledgement = await UserDataService.SaveMorningTriageAcknowledgementAsync(new MorningTriageAcknowledgement
             {
-                Id = ackId,
-                TestFullName = row.Failure.TestFullName,
-                ConfigurationId = row.ConfigurationId,
-                FailureSignature = row.Failure.FailureSignature,
-                DomainId = row.Failure.DomainId,
-                FeatureId = row.Failure.FeatureId,
+                Id = target.Id,
+                TestFullName = target.TestFullName,
+                ConfigurationId = target.ConfigurationId,
+                FailureSignature = target.FailureSignature,
+                DomainId = target.DomainId,
+                FeatureId = target.FeatureId,
                 AcknowledgedBy = currentUsername
             });
             acknowledgementsById[acknowledgement.Id] = acknowledgement;
@@ -1421,6 +1900,34 @@
     }
 
     private sealed record TriageRow(TriageNewFailure Failure, string ConfigurationId);
+
+    private sealed record TriageDisplayRow(
+        string DomainId,
+        string FeatureId,
+        string ConfigurationId,
+        string TestFullName,
+        string NodeId,
+        string? ErrorMessage,
+        string? StackTrace,
+        List<HierarchyNodeBadge> Badges,
+        bool IsAcknowledged,
+        string? ActionLabel);
+
+    private sealed record TriageAcknowledgementTarget(
+        string Id,
+        string TestFullName,
+        string ConfigurationId,
+        string FailureSignature,
+        string DomainId,
+        string FeatureId);
+
+    private enum TriageSummaryFilter
+    {
+        NewFailures,
+        FixedTests,
+        StillFailing,
+        MissingConfigurations
+    }
 
     private string GetTriageBannerStyle() => $"border-left: 4px solid {(triageResult?.IsRunComplete == true ? "#2e7d32" : "#ed6c02")};";
 

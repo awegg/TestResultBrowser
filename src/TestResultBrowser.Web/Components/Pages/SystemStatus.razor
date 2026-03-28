@@ -1,10 +1,12 @@
 @page "/system-status"
 @rendermode InteractiveServer
+@using TestResultBrowser.Web.Models
 @using TestResultBrowser.Web.Services
 @using MudBlazor
 @using Microsoft.AspNetCore.SignalR.Client
-@inject ITestDataService TestDataService
 @inject IFileWatcherService FileWatcher
+@inject ISystemStatusSummaryService SystemStatusSummaryService
+@inject ITestDataService TestDataService
 @inject ILogger<SystemStatus> Logger
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
@@ -53,18 +55,32 @@
                 </CardHeaderContent>
             </MudCardHeader>
             <MudCardContent>
-                <MudStack Spacing="2">
-                    <MudText>
-                        <strong>Total Test Results:</strong> @totalResults.ToString("N0")
-                    </MudText>
-                    <MudText>
-                        <strong>Memory Usage:</strong> @memoryUsageMB.ToString("N2") MB
-                    </MudText>
-                    <MudText>
-                        <strong>Memory %:</strong> @memoryPercentage.ToString("N1")% of @maxMemoryGB GB limit
-                    </MudText>
-                    <MudProgressLinear Color="@GetMemoryColor()" Value="@memoryPercentage" Class="my-2" />
-                </MudStack>
+                @if (!string.IsNullOrWhiteSpace(summaryError) && snapshot is null)
+                {
+                    <MudAlert Severity="Severity.Error">@summaryError</MudAlert>
+                }
+                else if (snapshot is null)
+                {
+                    <MudSkeleton Height="20px" Width="60%" />
+                    <MudSkeleton Height="20px" Width="50%" />
+                    <MudSkeleton Height="20px" Width="55%" />
+                    <MudSkeleton Height="8px" Width="100%" Class="my-3" />
+                }
+                else
+                {
+                    <MudStack Spacing="2">
+                        <MudText>
+                            <strong>Total Test Results:</strong> @snapshot.TotalResults.ToString("N0")
+                        </MudText>
+                        <MudText>
+                            <strong>Memory Usage:</strong> @MemoryUsageMB.ToString("N2") MB
+                        </MudText>
+                        <MudText>
+                            <strong>Memory %:</strong> @MemoryPercentage.ToString("N1")% of @maxMemoryGB GB limit
+                        </MudText>
+                        <MudProgressLinear Color="@GetMemoryColor()" Value="@MemoryPercentage" Class="my-2" />
+                    </MudStack>
+                }
             </MudCardContent>
         </MudCard>
     </MudItem>
@@ -77,20 +93,34 @@
                 </CardHeaderContent>
             </MudCardHeader>
             <MudCardContent>
-                <MudStack Spacing="2">
-                    <MudText>
-                        <strong>Total Builds:</strong> @totalBuilds
-                    </MudText>
-                    <MudText>
-                        <strong>Configurations:</strong> @totalConfigurations
-                    </MudText>
-                    <MudText>
-                        <strong>Domains:</strong> @totalDomains
-                    </MudText>
-                    <MudText>
-                        <strong>Date Range:</strong> @GetDateRangeDisplay()
-                    </MudText>
-                </MudStack>
+                @if (!string.IsNullOrWhiteSpace(summaryError) && snapshot is null)
+                {
+                    <MudAlert Severity="Severity.Warning">Coverage data is currently unavailable.</MudAlert>
+                }
+                else if (snapshot is null)
+                {
+                    <MudSkeleton Height="20px" Width="45%" />
+                    <MudSkeleton Height="20px" Width="50%" />
+                    <MudSkeleton Height="20px" Width="40%" />
+                    <MudSkeleton Height="20px" Width="75%" />
+                }
+                else
+                {
+                    <MudStack Spacing="2">
+                        <MudText>
+                            <strong>Total Builds:</strong> @snapshot.TotalBuilds
+                        </MudText>
+                        <MudText>
+                            <strong>Configurations:</strong> @snapshot.TotalConfigurations
+                        </MudText>
+                        <MudText>
+                            <strong>Domains:</strong> @snapshot.TotalDomains
+                        </MudText>
+                        <MudText>
+                            <strong>Date Range:</strong> @GetDateRangeDisplay()
+                        </MudText>
+                    </MudStack>
+                }
             </MudCardContent>
         </MudCard>
     </MudItem>
@@ -103,10 +133,20 @@
                 </CardHeaderContent>
             </MudCardHeader>
             <MudCardContent>
-                @if (recentBuilds.Any())
+                @if (!string.IsNullOrWhiteSpace(summaryError) && snapshot is null)
+                {
+                    <MudAlert Severity="Severity.Warning">Recent builds could not be loaded.</MudAlert>
+                }
+                else if (snapshot is null)
+                {
+                    <MudSkeleton Height="18px" Width="80%" />
+                    <MudSkeleton Height="18px" Width="70%" />
+                    <MudSkeleton Height="18px" Width="76%" />
+                }
+                else if (snapshot.RecentBuilds.Any())
                 {
                     <MudList T="string" Dense="true">
-                        @foreach (var build in recentBuilds.Take(10))
+                        @foreach (var build in snapshot.RecentBuilds)
                         {
                             <MudListItem T="string" Icon="@Icons.Material.Filled.Build">
                                 @build
@@ -130,49 +170,63 @@
                 </CardHeaderContent>
             </MudCardHeader>
             <MudCardContent>
-                <MudStack Spacing="3">
-                    <div>
-                        <MudText Typo="Typo.subtitle2"><strong>Versions:</strong></MudText>
-                        @if (versions.Any())
-                        {
-                            <MudChipSet T="string">
-                                @foreach (var version in versions.Take(8))
-                                {
-                                    <MudChip T="string" Size="Size.Small" Color="Color.Primary">@version</MudChip>
-                                }
-                                @if (versions.Count() > 8)
-                                {
-                                    <MudChip T="string" Size="Size.Small" Color="Color.Default">+@(versions.Count() - 8) more</MudChip>
-                                }
-                            </MudChipSet>
-                        }
-                        else
-                        {
-                            <MudText Color="Color.Secondary">None</MudText>
-                        }
-                    </div>
-                    
-                    <div>
-                        <MudText Typo="Typo.subtitle2"><strong>Named Configs:</strong></MudText>
-                        @if (namedConfigs.Any())
-                        {
-                            <MudChipSet T="string">
-                                @foreach (var config in namedConfigs.Take(8))
-                                {
-                                    <MudChip T="string" Size="Size.Small" Color="Color.Secondary">@config</MudChip>
-                                }
-                                @if (namedConfigs.Count() > 8)
-                                {
-                                    <MudChip T="string" Size="Size.Small" Color="Color.Default">+@(namedConfigs.Count() - 8) more</MudChip>
-                                }
-                            </MudChipSet>
-                        }
-                        else
-                        {
-                            <MudText Color="Color.Secondary">None</MudText>
-                        }
-                    </div>
-                </MudStack>
+                @if (!string.IsNullOrWhiteSpace(summaryError) && snapshot is null)
+                {
+                    <MudAlert Severity="Severity.Warning">Configuration metadata is currently unavailable.</MudAlert>
+                }
+                else if (snapshot is null)
+                {
+                    <MudSkeleton Height="18px" Width="30%" />
+                    <MudSkeleton Height="28px" Width="100%" />
+                    <MudSkeleton Height="18px" Width="36%" Class="mt-4" />
+                    <MudSkeleton Height="28px" Width="100%" />
+                }
+                else
+                {
+                    <MudStack Spacing="3">
+                        <div>
+                            <MudText Typo="Typo.subtitle2"><strong>Versions:</strong></MudText>
+                            @if (snapshot.Versions.Any())
+                            {
+                                <MudChipSet T="string">
+                                    @foreach (var version in snapshot.Versions.Take(8))
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Primary">@version</MudChip>
+                                    }
+                                    @if (snapshot.Versions.Count > 8)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Default">+@(snapshot.Versions.Count - 8) more</MudChip>
+                                    }
+                                </MudChipSet>
+                            }
+                            else
+                            {
+                                <MudText Color="Color.Secondary">None</MudText>
+                            }
+                        </div>
+                        
+                        <div>
+                            <MudText Typo="Typo.subtitle2"><strong>Named Configs:</strong></MudText>
+                            @if (snapshot.NamedConfigs.Any())
+                            {
+                                <MudChipSet T="string">
+                                    @foreach (var config in snapshot.NamedConfigs.Take(8))
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Secondary">@config</MudChip>
+                                    }
+                                    @if (snapshot.NamedConfigs.Count > 8)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Default">+@(snapshot.NamedConfigs.Count - 8) more</MudChip>
+                                    }
+                                </MudChipSet>
+                            }
+                            else
+                            {
+                                <MudText Color="Color.Secondary">None</MudText>
+                            }
+                        </div>
+                    </MudStack>
+                }
             </MudCardContent>
         </MudCard>
     </MudItem>
@@ -185,13 +239,19 @@
                 </CardHeaderContent>
             </MudCardHeader>
             <MudCardContent>
-                @if (memoryPercentage > 90)
+                @if (snapshot is null)
+                {
+                    <MudAlert Severity="Severity.Info">
+                        System summary is loading in the background.
+                    </MudAlert>
+                }
+                else if (MemoryPercentage > 90)
                 {
                     <MudAlert Severity="Severity.Error">
                         CRITICAL: Memory usage above 90%. Consider clearing cache or increasing MaxMemoryGB limit.
                     </MudAlert>
                 }
-                else if (memoryPercentage > 75)
+                else if (MemoryPercentage > 75)
                 {
                     <MudAlert Severity="Severity.Warning">
                         WARNING: Memory usage above 75%. Monitor closely.
@@ -208,13 +268,19 @@
                     <strong>Recommendations:</strong>
                 </MudText>
                 <MudList T="string" Dense="true">
-                    @if (memoryPercentage > 50)
+                    @if (snapshot is null)
+                    {
+                        <MudListItem T="string" Icon="@Icons.Material.Filled.HourglassBottom">
+                            Waiting for summary metrics
+                        </MudListItem>
+                    }
+                    else if (MemoryPercentage > 50)
                     {
                         <MudListItem T="string" Icon="@Icons.Material.Filled.Warning">
                             Consider archiving older test results
                         </MudListItem>
                         <MudListItem T="string" Icon="@Icons.Material.Filled.Info">
-                            Current rate: @totalResults.ToString("N0") results = @memoryUsageMB.ToString("N2") MB
+                            Current rate: @snapshot.TotalResults.ToString("N0") results = @MemoryUsageMB.ToString("N2") MB
                         </MudListItem>
                     }
                     else
@@ -236,36 +302,25 @@
 
 @code {
     private HubConnection? hubConnection;
-    private int totalResults;
-    private double memoryUsageMB;
-    private double memoryPercentage;
     private int maxMemoryGB = 15; // From appsettings.json
-    private int totalBuilds;
-    private int totalConfigurations;
-    private int totalDomains;
-    private DateTime? earliestDate;
-    private DateTime? latestDate;
-    private List<string> recentBuilds = new();
-    private List<string> versions = new();
-    private List<string> namedConfigs = new();
+    private SystemStatusSnapshot? snapshot;
+    private string? summaryError;
+    private CancellationTokenSource? summaryLoadCts;
 
     protected override async Task OnInitializedAsync()
     {
-        UpdateStatistics();
-        
-        // Initialize SignalR connection
+        StartSummaryLoad();
+
         hubConnection = new HubConnectionBuilder()
             .WithUrl(Navigation.ToAbsoluteUri("/hubs/testdata"))
             .WithAutomaticReconnect()
             .Build();
 
-        // Register handler for test data updates
         hubConnection.On<object>("TestDataUpdated", async (updateInfo) =>
         {
             Logger.LogInformation("Received TestDataUpdated notification from SignalR");
-            UpdateStatistics();
+            StartSummaryLoad(invalidateCache: true);
             
-            // Show toast notification to user
             Snackbar.Add("✅ New test results imported!", Severity.Success, config =>
             {
                 config.VisibleStateDuration = 4000;
@@ -280,49 +335,79 @@
         Logger.LogInformation("SignalR connection established");
     }
 
-    private void UpdateStatistics()
+    private void StartSummaryLoad(bool invalidateCache = false)
     {
-        totalResults = TestDataService.GetTotalCount();
-        var memoryUsageBytes = TestDataService.GetApproximateMemoryUsage();
-        memoryUsageMB = memoryUsageBytes / (1024.0 * 1024.0);
-        
-        var maxMemoryBytes = maxMemoryGB * 1024L * 1024L * 1024L;
-        memoryPercentage = (memoryUsageBytes / (double)maxMemoryBytes) * 100;
-        
-        // Update data coverage statistics
-        var buildIds = TestDataService.GetAllBuildIds().ToList();
-        totalBuilds = buildIds.Count;
-        recentBuilds = buildIds.Take(10).ToList();
-        
-        totalConfigurations = TestDataService.GetAllConfigurationIds().Count();
-        totalDomains = TestDataService.GetAllDomainIds().Count();
-        
-        var dateRange = TestDataService.GetDateRange();
-        earliestDate = dateRange.Earliest;
-        latestDate = dateRange.Latest;
-        
-        // Update configuration monitoring
-        versions = TestDataService.GetAllVersions().ToList();
-        namedConfigs = TestDataService.GetAllNamedConfigs().ToList();
+        summaryLoadCts?.Cancel();
+        summaryLoadCts?.Dispose();
+        summaryLoadCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+        if (invalidateCache)
+        {
+            SystemStatusSummaryService.Invalidate();
+        }
+
+        summaryError = null;
+        _ = LoadSummaryAsync(summaryLoadCts.Token);
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadSummaryAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            snapshot = await SystemStatusSummaryService.GetSnapshotAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load system status summary");
+            summaryError = "System summary could not be loaded.";
+        }
+        finally
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+        }
     }
     
     private string GetDateRangeDisplay()
     {
-        if (earliestDate == null || latestDate == null)
+        if (snapshot?.EarliestDate == null || snapshot.LatestDate == null)
             return "No data";
             
-        if (earliestDate.Value.Date == latestDate.Value.Date)
-            return earliestDate.Value.ToString("yyyy-MM-dd");
+        if (snapshot.EarliestDate.Value.Date == snapshot.LatestDate.Value.Date)
+            return snapshot.EarliestDate.Value.ToString("yyyy-MM-dd");
             
-        return $"{earliestDate.Value:yyyy-MM-dd} to {latestDate.Value:yyyy-MM-dd}";
+        return $"{snapshot.EarliestDate.Value:yyyy-MM-dd} to {snapshot.LatestDate.Value:yyyy-MM-dd}";
     }
 
     private Color GetMemoryColor()
     {
-        if (memoryPercentage > 90) return Color.Error;
-        if (memoryPercentage > 75) return Color.Warning;
-        if (memoryPercentage > 50) return Color.Info;
+        if (MemoryPercentage > 90) return Color.Error;
+        if (MemoryPercentage > 75) return Color.Warning;
+        if (MemoryPercentage > 50) return Color.Info;
         return Color.Success;
+    }
+
+    private double MemoryUsageMB => (snapshot?.MemoryUsageBytes ?? 0) / (1024.0 * 1024.0);
+
+    private double MemoryPercentage
+    {
+        get
+        {
+            if (snapshot == null)
+            {
+                return 0;
+            }
+
+            var maxMemoryBytes = maxMemoryGB * 1024L * 1024L * 1024L;
+            return (snapshot.MemoryUsageBytes / (double)maxMemoryBytes) * 100;
+        }
     }
 
     private async Task RefreshData()
@@ -330,20 +415,21 @@
         Logger.LogInformation("Scan Now button clicked. Current scanning status: {Status}", FileWatcher.IsScanningInProgress);
         await FileWatcher.ScanNowAsync();
         Logger.LogInformation("Scan completed. Updating statistics...");
-        UpdateStatistics();
-        await InvokeAsync(StateHasChanged);
+        StartSummaryLoad(invalidateCache: true);
         Logger.LogInformation("UI updated");
     }
 
     private void ClearCache()
     {
         TestDataService.Clear();
-        UpdateStatistics();
-        StateHasChanged();
+        StartSummaryLoad(invalidateCache: true);
     }
 
     public async ValueTask DisposeAsync()
     {
+        summaryLoadCts?.Cancel();
+        summaryLoadCts?.Dispose();
+
         if (hubConnection is not null)
         {
             await hubConnection.DisposeAsync();

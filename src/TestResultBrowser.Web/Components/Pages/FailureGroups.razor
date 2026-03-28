@@ -5,9 +5,11 @@
 @using Microsoft.Extensions.Caching.Memory
 @inject ITestDataService TestData
 @inject IFailureGroupingService Grouping
+@inject IFailureClassificationService FailureClassification
 @inject ISnackbar Snackbar
 @inject ILogger<FailureGroups> Logger
 @inject IMemoryCache Cache
+@inject IUserDataService UserDataService
 @implements IDisposable
 
 <PageTitle>Failure Groups</PageTitle>
@@ -113,7 +115,13 @@
                                     <MudExpansionPanel IsInitiallyExpanded="false">
                                         <TitleContent>
                                             <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
-                                                <span>@test.TestName (@test.Count occurrences)</span>
+                                                <span style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                                                    <span>@test.TestName (@test.Count occurrences)</span>
+                                                    @if (latestResult != null && IsAcknowledged(latestResult))
+                                                    {
+                                                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled">Acknowledged</MudChip>
+                                                    }
+                                                </span>
                                                 @if (latestResult != null)
                                                 {
                                                     <span style="color:#1976d2; cursor:pointer; text-decoration:underline; font-size:0.85rem;"
@@ -141,12 +149,20 @@
                                                     <tbody>
                                                         @foreach (var row in GetTestRows(test))
                                                         {
-                                                            <tr>
+                                                            <tr class="@(IsAcknowledged(row.Result) ? "acknowledged-row" : string.Empty)">
                                                                 <td>@row.Date.ToString("yyyy-MM-dd")</td>
                                                                 <td>@row.Result.BuildId</td>
                                                                 <td>@row.Result.DomainId</td>
                                                                 <td>@row.Result.FeatureId</td>
-                                                                <td class="cell-config">@row.Result.ConfigurationId</td>
+                                                                <td class="cell-config">
+                                                                    <div class="config-cell-content">
+                                                                        <span>@row.Result.ConfigurationId</span>
+                                                                        @if (IsAcknowledged(row.Result))
+                                                                        {
+                                                                            <span class="ack-pill">Ack</span>
+                                                                        }
+                                                                    </div>
+                                                                </td>
                                                                 <td>@row.Result.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")</td>
                                                                 <td class="cell-error" title="@row.Result.ErrorMessage">
                                                                     @row.Result.ErrorMessage
@@ -194,6 +210,9 @@
                   TestResult="@selectedTestResult"
                   BuildId="@selectedTestBuildId"
                   History="@selectedTestHistory"
+                  CanAcknowledge="true"
+                  IsAcknowledgedEvaluator="@IsAcknowledged"
+                  OnAcknowledge="@ToggleSelectedTestAcknowledgement"
                   OnClose="@CloseTestDetails" />
 
 @code {
@@ -221,6 +240,8 @@
     private TestResult? selectedTestResult;
     private string? selectedTestBuildId;
     private List<TestResult>? selectedTestHistory;
+    private HashSet<string> acknowledgedIds = new(StringComparer.OrdinalIgnoreCase);
+    private const string CurrentUsername = "DefaultUser";
 
     private class GroupedTest
     {
@@ -279,6 +300,7 @@
             var selectedConfigSnapshot = selectedConfiguration;
             var lastXDaysSnapshot = lastXDays;
             var similaritySnapshot = similarityThresholdPercent;
+            var acknowledgementTask = UserDataService.GetMorningTriageAcknowledgementsAsync();
 
             var groupingTask = Task.Run(() =>
             {
@@ -330,6 +352,10 @@
             }
 
             var (fullGroups, failureCount, threshold) = await groupingTask;
+            var acknowledgements = await acknowledgementTask;
+            acknowledgedIds = acknowledgements
+                .Select(item => item.Id)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             // Store in IMemoryCache with expiration to avoid unbounded growth
             Cache.Set(_cacheKey, fullGroups, TimeSpan.FromMinutes(30));
@@ -377,6 +403,18 @@
             .ToList();
     }
 
+    private bool IsAcknowledged(TestResult testResult)
+    {
+        if (string.IsNullOrWhiteSpace(testResult.TestFullName) || string.IsNullOrWhiteSpace(testResult.ConfigurationId))
+        {
+            return false;
+        }
+
+        var signature = FailureClassification.BuildFailureSignature(testResult);
+        var acknowledgementId = $"{testResult.TestFullName}|{testResult.ConfigurationId}|{signature}".ToLowerInvariant();
+        return acknowledgedIds.Contains(acknowledgementId);
+    }
+
     private void OpenTestDetails(TestResult testResult)
     {
         if (string.IsNullOrWhiteSpace(testResult.TestFullName) || string.IsNullOrWhiteSpace(testResult.ConfigurationId))
@@ -400,6 +438,39 @@
         selectedTestBuildId = null;
         selectedTestHistory = null;
         return Task.CompletedTask;
+    }
+
+    private async Task ToggleSelectedTestAcknowledgement(TestResult testResult)
+    {
+        if (string.IsNullOrWhiteSpace(testResult.TestFullName) || string.IsNullOrWhiteSpace(testResult.ConfigurationId))
+        {
+            return;
+        }
+
+        var signature = FailureClassification.BuildFailureSignature(testResult);
+        var acknowledgementId = $"{testResult.TestFullName}|{testResult.ConfigurationId}|{signature}".ToLowerInvariant();
+
+        if (acknowledgedIds.Contains(acknowledgementId))
+        {
+            await UserDataService.DeleteMorningTriageAcknowledgementAsync(acknowledgementId);
+            acknowledgedIds.Remove(acknowledgementId);
+        }
+        else
+        {
+            var acknowledgement = await UserDataService.SaveMorningTriageAcknowledgementAsync(new MorningTriageAcknowledgement
+            {
+                Id = acknowledgementId,
+                TestFullName = testResult.TestFullName,
+                ConfigurationId = testResult.ConfigurationId,
+                FailureSignature = signature,
+                DomainId = testResult.DomainId,
+                FeatureId = testResult.FeatureId,
+                AcknowledgedBy = CurrentUsername
+            });
+            acknowledgedIds.Add(acknowledgement.Id);
+        }
+
+        StateHasChanged();
     }
 
     public void Dispose()
@@ -444,5 +515,29 @@
 
     .failure-table .cell-config {
         word-break: break-all;
+    }
+
+    .config-cell-content {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+    }
+
+    .ack-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 0 6px;
+        min-height: 20px;
+        border-radius: 999px;
+        background: #1b5e20;
+        color: #fff;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+    }
+
+    .acknowledged-row {
+        background-color: #f6fcf8;
     }
 </style>
