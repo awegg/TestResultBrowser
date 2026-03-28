@@ -43,6 +43,7 @@ builder.Services.AddSingleton<IFlakyTestDetectionService, FlakyTestDetectionServ
 builder.Services.AddSingleton<IFeatureGroupingService, FeatureGroupingService>();
 builder.Services.AddSingleton<ITestReportUrlService, TestReportUrlService>();
 builder.Services.AddSingleton<IReportAssetService, ReportAssetService>();
+builder.Services.AddSingleton<ISystemStatusSummaryService, SystemStatusSummaryService>();
 builder.Services.AddSingleton<ConfigurationValidator>();
 
 // Register background services

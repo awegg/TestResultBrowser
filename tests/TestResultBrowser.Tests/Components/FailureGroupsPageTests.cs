@@ -44,15 +44,27 @@ public class FailureGroupsPageTests
 
         var dataServiceMock = new Mock<ITestDataService>();
         var groupingServiceMock = new Mock<IFailureGroupingService>();
+        var userDataServiceMock = new Mock<IUserDataService>();
+        var failureClassificationServiceMock = new Mock<IFailureClassificationService>();
+        var workItemLinkServiceMock = new Mock<IWorkItemLinkService>();
         
         // Setup default mocks
         dataServiceMock.Setup(s => s.GetAllConfigurationIds()).Returns(new[] { "Config1", "Config2", "Config3" });
         dataServiceMock.Setup(s => s.GetAllTestResults()).Returns(CreateSampleFailedTests());
         groupingServiceMock.Setup(s => s.GroupFailures(It.IsAny<IEnumerable<TestResult>>(), It.IsAny<double>()))
             .Returns((IEnumerable<TestResult> failures, double threshold) => CreateSampleGroups(failures.ToList()));
+        userDataServiceMock.Setup(s => s.GetMorningTriageAcknowledgementsAsync())
+            .ReturnsAsync(new List<MorningTriageAcknowledgement>());
+        failureClassificationServiceMock.Setup(s => s.BuildFailureSignature(It.IsAny<TestResult>()))
+            .Returns<TestResult>(result => string.IsNullOrWhiteSpace(result.ErrorMessage) ? "unknown-failure" : result.ErrorMessage.ToLowerInvariant());
+        workItemLinkServiceMock.Setup(s => s.GetTicketReferences(It.IsAny<IEnumerable<string>>()))
+            .Returns(new List<WorkItemReference>());
 
         ctx.Services.AddSingleton(dataServiceMock.Object);
         ctx.Services.AddSingleton(groupingServiceMock.Object);
+        ctx.Services.AddSingleton(userDataServiceMock.Object);
+        ctx.Services.AddSingleton(failureClassificationServiceMock.Object);
+        ctx.Services.AddSingleton(workItemLinkServiceMock.Object);
         ctx.Services.AddSingleton<ISnackbar>(new SnackbarService(navManager));
         ctx.Services.AddSingleton<ILogger<FailureGroups>>(new MockLogger<FailureGroups>());
         ctx.Services.AddSingleton<IMemoryCache>(new MemoryCache(new MemoryCacheOptions()));

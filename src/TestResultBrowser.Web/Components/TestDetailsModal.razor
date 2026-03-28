@@ -5,6 +5,7 @@
 @inject ITestReportUrlService TestReportUrlService
 @inject IReportAssetService ReportAssetService
 @inject ITestDataService TestDataService
+@inject IWorkItemLinkService WorkItemLinkService
 
 @if (IsOpen && TestResult != null)
 {
@@ -14,7 +15,50 @@
             <div class="modal-content" style="display: flex; flex-direction: column; max-height: 90vh;">
                 <!-- Header -->
                 <div class="modal-header">
-                    <h5 class="modal-title">Test Details</h5>
+                    <div class="test-details-header-main">
+                        <h5 class="modal-title">Test Details</h5>
+                        @if (ActiveTest != null)
+                        {
+                            <div class="test-details-header-meta">@ActiveTest.BuildId · @ActiveTest.Timestamp.ToString("MM/dd/yyyy HH:mm")</div>
+                        }
+                    </div>
+                    <div class="test-details-header-actions">
+                        @if (PrimaryWorkItemReference != null)
+                        {
+                            if (!string.IsNullOrWhiteSpace(PrimaryWorkItemReference.Url))
+                            {
+                                <a class="btn btn-outline-primary btn-sm"
+                                   target="_blank"
+                                   rel="noopener noreferrer"
+                                   href="@PrimaryWorkItemReference.Url"
+                                   title="@PrimaryWorkItemReference.TicketId">Polarion</a>
+                            }
+                            else
+                            {
+                                <span class="btn btn-outline-primary btn-sm disabled" title="@PrimaryWorkItemReference.TicketId (no work item base URL configured)">Polarion</span>
+                            }
+                        }
+                        @if (!string.IsNullOrEmpty(AssetInfo?.ScreenshotUrl))
+                        {
+                            <a class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener noreferrer" href="@AssetInfo!.ScreenshotUrl">Open Screenshot</a>
+                        }
+                        @if (!string.IsNullOrEmpty(AssetInfo?.VideoUrl))
+                        {
+                            <a class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener noreferrer" href="@AssetInfo!.VideoUrl">Open Video</a>
+                        }
+                        @if (!string.IsNullOrEmpty(ActiveTest?.ReportDirectoryPath))
+                        {
+                            <a class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener noreferrer" href="@GetReportUrl()">Open Full Report</a>
+                        }
+                        @if (CanAcknowledge && ActiveTest != null && OnAcknowledge.HasDelegate)
+                        {
+                            <button type="button"
+                                    class="btn btn-sm @(IsCurrentTestAcknowledged ? "btn-success" : "btn-outline-success")"
+                                    @onclick="(() => ToggleAcknowledge(ActiveTest))">
+                                @(IsCurrentTestAcknowledged ? "Clear Acknowledge" : "Acknowledge")
+                            </button>
+                        }
+                    </div>
                     <button type="button" class="btn-close" @onclick="Close"></button>
                 </div>
 
@@ -193,26 +237,10 @@
                                     No report assets available for this test.
                                 </div>
                             }
-                            @if (HasMediaAssets)
-                            {
-                                <div class="media-links">
-                                    @if (!string.IsNullOrEmpty(AssetInfo?.ScreenshotUrl))
-                                    {
-                                        <a class="btn btn-outline-secondary" target="_blank" href="@AssetInfo!.ScreenshotUrl">Open Screenshot</a>
-                                    }
-                                    @if (!string.IsNullOrEmpty(AssetInfo?.VideoUrl))
-                                    {
-                                        <a class="btn btn-outline-secondary" target="_blank" href="@AssetInfo!.VideoUrl">Open Video</a>
-                                    }
-                                </div>
-                            }
                             @if (!string.IsNullOrEmpty(ActiveTest?.ReportDirectoryPath))
                             {
                                 <div class="media-preview">
                                     <iframe title="Test report preview" src="@GetReportUrl()" sandbox="allow-same-origin allow-scripts"></iframe>
-                                </div>
-                                <div class="mt-2">
-                                    <a class="btn btn-outline-secondary" target="_blank" href="@GetReportUrl()">Open Full Report</a>
                                 </div>
                             }
                         </div>
@@ -247,6 +275,15 @@
     [Parameter]
     public List<string>? CurrentWindowBuildIds { get; set; }
 
+    [Parameter]
+    public bool CanAcknowledge { get; set; }
+
+    [Parameter]
+    public Func<TestResult, bool>? IsAcknowledgedEvaluator { get; set; }
+
+    [Parameter]
+    public EventCallback<TestResult> OnAcknowledge { get; set; }
+
     private string? selectedHistoryId;
     private List<TestResult> _crossConfigResults = new();
     private bool _isLoadingCrossConfig;
@@ -265,6 +302,14 @@
 
     private bool HasMediaAssets => AssetInfo != null &&
         (!string.IsNullOrEmpty(AssetInfo.ScreenshotUrl) || !string.IsNullOrEmpty(AssetInfo.VideoUrl));
+
+    private List<WorkItemReference> ActiveWorkItemReferences => ActiveTest == null
+        ? new List<WorkItemReference>()
+        : WorkItemLinkService.GetTicketReferences(ActiveTest.WorkItemIds);
+
+    private WorkItemReference? PrimaryWorkItemReference => ActiveWorkItemReferences.FirstOrDefault();
+
+    private bool IsCurrentTestAcknowledged => ActiveTest != null && (IsAcknowledgedEvaluator?.Invoke(ActiveTest) ?? false);
 
     protected override async Task OnParametersSetAsync()
     {
@@ -310,6 +355,11 @@
     private async Task Close()
     {
         await OnClose.InvokeAsync();
+    }
+
+    private async Task ToggleAcknowledge(TestResult testResult)
+    {
+        await OnAcknowledge.InvokeAsync(testResult);
     }
 
     private static string GetDisplayName(TestResult testResult)
@@ -526,6 +576,32 @@
 }
 
 <style>
+    .modal-header {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .test-details-header-main {
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    .test-details-header-meta {
+        margin-top: 4px;
+        font-size: 0.82rem;
+        font-weight: 500;
+        color: #6b7280;
+    }
+
+    .test-details-header-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-right: 8px;
+    }
+
     .test-details-grid {
         display: grid;
         grid-template-columns: minmax(320px, 1.2fr) minmax(320px, 1fr);
@@ -582,13 +658,6 @@
         border-radius: 6px;
         border: 1px solid #e0e0e0;
         background: #fff;
-    }
-
-    .media-links {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-bottom: 12px;
     }
 
     .media-meta {
@@ -711,6 +780,16 @@
     .ccm-dot-none { color: #d1d5db; }
 
     @@media (max-width: 1000px) {
+        .modal-header {
+            flex-wrap: wrap;
+        }
+
+        .test-details-header-actions {
+            width: 100%;
+            justify-content: flex-start;
+            margin-right: 0;
+        }
+
         .test-details-grid {
             grid-template-columns: 1fr;
         }
