@@ -22,6 +22,16 @@ public interface IFileWatcherService
     bool IsScanningInProgress { get; }
 
     /// <summary>
+    /// Gets the duration of the last completed scan.
+    /// </summary>
+    TimeSpan? LastScanDuration { get; }
+
+    /// <summary>
+    /// Gets the last scan error message, if any.
+    /// </summary>
+    string? LastScanError { get; }
+
+    /// <summary>
     /// Manually triggers an immediate scan
     /// </summary>
     Task ScanNowAsync();

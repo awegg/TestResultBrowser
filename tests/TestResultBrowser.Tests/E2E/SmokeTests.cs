@@ -158,4 +158,23 @@ public class SmokeTests : IAsyncLifetime
         var buttons = await _page.QuerySelectorAllAsync("button");
         buttons.Count.ShouldBeGreaterThan(0, "Page should have interactive controls");
     }
+
+    [Trait("Category", "E2E")]
+    [Fact]
+    public async Task SystemStatus_PageLoadsAndShowsReloadAndMemory()
+    {
+        await _page!.GotoAsync($"{BaseUrl}/system-status");
+        await _page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+
+        await _page.WaitForFunctionAsync("() => document.title === 'System Status'");
+
+        var pageTitle = await _page.TitleAsync();
+        pageTitle.ShouldBe("System Status");
+
+        var reloadButton = await _page.QuerySelectorAsync("button:has-text('Reload test files')");
+        reloadButton.ShouldNotBeNull("System Status should expose the reload test files button");
+
+        var memoryText = await _page.QuerySelectorAsync("text=Process Memory:");
+        memoryText.ShouldNotBeNull("System Status should render process memory information");
+    }
 }

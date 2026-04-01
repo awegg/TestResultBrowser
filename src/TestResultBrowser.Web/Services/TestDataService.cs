@@ -267,9 +267,17 @@ public class TestDataService : ITestDataService
     /// <inheritdoc/>
     public long GetApproximateMemoryUsage()
     {
-        // Use actual process memory instead of calculation
-        using var currentProcess = Process.GetCurrentProcess();
-        return currentProcess.WorkingSet64;
+        var managedBytes = GC.GetTotalMemory(forceFullCollection: false);
+
+        try
+        {
+            using var currentProcess = Process.GetCurrentProcess();
+            return Math.Max(currentProcess.WorkingSet64, managedBytes);
+        }
+        catch
+        {
+            return managedBytes;
+        }
     }
 
     /// <inheritdoc/>

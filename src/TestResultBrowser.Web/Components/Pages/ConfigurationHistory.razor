@@ -1228,7 +1228,7 @@
             TriageSummaryFilter.FixedTests => BuildTriageHistoryResultFromDisplayRows(BuildFixedTriageRows(filterBySpecificConfigurations, buildIds), buildIds, historyColumns),
             TriageSummaryFilter.StillFailing => BuildTriageHistoryResultFromDisplayRows(BuildStillFailingRows(filterBySpecificConfigurations, buildIds), buildIds, historyColumns),
             TriageSummaryFilter.MissingConfigurations => BuildTriageHistoryResultFromDisplayRows(new List<TriageDisplayRow>(), buildIds, historyColumns),
-            _ => BuildTriageHistoryResultFromDisplayRows(BuildNewFailureDisplayRows(newFailureRows), buildIds, historyColumns)
+            _ => BuildTriageHistoryResultFromDisplayRows(BuildNewFailureDisplayRows(newFailureRows, buildIds), buildIds, historyColumns)
         };
     }
 
@@ -1237,9 +1237,9 @@
         var filterBySpecificConfigurations = selectedConfigurations.Any()
             && !selectedConfigurations.Contains(ConfigurationHistoryService.AllConfigurationsId, StringComparer.OrdinalIgnoreCase);
 
-        var domainNodes = rows
-            .GroupBy(row => row.DomainId, StringComparer.OrdinalIgnoreCase)
-            .Select(group => BuildTriageDisplayDomainNode(group.Key, group.ToList(), buildIds))
+        var suiteNodes = rows
+            .GroupBy(row => row.ConfigurationId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => BuildTriageDisplaySuiteNode(group.Key, group.ToList(), buildIds))
             .OrderBy(node => node.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -1250,7 +1250,7 @@
             NodeId = "triage-root",
             IndentLevel = -1,
             IsExpanded = false,
-            Children = domainNodes
+            Children = suiteNodes
         };
         PopulateAggregateNode(rootNode, buildIds.Count);
 
@@ -1309,10 +1309,12 @@
         };
     }
 
-    private List<TriageDisplayRow> BuildNewFailureDisplayRows(List<TriageRow> rows)
+    private List<TriageDisplayRow> BuildNewFailureDisplayRows(List<TriageRow> rows, List<string> buildIds)
     {
         return rows.Select(row =>
         {
+            var representativeResult = GetRepresentativeTriageResult(buildIds, row.Failure.TestFullName, row.ConfigurationId);
+            var (suiteId, suiteName) = ResolveTriageSuiteInfo(representativeResult);
             var badges = new List<HierarchyNodeBadge>();
             if (row.Failure.Category != MorningFailureCategory.Product)
             {
@@ -1325,7 +1327,8 @@
             }
 
             return new TriageDisplayRow(
-                row.Failure.DomainId,
+                suiteId,
+                suiteName,
                 row.Failure.FeatureId,
                 row.ConfigurationId,
                 row.Failure.TestFullName,
@@ -1347,15 +1350,21 @@
                 .Select(configId =>
                 {
                     var failedResult = GetFirstFailedResult(buildIds, fixedTest.TestFullName, configId);
+                    var representativeResult = GetRepresentativeTriageResult(buildIds, fixedTest.TestFullName, configId) ?? failedResult;
+                    var (suiteId, suiteName) = ResolveTriageSuiteInfo(representativeResult);
                     return new TriageDisplayRow(
-                        fixedTest.DomainId,
+                        suiteId,
+                        suiteName,
                         fixedTest.FeatureId,
                         configId,
                         fixedTest.TestFullName,
                         $"triage-fixed:{configId}:{fixedTest.TestFullName}",
                         failedResult?.ErrorMessage,
                         failedResult?.StackTrace,
-                        new List<HierarchyNodeBadge> { new() { Text = "Fixed", Tone = HierarchyBadgeTone.Success } },
+                        new List<HierarchyNodeBadge>
+                        {
+                            new() { Text = "Fixed", Tone = HierarchyBadgeTone.Success }
+                        },
                         false,
                         null);
                 }))
@@ -1377,11 +1386,13 @@
             .Where(item => !hideAcknowledgedFailures || item.Acknowledgement == null)
             .Select(item =>
             {
+                var (suiteId, suiteName) = ResolveTriageSuiteInfo(item.Result);
                 var badges = new List<HierarchyNodeBadge>();
                 if (item.Category != MorningFailureCategory.Product)
                 {
                     badges.Add(new HierarchyNodeBadge { Text = item.Category == MorningFailureCategory.Setup ? "Setup" : "Infra", Tone = HierarchyBadgeTone.Warning });
                 }
+
 
                 if (item.Acknowledgement != null)
                 {
@@ -1389,7 +1400,8 @@
                 }
 
                 return new TriageDisplayRow(
-                    item.Result.DomainId,
+                    suiteId,
+                    suiteName,
                     item.Result.FeatureId,
                     item.Result.ConfigurationId,
                     item.Result.TestFullName,
@@ -1417,51 +1429,67 @@
         return null;
     }
 
-    private HierarchyNode BuildTriageDisplayDomainNode(string domainId, List<TriageDisplayRow> rows, List<string> buildIds)
+    private TestResult? GetRepresentativeTriageResult(List<string> buildIds, string testFullName, string configurationId)
+    {
+        foreach (var buildId in buildIds)
+        {
+            var result = TestDataService.GetTestResultFast(buildId, testFullName, configurationId);
+            if (result != null)
+            {
+                return result;
+            }
+        }
+
+        return TestDataService.GetTestResultsByTestName(testFullName)
+            .Where(result => string.Equals(result.ConfigurationId, configurationId, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(result => result.BuildNumber)
+            .ThenByDescending(result => result.Timestamp)
+            .FirstOrDefault();
+    }
+
+    private static (string SuiteId, string SuiteName) ResolveTriageSuiteInfo(TestResult? result)
+    {
+        if (string.IsNullOrWhiteSpace(result?.TestSuiteId))
+        {
+            return ("unknown", "Unknown");
+        }
+
+        return (result.TestSuiteId, result.TestSuiteId);
+    }
+
+    private static string ExtractReadableSuiteName(string suiteId)
+    {
+        if (string.IsNullOrWhiteSpace(suiteId))
+        {
+            return "Unknown";
+        }
+
+        var parts = suiteId.Split('_');
+        return parts.Length > 1 ? parts[^1] : suiteId;
+    }
+
+    private HierarchyNode BuildTriageDisplaySuiteNode(string configurationId, List<TriageDisplayRow> rows, List<string> buildIds)
     {
         var featureNodes = rows
             .GroupBy(row => row.FeatureId, StringComparer.OrdinalIgnoreCase)
-            .Select(group => BuildTriageDisplayFeatureNode(group.Key, group.ToList(), buildIds))
+            .Select(group => BuildTriageDisplayFeatureNode(configurationId, group.Key, group.ToList(), buildIds))
             .OrderBy(node => node.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         var node = new HierarchyNode
         {
-            Name = domainId,
-            NodeType = HierarchyNodeType.Domain,
-            NodeId = $"triage-domain:{selectedTriageSummaryFilter}:{domainId}",
+            Name = ConfigurationLabelHelper.GetConfigurationLabel(configurationId),
+            NodeType = HierarchyNodeType.Suite,
+            NodeId = $"triage-suite:{selectedTriageSummaryFilter}:{configurationId}",
             IndentLevel = 0,
-            IsExpanded = true,
-            Children = featureNodes,
-            Badges = BuildOwnerBadges(BrowserOptions.Value.DomainOwners, domainId)
-        };
-        PopulateAggregateNode(node, buildIds.Count);
-        return node;
-    }
-
-    private HierarchyNode BuildTriageDisplayFeatureNode(string featureId, List<TriageDisplayRow> rows, List<string> buildIds)
-    {
-        var configurationNodes = rows
-            .GroupBy(row => row.ConfigurationId, StringComparer.OrdinalIgnoreCase)
-            .Select(group => BuildTriageDisplayConfigurationNode(group.Key, group.ToList(), buildIds))
-            .OrderBy(node => node.Name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        var node = new HierarchyNode
-        {
-            Name = featureId,
-            NodeType = HierarchyNodeType.Feature,
-            NodeId = $"triage-feature:{selectedTriageSummaryFilter}:{featureId}",
-            IndentLevel = 1,
             IsExpanded = false,
-            Children = configurationNodes,
-            Badges = BuildOwnerBadges(BrowserOptions.Value.FeatureOwners, featureId)
+            Children = featureNodes
         };
         PopulateAggregateNode(node, buildIds.Count);
         return node;
     }
 
-    private HierarchyNode BuildTriageDisplayConfigurationNode(string configurationId, List<TriageDisplayRow> rows, List<string> buildIds)
+    private HierarchyNode BuildTriageDisplayFeatureNode(string configurationId, string featureId, List<TriageDisplayRow> rows, List<string> buildIds)
     {
         var testNodes = rows
             .Select(row => BuildTriageDisplayTestNode(row, buildIds))
@@ -1470,12 +1498,13 @@
 
         var node = new HierarchyNode
         {
-            Name = ConfigurationLabelHelper.GetConfigurationLabel(configurationId),
-            NodeType = HierarchyNodeType.Suite,
-            NodeId = $"triage-config:{selectedTriageSummaryFilter}:{configurationId}",
-            IndentLevel = 2,
+            Name = featureId,
+            NodeType = HierarchyNodeType.Feature,
+            NodeId = $"triage-feature:{selectedTriageSummaryFilter}:{configurationId}:{featureId}",
+            IndentLevel = 1,
             IsExpanded = false,
-            Children = testNodes
+            Children = testNodes,
+            Badges = BuildOwnerBadges(BrowserOptions.Value.FeatureOwners, featureId)
         };
         PopulateAggregateNode(node, buildIds.Count);
         return node;
@@ -1501,7 +1530,7 @@
             Name = latestKnownResult?.MethodName ?? row.TestFullName,
             NodeType = HierarchyNodeType.Test,
             NodeId = row.NodeId,
-            IndentLevel = 3,
+            IndentLevel = 2,
             TestFullName = row.TestFullName,
             ReportDirectoryPath = latestKnownResult?.ReportDirectoryPath,
             ErrorMessage = row.ErrorMessage,
@@ -1902,7 +1931,8 @@
     private sealed record TriageRow(TriageNewFailure Failure, string ConfigurationId);
 
     private sealed record TriageDisplayRow(
-        string DomainId,
+        string SuiteId,
+        string SuiteName,
         string FeatureId,
         string ConfigurationId,
         string TestFullName,

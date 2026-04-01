@@ -6,6 +6,10 @@ public sealed class SystemStatusSnapshot
 
     public long MemoryUsageBytes { get; init; }
 
+    public long ManagedMemoryBytes { get; init; }
+
+    public long ProcessMemoryBytes { get; init; }
+
     public int TotalBuilds { get; init; }
 
     public int TotalConfigurations { get; init; }

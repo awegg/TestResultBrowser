@@ -239,6 +239,35 @@ public class ConfigurationHistoryTests : IAsyncLifetime
 
     [Trait("Category", "E2E")]
     [Fact]
+    public async Task MorningTriage_ShowsConfigurationsAsFirstHierarchyLevel()
+    {
+        await _page!.GotoAsync($"{BaseUrl}/configuration-history?mode=triage");
+        await _page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+        await _page.WaitForFunctionAsync("() => document.querySelectorAll(\"tbody tr td[style*='padding-left: 8px']\").length > 0");
+
+        var topLevelHierarchyLabels = await _page.Locator("tbody tr td[style*='padding-left: 8px']").AllTextContentsAsync();
+        var firstVisibleLabel = topLevelHierarchyLabels.FirstOrDefault(text => !string.IsNullOrWhiteSpace(text));
+
+        firstVisibleLabel.ShouldNotBeNullOrWhiteSpace();
+        firstVisibleLabel.ShouldContain("dev_E2E_Default1_Core");
+    }
+
+    [Trait("Category", "E2E")]
+    [Fact]
+    public async Task MorningTriage_DoesNotRepeatConfigurationAsBadge()
+    {
+        await _page!.GotoAsync($"{BaseUrl}/configuration-history?mode=triage");
+        await _page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+        await _page.WaitForFunctionAsync("() => document.querySelectorAll('.mud-chip-content').length > 0");
+
+        var chipTexts = await _page.Locator(".mud-chip-content").AllTextContentsAsync();
+
+        chipTexts.Any(text => text.Contains("dev_E2E_Default1_Core", StringComparison.OrdinalIgnoreCase)).ShouldBeFalse();
+        chipTexts.Any(text => text.Contains("Development_E2E_Default1_Core", StringComparison.OrdinalIgnoreCase)).ShouldBeFalse();
+    }
+
+    [Trait("Category", "E2E")]
+    [Fact]
     public async Task MorningTriage_MissingConfigsFilter_RendersMissingConfigurationView()
     {
         await _page!.GotoAsync($"{BaseUrl}/configuration-history?mode=triage&triageFilter=missing-configs");
