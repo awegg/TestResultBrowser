@@ -101,6 +101,8 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
     public DateTime? LastScanTime { get; private set; }
     public int LastScanFileCount { get; private set; }
     public bool IsScanningInProgress { get; private set; }
+    public TimeSpan? LastScanDuration { get; private set; }
+    public string? LastScanError { get; private set; }
 
     public FileWatcherService(
         ILogger<FileWatcherService> logger,
@@ -129,10 +131,15 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
 
         _timer?.Dispose();
         _timer = new Timer(
-            callback: async _ => await ScanNowAsync(),
+            callback: _ => TriggerScanFromTimer(),
             state: null,
             dueTime: newInterval,
             period: newInterval);
+    }
+
+    private void TriggerScanFromTimer()
+    {
+        _ = ScanNowAsync();
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -146,7 +153,7 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
         // Setup timer for periodic scans
         var interval = TimeSpan.FromMinutes(settings.PollingIntervalMinutes);
         _timer = new Timer(
-            callback: async _ => await ScanNowAsync(),
+            callback: _ => TriggerScanFromTimer(),
             state: null,
             dueTime: interval,
             period: interval);
@@ -157,6 +164,8 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
 
     public async Task ScanNowAsync()
     {
+        var startTime = DateTime.UtcNow;
+
         // Use semaphore for concurrency control
         if (!await _scanLock.WaitAsync(0))
         {
@@ -167,14 +176,16 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
         try
         {
             IsScanningInProgress = true;
-            var startTime = DateTime.UtcNow;
             var fileCount = 0;
+            LastScanError = null;
+            LastScanDuration = null;
 
             _logger.LogInformation("Starting manual file system scan of {Path}", _options.FileSharePath);
 
             if (!Directory.Exists(_options.FileSharePath))
             {
                 _logger.LogError("File share path does not exist: {Path}", _options.FileSharePath);
+                LastScanError = $"File share path does not exist: {_options.FileSharePath}";
                 return;
             }
 
@@ -199,7 +210,7 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
             for (int i = 0; i < xmlFiles.Length; i += batchSize)
             {
                 var batch = xmlFiles.Skip(i).Take(batchSize);
-                var allResults = new List<Models.TestResult>();
+                var allResults = new List<TestResult>();
 
                 foreach (var xmlFile in batch)
                 {
@@ -244,6 +255,7 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
             LastScanFileCount = fileCount;
 
             var duration = DateTime.UtcNow - startTime;
+            LastScanDuration = duration;
             _logger.LogInformation("File system scan completed. Processed {Count} files in {Duration:mm\\:ss}. Total test results: {Total}",
                 fileCount, duration, testDataService.GetTotalCount());
 
@@ -258,10 +270,12 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
         }
         catch (Exception ex)
         {
+            LastScanError = ex.Message;
             _logger.LogError(ex, "Error during file system scan");
         }
         finally
         {
+            LastScanDuration ??= DateTime.UtcNow - startTime;
             IsScanningInProgress = false;
             _scanLock.Release();
         }
@@ -296,7 +310,7 @@ public class FileWatcherService : BackgroundService, IFileWatcherService
     public override void Dispose()
     {
         _timer?.Dispose();
-        _scanLock?.Dispose();
+        _scanLock.Dispose();
         base.Dispose();
     }
 }

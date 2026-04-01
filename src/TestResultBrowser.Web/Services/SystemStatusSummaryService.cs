@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Caching.Memory;
+using System.Diagnostics;
 using TestResultBrowser.Web.Models;
 
 namespace TestResultBrowser.Web.Services;
@@ -65,11 +66,26 @@ public sealed class SystemStatusSummaryService : ISystemStatusSummaryService
         var configurations = _testDataService.GetAllConfigurationIds().ToList();
         var domains = _testDataService.GetAllDomainIds().ToList();
         var dateRange = _testDataService.GetDateRange();
+        var managedMemoryBytes = GC.GetTotalMemory(forceFullCollection: false);
+        long processMemoryBytes;
+
+        try
+        {
+            using var process = Process.GetCurrentProcess();
+            processMemoryBytes = process.WorkingSet64;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Falling back to managed heap size for process memory metric");
+            processMemoryBytes = managedMemoryBytes;
+        }
 
         return new SystemStatusSnapshot
         {
             TotalResults = _testDataService.GetTotalCount(),
             MemoryUsageBytes = _testDataService.GetApproximateMemoryUsage(),
+            ManagedMemoryBytes = managedMemoryBytes,
+            ProcessMemoryBytes = processMemoryBytes,
             TotalBuilds = buildIds.Count,
             TotalConfigurations = configurations.Count,
             TotalDomains = domains.Count,

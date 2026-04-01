@@ -112,4 +112,41 @@ public class FileWatcherServiceTests
             Directory.Delete(tempDir, true);
         }
     }
+
+    [Fact]
+    public async Task ScanNowAsync_MissingDirectory_ShouldExposeLastScanError()
+    {
+        var missingDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+
+        var logger = new Mock<ILogger<FileWatcherService>>();
+        var hub = new Mock<IHubContext<TestDataHub>>();
+        var settingsSvc = new Mock<ISettingsService>();
+        settingsSvc.Setup(s => s.GetSettings()).Returns(new TestResultBrowser.Web.Models.ApplicationSettings
+        {
+            Id = "default",
+            PollingIntervalMinutes = 1,
+            MaxMemoryGB = 16,
+            WorkItemBaseUrl = "",
+            FlakyTestThresholds = new TestResultBrowser.Web.Models.FlakyTestThresholds()
+        });
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFilePathParserService>(new FilePathParserService());
+        services.AddSingleton<IJUnitParserService>(new JUnitParserService(new VersionMapperService(), new Mock<ILogger<JUnitParserService>>().Object));
+        services.AddSingleton<ITestDataService>(new TestDataService());
+        var provider = services.BuildServiceProvider();
+
+        var svc = new FileWatcherService(
+            logger.Object,
+            provider,
+            MakeOptions(missingDir),
+            hub.Object,
+            settingsSvc.Object);
+
+        await svc.ScanNowAsync();
+
+        svc.LastScanError.ShouldNotBeNullOrWhiteSpace();
+        svc.LastScanError.ShouldContain("does not exist");
+        svc.IsScanningInProgress.ShouldBeFalse();
+    }
 }

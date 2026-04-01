@@ -4,9 +4,11 @@
 @using TestResultBrowser.Web.Services
 @using MudBlazor
 @using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.Extensions.Options
 @inject IFileWatcherService FileWatcher
 @inject ISystemStatusSummaryService SystemStatusSummaryService
 @inject ITestDataService TestDataService
+@inject IOptions<TestResultBrowserOptions> BrowserOptions
 @inject ILogger<SystemStatus> Logger
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
@@ -15,6 +17,13 @@
 <PageTitle>System Status</PageTitle>
 
 <MudText Typo="Typo.h4" Class="mb-4">System Status & Monitoring</MudText>
+
+@if (!string.IsNullOrWhiteSpace(realtimeStatusMessage))
+{
+    <MudAlert Severity="@realtimeStatusSeverity" Dense="true" Class="mb-4">
+        @realtimeStatusMessage
+    </MudAlert>
+}
 
 <MudGrid>
     <MudItem xs="12" md="6">
@@ -35,13 +44,27 @@
                     <MudText>
                         <strong>Scanning:</strong> @(FileWatcher.IsScanningInProgress ? "In Progress" : "Idle")
                     </MudText>
+                    <MudText>
+                        <strong>Last Duration:</strong> @GetLastScanDurationDisplay()
+                    </MudText>
+                    @if (!string.IsNullOrWhiteSpace(FileWatcher.LastScanError))
+                    {
+                        <MudAlert Severity="Severity.Warning" Dense="true">@FileWatcher.LastScanError</MudAlert>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(reloadStatusMessage))
+                    {
+                        <MudAlert Severity="@reloadStatusSeverity" Dense="true">@reloadStatusMessage</MudAlert>
+                    }
                 </MudStack>
             </MudCardContent>
             <MudCardActions>
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" 
                           OnClick="RefreshData" 
-                          Disabled="@FileWatcher.IsScanningInProgress">
-                    @(FileWatcher.IsScanningInProgress ? "Scanning..." : "Scan Now")
+                          Disabled="@(isReloading || FileWatcher.IsScanningInProgress)">
+                    @((isReloading || FileWatcher.IsScanningInProgress) ? "Reloading..." : "Reload test files")
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" OnClick="RefreshSummaryAsync">
+                    Refresh summary
                 </MudButton>
             </MudCardActions>
         </MudCard>
@@ -73,10 +96,16 @@
                             <strong>Total Test Results:</strong> @snapshot.TotalResults.ToString("N0")
                         </MudText>
                         <MudText>
-                            <strong>Memory Usage:</strong> @MemoryUsageMB.ToString("N2") MB
+                            <strong>Process Memory:</strong> @FormatBytes(snapshot.ProcessMemoryBytes)
                         </MudText>
                         <MudText>
-                            <strong>Memory %:</strong> @MemoryPercentage.ToString("N1")% of @maxMemoryGB GB limit
+                            <strong>Managed Heap:</strong> @FormatBytes(snapshot.ManagedMemoryBytes)
+                        </MudText>
+                        <MudText>
+                            <strong>Reported Usage:</strong> @FormatBytes(snapshot.MemoryUsageBytes)
+                        </MudText>
+                        <MudText>
+                            <strong>Memory %:</strong> @MemoryPercentage.ToString("N1")% of @GetConfiguredMemoryLimitLabel()
                         </MudText>
                         <MudProgressLinear Color="@GetMemoryColor()" Value="@MemoryPercentage" Class="my-2" />
                     </MudStack>
@@ -280,7 +309,7 @@
                             Consider archiving older test results
                         </MudListItem>
                         <MudListItem T="string" Icon="@Icons.Material.Filled.Info">
-                            Current rate: @snapshot.TotalResults.ToString("N0") results = @MemoryUsageMB.ToString("N2") MB
+                            Current rate: @snapshot.TotalResults.ToString("N0") results = @FormatBytes(snapshot.MemoryUsageBytes)
                         </MudListItem>
                     }
                     else
@@ -306,13 +335,29 @@
     private SystemStatusSnapshot? snapshot;
     private string? summaryError;
     private CancellationTokenSource? summaryLoadCts;
+    private bool isReloading;
+    private string? reloadStatusMessage;
+    private Severity reloadStatusSeverity = Severity.Info;
+    private string? realtimeStatusMessage;
+    private Severity realtimeStatusSeverity = Severity.Info;
 
-    protected override async Task OnInitializedAsync()
+    protected override Task OnInitializedAsync()
     {
+        maxMemoryGB = BrowserOptions.Value.Cache.MaxMemoryGB > 0
+            ? BrowserOptions.Value.Cache.MaxMemoryGB
+            : BrowserOptions.Value.MaxMemoryGB;
+
         StartSummaryLoad();
 
+        _ = InitializeHubConnectionAsync();
+
+        return Task.CompletedTask;
+    }
+
+    private async Task InitializeHubConnectionAsync()
+    {
         hubConnection = new HubConnectionBuilder()
-            .WithUrl(Navigation.ToAbsoluteUri("/hubs/testdata"))
+            .WithUrl(Navigation.ToAbsoluteUri("hubs/testdata"))
             .WithAutomaticReconnect()
             .Build();
 
@@ -331,8 +376,42 @@
             await InvokeAsync(StateHasChanged);
         });
 
-        await hubConnection.StartAsync();
-        Logger.LogInformation("SignalR connection established");
+        hubConnection.Reconnecting += error =>
+        {
+            realtimeStatusSeverity = Severity.Warning;
+            realtimeStatusMessage = "Real-time updates are reconnecting. Manual reload remains available.";
+            return InvokeAsync(StateHasChanged);
+        };
+
+        hubConnection.Reconnected += connectionId =>
+        {
+            realtimeStatusSeverity = Severity.Success;
+            realtimeStatusMessage = "Real-time updates are connected.";
+            return InvokeAsync(StateHasChanged);
+        };
+
+        hubConnection.Closed += error =>
+        {
+            realtimeStatusSeverity = Severity.Warning;
+            realtimeStatusMessage = "Real-time updates are unavailable. Use Reload test files if needed.";
+            return InvokeAsync(StateHasChanged);
+        };
+
+        try
+        {
+            await hubConnection.StartAsync();
+            realtimeStatusSeverity = Severity.Success;
+            realtimeStatusMessage = "Real-time updates are connected.";
+            Logger.LogInformation("SignalR connection established for System Status");
+        }
+        catch (Exception ex)
+        {
+            realtimeStatusSeverity = Severity.Warning;
+            realtimeStatusMessage = "Real-time updates are unavailable. The page is still usable, and Reload test files will continue to work.";
+            Logger.LogWarning(ex, "SignalR connection could not be established for System Status");
+        }
+
+        await InvokeAsync(StateHasChanged);
     }
 
     private void StartSummaryLoad(bool invalidateCache = false)
@@ -359,7 +438,6 @@
         }
         catch (OperationCanceledException)
         {
-            return;
         }
         catch (Exception ex)
         {
@@ -410,13 +488,93 @@
         }
     }
 
+    private string GetConfiguredMemoryLimitLabel() => maxMemoryGB > 0 ? $"{maxMemoryGB} GB limit" : "configured limit";
+
+    private static string FormatBytes(long bytes)
+    {
+        const double scale = 1024;
+        string[] suffixes = ["B", "KB", "MB", "GB", "TB"];
+        var value = (double)Math.Max(bytes, 0);
+        var order = 0;
+
+        while (value >= scale && order < suffixes.Length - 1)
+        {
+            order++;
+            value /= scale;
+        }
+
+        return $"{value:N2} {suffixes[order]}";
+    }
+
+    private string GetLastScanDurationDisplay() => FileWatcher.LastScanDuration is { } duration
+        ? duration.TotalSeconds >= 1
+            ? duration.ToString(@"mm\:ss")
+            : $"{duration.TotalMilliseconds:N0} ms"
+        : "Unknown";
+
     private async Task RefreshData()
     {
-        Logger.LogInformation("Scan Now button clicked. Current scanning status: {Status}", FileWatcher.IsScanningInProgress);
-        await FileWatcher.ScanNowAsync();
-        Logger.LogInformation("Scan completed. Updating statistics...");
+        if (isReloading || FileWatcher.IsScanningInProgress)
+        {
+            reloadStatusSeverity = Severity.Info;
+            reloadStatusMessage = "A reload is already running.";
+            return;
+        }
+
+        isReloading = true;
+        reloadStatusMessage = null;
+
+        try
+        {
+            Logger.LogInformation("Reload test files clicked. Current scanning status: {Status}", FileWatcher.IsScanningInProgress);
+
+            var scanTask = FileWatcher.ScanNowAsync();
+            var completedTask = await Task.WhenAny(scanTask, Task.Delay(TimeSpan.FromMinutes(2)));
+
+            if (completedTask != scanTask)
+            {
+                reloadStatusSeverity = Severity.Info;
+                reloadStatusMessage = "Reload started and is still running in the background.";
+                Snackbar.Add(reloadStatusMessage, Severity.Info);
+                return;
+            }
+
+            await scanTask;
+            StartSummaryLoad(invalidateCache: true);
+
+            if (!string.IsNullOrWhiteSpace(FileWatcher.LastScanError))
+            {
+                reloadStatusSeverity = Severity.Warning;
+                reloadStatusMessage = FileWatcher.LastScanError;
+                Snackbar.Add($"Reload completed with warnings: {FileWatcher.LastScanError}", Severity.Warning);
+            }
+            else
+            {
+                reloadStatusSeverity = Severity.Success;
+                reloadStatusMessage = $"Reloaded {FileWatcher.LastScanFileCount:N0} file(s) in {GetLastScanDurationDisplay()}.";
+                Snackbar.Add(reloadStatusMessage, Severity.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Reload test files failed");
+            reloadStatusSeverity = Severity.Error;
+            reloadStatusMessage = "Reload test files failed.";
+            Snackbar.Add($"Reload test files failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isReloading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private Task RefreshSummaryAsync()
+    {
         StartSummaryLoad(invalidateCache: true);
-        Logger.LogInformation("UI updated");
+        reloadStatusSeverity = Severity.Info;
+        reloadStatusMessage = "Refreshing summary metrics...";
+        return Task.CompletedTask;
     }
 
     private void ClearCache()
